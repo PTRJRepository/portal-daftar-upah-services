@@ -310,6 +310,34 @@ describe("manual adjustment ADCode rules", () => {
             (Database as any).getInstance = originalGetInstance;
         }
     });
+
+    it("fetches manual adjustments using both 3-code and 4-code division formats", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "P2A");
+            await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "PG2A");
+            await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "2A");
+
+            expect(calls[0].sql).toContain("division_code IN");
+            expect(calls[0].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
+            expect(calls[1].sql).toContain("division_code IN");
+            expect(calls[1].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
+            expect(calls[2].sql).toContain("division_code IN");
+            expect(calls[2].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
 });
 
 describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
@@ -443,16 +471,21 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
 
             expect(result.comparisons).toEqual([{
                 emp_code: "A0091",
+                stored_emp_identifier: null,
                 category: "spsi",
                 adjustment_name: "AUTO SPSI",
                 source_amount: 4000,
                 stored_amount: 4000,
+                db_ptrj_amount: 4000,
+                extend_db_ptrj_amount: 4000,
                 diff: 0,
                 status: "MATCH",
+                db_ptrj_doc_desc_details: [],
+                extend_db_ptrj_remarks: "AUTO SPSI | potongan spsi | 4000",
                 gang_code: "C1H",
                 remarks: "AUTO SPSI | potongan spsi | 4000"
             }]);
-            expect(calls[1].params).toEqual([4, 2026, "PG2A", "P2A"]);
+            expect(calls.some((call) => call.sql.includes("payroll_manual_adjustments") && JSON.stringify(call.params) === JSON.stringify([4, 2026, "PG2A", "P2A"]))).toBe(true);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -484,15 +517,72 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
             expect(result.missing_in_adjustments).toBe(0);
             expect(result.comparisons).toEqual([{
                 emp_code: "A0001",
+                stored_emp_identifier: "1902050504860001",
                 category: "spsi",
                 adjustment_name: "AUTO SPSI",
                 source_amount: 4000,
                 stored_amount: 0,
+                db_ptrj_amount: 4000,
+                extend_db_ptrj_amount: 0,
                 diff: 4000,
                 status: "MISMATCH",
+                db_ptrj_doc_desc_details: [],
+                extend_db_ptrj_remarks: "AUTO SPSI | non-spsi | 0",
                 gang_code: "A2M",
                 remarks: "AUTO SPSI | non-spsi | 0"
             }]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("includes db_ptrj DocDesc and extend remarks details in compare output", async () => {
+        const originalGetInstance = Database.getInstance;
+        let dbPtrjCall = 0;
+        const dbPtrj = {
+            query: async () => {
+                dbPtrjCall++;
+                if (dbPtrjCall === 1) return [{ emp_code: "A0001", nik: "1902050504860001", spsi: 0, "masa kerja": 0, jabatan: 0, premi: 7000, koreksi: 0, potongan: 0 }];
+                return [
+                    { emp_code: "A0001", category: "premi", doc_desc: "INSENTIF PANEN", doc_id: "AD001", amount: 5000 },
+                    { emp_code: "A0001", category: "premi", doc_desc: "KINERJA", doc_id: "AD002", amount: 2000 }
+                ];
+            }
+        };
+        const dbExtend = {
+            query: async () => [{
+                emp_code: "1902050504860001",
+                adjustment_type: "PREMI",
+                adjustment_name: "INSENTIF PANEN",
+                amount: 5000,
+                remarks: "premi manual user",
+                gang_code: "A2M",
+                division_code: "P1A"
+            }]
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "P1A");
+            const item = result.comparisons.find((comparison) => comparison.category === "premi");
+
+            expect(item).toMatchObject({
+                emp_code: "A0001",
+                stored_emp_identifier: "1902050504860001",
+                category: "premi",
+                source_amount: 7000,
+                stored_amount: 5000,
+                diff: 2000,
+                status: "MISMATCH",
+                db_ptrj_amount: 7000,
+                extend_db_ptrj_amount: 5000,
+                extend_db_ptrj_remarks: "premi manual user"
+            });
+            expect((item as any).db_ptrj_doc_desc_details).toEqual([
+                { doc_desc: "INSENTIF PANEN", doc_id: "AD001", amount: 5000 },
+                { doc_desc: "KINERJA", doc_id: "AD002", amount: 2000 }
+            ]);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -600,6 +690,59 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 { emp_code: "B0745", category: "spsi", status: "MATCH" },
                 { emp_code: "B0746", category: "spsi", status: "EXTRA_IN_ADJUSTMENTS" },
                 { emp_code: "B0747", category: "masa kerja", status: "MISMATCH" }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("includes db_ptrj DocDesc and extend remarks details in reverse compare output", async () => {
+        const originalGetInstance = Database.getInstance;
+        const dbExtend = {
+            query: async () => [{
+                emp_code: "1902050504860001",
+                adjustment_type: "PREMI",
+                adjustment_name: "INSENTIF PANEN",
+                amount: 5000,
+                remarks: "premi manual user",
+                gang_code: "A2M",
+                division_code: "P1A"
+            }]
+        };
+        let dbPtrjCall = 0;
+        const dbPtrj = {
+            queryOne: async () => ({ nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST", gang_code: "A2M" }),
+            query: async () => {
+                dbPtrjCall++;
+                if (dbPtrjCall === 1) return [{ emp_code: "A0001", premi: 7000 }];
+                return [
+                    { emp_code: "A0001", category: "premi", doc_desc: "INSENTIF PANEN", doc_id: "AD001", amount: 5000 },
+                    { emp_code: "A0001", category: "premi", doc_desc: "KINERJA", doc_id: "AD002", amount: 2000 }
+                ];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await (manualAdjustmentService as any).reverseCompareAdtransWithAdjustments(4, 2026, "P1A", ["premi"]);
+            const item = result.comparisons[0];
+
+            expect(item).toMatchObject({
+                emp_code: "A0001",
+                stored_emp_identifier: "1902050504860001",
+                category: "premi",
+                source_amount: 7000,
+                stored_amount: 5000,
+                diff: 2000,
+                status: "MISMATCH",
+                db_ptrj_amount: 7000,
+                extend_db_ptrj_amount: 5000,
+                extend_db_ptrj_remarks: "premi manual user"
+            });
+            expect(item.db_ptrj_doc_desc_details).toEqual([
+                { doc_desc: "INSENTIF PANEN", doc_id: "AD001", amount: 5000 },
+                { doc_desc: "KINERJA", doc_id: "AD002", amount: 2000 }
             ]);
         } finally {
             (Database as any).getInstance = originalGetInstance;

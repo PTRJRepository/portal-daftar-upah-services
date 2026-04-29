@@ -212,6 +212,36 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             limit: t.Optional(t.String())
         })
     })
+    .get("/manual-adjustment/automation-options/by-api-key", async ({ query, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, error: "Invalid API key" };
+            }
+
+            const { taskCodeOptionService } = await import("../services/taskCodeOptionService");
+            const data = await taskCodeOptionService.searchAutomationAdjustmentOptions({
+                search: query.search || undefined,
+                divisionCode: query.division_code || undefined,
+                limit: query.limit ? Number(query.limit) : undefined,
+                categories: query.categories ? String(query.categories).split(",") : undefined
+            });
+
+            return { success: true, count: data.length, data };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/automation-options/by-api-key error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            search: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            limit: t.Optional(t.String()),
+            categories: t.Optional(t.String())
+        })
+    })
     // --- Manual Adjustment Presets ---
     .get("/manual-adjustment-presets", async ({ query, set }) => {
         try {
@@ -244,7 +274,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const input = body as any;
             const mappedFields = await resolveManualAdjustmentPresetMapping(input, input.adjustment_name);
             const presetInput = { ...input, ...mappedFields };
-            const id = await manualAdjustmentPresetService.createPreset(presetInput, currentUser?.username || "system");
+            const id = await manualAdjustmentPresetService.upsertPreset(presetInput, currentUser?.username || "system");
             return { success: true, id, message: "Manual adjustment preset saved successfully." };
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment-presets POST error:", e);
@@ -429,6 +459,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_year: t.Number(),
             nik: t.Optional(t.String()),
             emp_code: t.String(),
+            emp_name: t.Optional(t.String()),
             gang_code: t.String(),
             division_code: t.Optional(t.String()),
             adjustment_type: t.String(),

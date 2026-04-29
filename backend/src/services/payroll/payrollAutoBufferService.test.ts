@@ -70,6 +70,22 @@ describe("payrollAutoBufferService", () => {
         expect(result.jabatanUsedFallback).toBe(false);
     });
 
+    it("uses 10000 SPSI deduction for SPSI members in IJL division", () => {
+        const result = payrollAutoBufferService.calculateAutomaticValues({
+            jabatanText: "karyawan",
+            roleText: "karyawan",
+            hariKerja: 25,
+            kehadiran: 25,
+            masaKerjaTahun: 3,
+            isSpsiMember: true,
+            divisionCode: "IJL",
+            dbJabatanJumlah: 0,
+            dbMasaKerjaJumlah: 0
+        });
+
+        expect(result.spsiDeduction).toBe(10000);
+    });
+
     it("keeps db_ptrj display values while comparing against active auto-buffer values", () => {
         const result = payrollAutoBufferService.calculateVerificationValues({
             jabatanText: "karyawan",

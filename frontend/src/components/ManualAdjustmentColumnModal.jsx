@@ -48,14 +48,39 @@ function resolveAdCode(taskCodeOption) {
     return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
 }
 
+function inferPresetAdCodeFromRemarks(value) {
+    const remarks = String(value || '').trim();
+    if (!remarks) return { adCode: '', taskDesc: '' };
+
+    const segments = remarks.split('|').map((segment) => segment.trim());
+    const candidateSegments = segments.length > 1 ? segments.slice(1) : segments;
+    for (const segment of candidateSegments) {
+        const match = segment.match(/^([A-Z]{2}\d{3,})\s*(?:-\s*([^|]+))?/i);
+        if (match) {
+            return {
+                adCode: match[1].toUpperCase(),
+                taskDesc: String(match[2] || '').trim()
+            };
+        }
+    }
+
+    const labelMatch = remarks.match(/AD\s*CODE\s*:\s*([A-Z]{2}\d{3,})\s*(?:-\s*([^|]+))?/i);
+    return {
+        adCode: labelMatch?.[1]?.toUpperCase() || '',
+        taskDesc: String(labelMatch?.[2] || '').replace(/\|.*$/, '').trim()
+    };
+}
+
 function presetToTaskCodeOption(preset) {
-    const adCode = preset?.ad_code || preset?.base_task_code || preset?.task_code || '';
+    const inferred = inferPresetAdCodeFromRemarks(preset?.remarks_template);
+    const adCode = preset?.ad_code || preset?.base_task_code || preset?.task_code || inferred.adCode || '';
+    const taskDesc = preset?.task_desc || inferred.taskDesc || '';
     return {
         ad_code: adCode,
         task_code: preset?.task_code || adCode,
         base_task_code: preset?.base_task_code || adCode,
-        task_desc: preset?.task_desc || '',
-        doc_desc: preset?.task_desc || preset?.adjustment_name || '',
+        task_desc: taskDesc,
+        doc_desc: taskDesc || preset?.adjustment_name || '',
         loc_code: preset?.division_code || null
     };
 }
@@ -106,7 +131,8 @@ export default function ManualAdjustmentColumnModal({
     onClose,
     onSaved,
     token,
-    division
+    division,
+    initialAdjustmentType = 'PREMI'
 }) {
     const [adjustmentType, setAdjustmentType] = useState('PREMI');
     const [docDesc, setDocDesc] = useState('');
@@ -145,7 +171,7 @@ export default function ManualAdjustmentColumnModal({
 
     useEffect(() => {
         if (!isOpen) return;
-        setAdjustmentType('PREMI');
+        setAdjustmentType(CATEGORY_OPTIONS.some((option) => option.value === initialAdjustmentType) ? initialAdjustmentType : 'PREMI');
         setDocDesc('');
         setSearch('');
         setSelectedTaskCode(null);
@@ -154,8 +180,8 @@ export default function ManualAdjustmentColumnModal({
         setError('');
         setPresetError('');
         setPresetRemarks('');
-        setPresetRemarks('');
-    }, [isOpen]);
+        setPresetSaving(false);
+    }, [isOpen, initialAdjustmentType]);
 
     useEffect(() => {
         if (adjustmentType !== 'POTONGAN_KOTOR' || !koreksiDefaultOption) return;
@@ -206,17 +232,14 @@ export default function ManualAdjustmentColumnModal({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [isOpen, token, search, docDesc, division, adjustmentType]);
+    }, [isOpen, token, search, division, adjustmentType]);
 
     const loadPresets = async () => {
         if (!isOpen || !token) return;
         setLoadingPresets(true);
         setPresetError('');
         try {
-            const result = await fetchManualAdjustmentPresets(token, {
-                adjustment_type: adjustmentType,
-                division_code: division
-            });
+            const result = await fetchManualAdjustmentPresets(token, {});
             setPresets(Array.isArray(result) ? result : result?.data || []);
         } catch (e) {
             setPresets([]);
@@ -228,16 +251,18 @@ export default function ManualAdjustmentColumnModal({
 
     useEffect(() => {
         loadPresets();
-    }, [isOpen, token, adjustmentType, division]);
+    }, [isOpen, token, division]);
 
     const canSave = Boolean(
         resolvedAdjustmentName
         && !nameError
+        && selectedTaskCode
         && !saving
     );
 
     const handleOptionSelect = (option) => {
         setSelectedTaskCode(option);
+        setPresetRemarks('');
     };
 
     const handlePresetSelect = (preset) => {
@@ -273,7 +298,7 @@ export default function ManualAdjustmentColumnModal({
         }
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
         if (nameError) {
             setError(nameError);
@@ -286,7 +311,7 @@ export default function ManualAdjustmentColumnModal({
         try {
             const fallbackTaskCode = selectedTaskCode || pickBestTaskCodeOption(options, adjustmentType, resolvedAdjustmentName);
             const adCode = resolveAdCode(fallbackTaskCode);
-            onSaved?.({
+            await onSaved?.({
                 adjustment_type: adjustmentType,
                 adjustment_name: resolvedAdjustmentName,
                 ad_code: adCode,
@@ -348,14 +373,15 @@ export default function ManualAdjustmentColumnModal({
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ padding: 22, overflowY: 'auto', maxHeight: 'calc(90vh - 86px)' }}>
+                <form onSubmit={handleSubmit} style={{ maxHeight: 'calc(90vh - 86px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: 22, overflowY: 'auto', minHeight: 0 }}>
                     <div style={{ display: 'grid', gap: 14 }}>
                         <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 8 }}>
                                 <div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Preset Manual Adjustment</div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Preset Kolom Tersimpan</div>
                                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                                        {loadingPresets ? 'Memuat preset...' : `${presets.length} preset tersedia untuk kategori ini`}
+                                        {loadingPresets ? 'Memuat preset...' : `${presets.length} preset tersimpan ditampilkan`}
                                     </div>
                                 </div>
                                 <button
@@ -393,9 +419,9 @@ export default function ManualAdjustmentColumnModal({
                                                 fontSize: 12,
                                                 fontWeight: 800
                                             }}
-                                            title={`${preset.adjustment_name} · ${preset.ad_code}${preset.task_desc ? ` · ${preset.task_desc}` : ''}`}
+                                            title={`${preset.adjustment_name} - ${resolveAdCode(presetToTaskCodeOption(preset))}${preset.remarks_template ? ` - ${preset.remarks_template}` : ''}`}
                                         >
-                                            {preset.adjustment_name} · {preset.ad_code}
+                                            {preset.adjustment_name} - {resolveAdCode(presetToTaskCodeOption(preset)) || 'ADCode dari remarks'}
                                         </button>
                                     ))}
                                 </div>
@@ -417,10 +443,7 @@ export default function ManualAdjustmentColumnModal({
                                         onChange={(e) => {
                                             const prefix = adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX;
                                             setDocDesc(`${prefix} ${e.target.value}`.trimEnd());
-                                            if (adjustmentType === 'POTONGAN_BERSIH') {
-                                                setSearch(e.target.value);
-                                                setSelectedTaskCode(null);
-                                            }
+                                            setPresetRemarks('');
                                         }}
                                         placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: DENDA PANEN' : 'contoh: SPSI'}
                                         style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
@@ -431,8 +454,7 @@ export default function ManualAdjustmentColumnModal({
                                     value={docDesc}
                                     onChange={(e) => {
                                         setDocDesc(e.target.value);
-                                        setSearch(e.target.value);
-                                        setSelectedTaskCode(null);
+                                        setPresetRemarks('');
                                     }}
                                     placeholder="Ketik nama premi, contoh: PRUNING"
                                     style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1' }}
@@ -464,7 +486,7 @@ export default function ManualAdjustmentColumnModal({
                                             } else {
                                                 const cleanedName = removeLeadingPrefix(removeLeadingPrefix(docDesc, KOREKSI_PREFIX), POTONGAN_PREFIX);
                                                 setDocDesc(cleanedName);
-                                                setSearch(cleanedName);
+                                                setSearch('');
                                             }
                                         }}
                                         style={{
@@ -499,7 +521,7 @@ export default function ManualAdjustmentColumnModal({
                             />
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
                                 <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
-                                    {loadingOptions ? 'Memuat preset...' : `${filteredOptions.length} preset ditemukan`}
+                                    {loadingOptions ? 'Memuat ADCode...' : `${filteredOptions.length} ADCode ditemukan`}
                                 </div>
                                 {filteredOptions.map((option) => {
                                     const active = selectedTaskCode?.task_code === option.task_code;
@@ -531,7 +553,7 @@ export default function ManualAdjustmentColumnModal({
                                 })}
                                 {!loadingOptions && filteredOptions.length === 0 && (
                                     <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                                        Tidak ada preset untuk filter ini.
+                                        Tidak ada ADCode untuk filter ini.
                                     </div>
                                 )}
                             </div>
@@ -539,14 +561,7 @@ export default function ManualAdjustmentColumnModal({
 
                         {selectedTaskCode && (
                             <div style={{ padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#14532d' }}>
-                                <strong>Dipilih:</strong> {selectedTaskCode.doc_desc || docDesc} · ADCode {resolveAdCode(selectedTaskCode)} · {selectedTaskCode.task_desc || '-'} · {selectedCategory.label}
-                            </div>
-                        )}
-
-                        {presetRemarks && (
-                            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a' }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Remarks Preset:</div>
-                                <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{presetRemarks}</code>
+                                <strong>Dipilih:</strong> {selectedTaskCode.doc_desc || docDesc} | ADCode {resolveAdCode(selectedTaskCode)} | {selectedTaskCode.task_desc || '-'} | {selectedCategory.label}
                             </div>
                         )}
 
@@ -563,8 +578,9 @@ export default function ManualAdjustmentColumnModal({
                             </div>
                         )}
                     </div>
+                    </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 22px', borderTop: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 -8px 18px rgba(15, 23, 42, 0.06)', position: 'sticky', bottom: 0, flexShrink: 0 }}>
                         <button type="button" onClick={onClose} disabled={saving} style={{ padding: '10px 16px', borderRadius: 9, border: '1px solid #cbd5e1', background: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer' }}>
                             Batal
                         </button>

@@ -16,6 +16,18 @@ export interface TaskCodeOption {
     base_task_code: string | null;
 }
 
+export interface AutomationAdjustmentOption {
+    category: "premi" | "koreksi" | "potongan_upah_kotor" | "potongan_upah_bersih";
+    adjustment_type: "PREMI" | "POTONGAN_KOTOR" | "POTONGAN_BERSIH";
+    adjustment_name: string;
+    ad_code: string;
+    description: string;
+    task_code: string;
+    task_desc: string;
+    base_task_code: string | null;
+    loc_code: string | null;
+}
+
 const LOC_CODE_BY_DIVISION: Record<string, string> = {
     PG1A: "P1A",
     P1A: "P1A",
@@ -116,6 +128,54 @@ function uniqueOptions(options: TaskCodeOption[]): TaskCodeOption[] {
     return result;
 }
 
+function cleanAdjustmentDescription(value: unknown): string {
+    return normalize(value).replace(/^\((AL|DE)\)\s*/i, "").trim();
+}
+
+function classifyAutomationAdjustmentOption(option: TaskCodeOption): Pick<AutomationAdjustmentOption, "category" | "adjustment_type"> | null {
+    const description = cleanAdjustmentDescription(option.task_desc).toUpperCase();
+    if (!description) return null;
+    if (description.includes("SPSI") || description.includes("PPH")) return null;
+
+    if (description.includes("KOREKSI")) {
+        return { category: "koreksi", adjustment_type: "POTONGAN_KOTOR" };
+    }
+
+    if (description.includes("POTONGAN") || description.startsWith("POT ") || description.startsWith("POT_")) {
+        return { category: "potongan_upah_bersih", adjustment_type: "POTONGAN_BERSIH" };
+    }
+
+    return { category: "premi", adjustment_type: "PREMI" };
+}
+
+export function buildAutomationAdjustmentOptions(options: TaskCodeOption[]): AutomationAdjustmentOption[] {
+    const result: AutomationAdjustmentOption[] = [];
+    const seen = new Set<string>();
+
+    for (const option of options) {
+        const description = cleanAdjustmentDescription(option.task_desc);
+        const classification = classifyAutomationAdjustmentOption(option);
+        if (!description || !classification) continue;
+
+        const key = `${classification.category}|${option.ad_code}|${description}|${option.loc_code || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        result.push({
+            ...classification,
+            adjustment_name: description,
+            ad_code: option.ad_code,
+            description,
+            task_code: option.task_code,
+            task_desc: option.task_desc,
+            base_task_code: option.base_task_code,
+            loc_code: option.loc_code
+        });
+    }
+
+    return result;
+}
+
 export class TaskCodeOptionService {
     private static instance: TaskCodeOptionService;
     private db = Database.getInstance();
@@ -209,6 +269,27 @@ export class TaskCodeOptionService {
         const resultOptions = divisionOptions.length > 0 ? divisionOptions : searchedOptions;
 
         return resultOptions.slice(0, limit);
+    }
+
+    public async searchAutomationAdjustmentOptions(input: {
+        search?: string;
+        divisionCode?: string;
+        limit?: number;
+        categories?: string[];
+    }): Promise<AutomationAdjustmentOption[]> {
+        const limit = Math.max(1, Math.min(200, Math.floor(input.limit || 100)));
+        const options = await this.searchOptions({
+            search: input.search,
+            divisionCode: input.divisionCode,
+            limit: 200
+        });
+        const categorySet = new Set((input.categories || []).map((category) => normalize(category).toLowerCase()).filter(Boolean));
+        const automationOptions = buildAutomationAdjustmentOptions(options);
+        const filteredOptions = categorySet.size > 0
+            ? automationOptions.filter((option) => categorySet.has(option.category))
+            : automationOptions;
+
+        return filteredOptions.slice(0, limit);
     }
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildManualColumnPlaceholderPayload,
   buildCanonicalManualAdjustmentName,
   buildPendingManualColumn,
   sanitizeManualAdjustmentLabel,
@@ -99,5 +100,44 @@ describe('payrollManualAdjustmentNames', () => {
   it('sanitizes symbols and repeated spaces consistently', () => {
     expect(sanitizeManualAdjustmentLabel('  @@Insentif###   Panen!!  ')).toBe('Insentif Panen');
     expect(buildCanonicalManualAdjustmentName('PREMI', '  ##Insentif   Panen!!  ')).toBe('PREMI INSENTIF PANEN');
+  });
+
+  it('builds a zero-value placeholder payload for saving a newly added empty column', () => {
+    const payload = buildManualColumnPlaceholderPayload({
+      month: 4,
+      year: 2026,
+      division: 'PG2A',
+      column: {
+        type: 'PREMI',
+        name: 'PREMI PANEN',
+        field: 'premi_panen',
+        nik: '3171',
+        emp_code: 'B0001',
+        emp_name: 'BUDI TEST',
+        gang_code: 'B1H',
+        ad_code: 'AL001',
+        task_code: 'AL001P2A',
+        base_task_code: 'AL001',
+        task_desc: '(AL) PANEN',
+      },
+    });
+
+    expect(payload).toEqual({
+      period_month: 4,
+      period_year: 2026,
+      nik: '3171',
+      emp_code: 'B0001',
+      emp_name: 'BUDI TEST',
+      gang_code: 'B1H',
+      division_code: 'PG2A',
+      adjustment_type: 'PREMI',
+      adjustment_name: 'PREMI PANEN',
+      amount: 0,
+      remarks: 'PREMI PANEN | AL001 - (AL) PANEN | 0 | sync:MISS | match:MISMATCH | INIT_COLUMN',
+      ad_code: 'AL001',
+      task_code: 'AL001P2A',
+      base_task_code: 'AL001',
+      task_desc: '(AL) PANEN',
+    });
   });
 });

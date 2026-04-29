@@ -8,6 +8,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => ({
     axiosGetMock: vi.fn(() => Promise.resolve({ data: { success: false } })),
+    axiosPostMock: vi.fn(() => Promise.resolve({ data: { success: true, id: 77 } })),
     streamState: {
         current: {
             gangs: [
@@ -58,9 +59,11 @@ vi.mock('../hooks/usePayrollStream', () => ({
 
 vi.mock('axios', () => ({
     default: {
-        get: mocked.axiosGetMock
+        get: mocked.axiosGetMock,
+        post: mocked.axiosPostMock
     },
-    get: mocked.axiosGetMock
+    get: mocked.axiosGetMock,
+    post: mocked.axiosPostMock
 }));
 
 vi.mock('./PayrollScrollChapterBar', () => ({
@@ -79,13 +82,13 @@ async function flushEffects() {
 describe('CustomPayrollTable manual dynamic columns', () => {
     beforeEach(() => {
         mocked.axiosGetMock.mockClear();
+        mocked.axiosPostMock.mockClear();
     });
 
     it('keeps manually added potongan kotor column visible in edit mode after stream meta refresh', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
-        const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Denda Test');
 
         try {
             await act(async () => {
@@ -110,6 +113,31 @@ describe('CustomPayrollTable manual dynamic columns', () => {
             });
             await flushEffects();
 
+            const nameInput = container.querySelector('input[placeholder="contoh: DENDA PANEN"]');
+            expect(nameInput).toBeTruthy();
+
+            await act(async () => {
+                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                setter.call(nameInput, 'Denda Test');
+                nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            await flushEffects();
+
+            const saveColumnButton = Array.from(container.querySelectorAll('button')).find((button) =>
+                (button.textContent || '').includes('Simpan Kolom')
+            );
+            expect(saveColumnButton).toBeTruthy();
+
+            await act(async () => {
+                saveColumnButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            expect(mocked.axiosPostMock).toHaveBeenCalledWith('payroll/manual-adjustment', expect.objectContaining({
+                adjustment_type: 'POTONGAN_KOTOR',
+                adjustment_name: 'KOREKSI DENDA TEST',
+                amount: 0
+            }), expect.any(Object));
             expect(container.textContent || '').toContain('KOR. DENDA TEST');
 
             mocked.streamState.current = {
@@ -139,7 +167,6 @@ describe('CustomPayrollTable manual dynamic columns', () => {
 
             expect(container.textContent || '').toContain('KOR. DENDA TEST');
         } finally {
-            promptSpy.mockRestore();
             await act(async () => {
                 root.unmount();
             });

@@ -24,6 +24,7 @@ export interface PayrollAutoBufferInput {
     kehadiran?: number | null;
     masaKerjaTahun?: number | null;
     isSpsiMember?: boolean | null;
+    divisionCode?: string | null;
     dbJabatanJumlah?: number | null;
     dbMasaKerjaJumlah?: number | null;
 }
@@ -271,7 +272,9 @@ class PayrollAutoBufferService {
         const hasMasaKerjaConfig = masaKerjaAmountAuto !== null;
         const masaKerjaAmount = hasMasaKerjaConfig ? (masaKerjaAmountAuto as number) : dbMasaKerjaJumlah;
 
-        const spsiDeduction = input.isSpsiMember ? 4000 : 0;
+        const spsiDeduction = input.isSpsiMember
+            ? String(input.divisionCode || "").toUpperCase() === "IJL" ? 10000 : 4000
+            : 0;
 
         return {
             jabatanAmount,

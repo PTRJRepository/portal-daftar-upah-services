@@ -65,8 +65,9 @@ export function buildPendingManualColumn({ groupLabel, rawName, division, firstE
   const nik = normalizeIdentity(firstEmployee?.nik);
   const gangCode = normalizeIdentity(firstEmployee?.gang_code);
   const empCode = normalizeIdentity(firstEmployee?.emp_code) || nik;
+  const empName = normalizeIdentity(firstEmployee?.nama) || normalizeIdentity(firstEmployee?.emp_name);
 
-  if (!adjustmentName || !fieldPrefix || !adjustmentType || !fieldSuffix) {
+  if (!adjustmentName || !fieldPrefix || !adjustmentType || !fieldSuffix || !nik || !gangCode) {
     return null;
   }
 
@@ -78,6 +79,7 @@ export function buildPendingManualColumn({ groupLabel, rawName, division, firstE
 
   if (nik) payload.nik = nik;
   if (empCode) payload.emp_code = empCode;
+  if (empName) payload.emp_name = empName;
   if (gangCode) payload.gang_code = gangCode;
 
   return {
@@ -86,5 +88,55 @@ export function buildPendingManualColumn({ groupLabel, rawName, division, firstE
     adjustmentName,
     activeFieldBucket: groupLabel === 'PREMI' ? 'premi' : 'potongan',
     payload,
+  };
+}
+
+function resolveColumnCode(column, key) {
+  return normalizeIdentity(column?.[key]);
+}
+
+function buildPlaceholderRemarks(column) {
+  const name = normalizeIdentity(column?.name);
+  const adCode = resolveColumnCode(column, 'ad_code')
+    || resolveColumnCode(column, 'base_task_code')
+    || resolveColumnCode(column, 'task_code');
+  const taskDesc = normalizeIdentity(column?.task_desc);
+  const adCodePart = adCode ? `${adCode}${taskDesc ? ` - ${taskDesc}` : ''}` : 'MANUAL EDIT';
+
+  return `${name} | ${adCodePart} | 0 | sync:MISS | match:MISMATCH | INIT_COLUMN`;
+}
+
+export function buildManualColumnPlaceholderPayload({ month, year, division, column }) {
+  const empCode = normalizeIdentity(column?.emp_code) || normalizeIdentity(column?.nik);
+  const nik = normalizeIdentity(column?.nik);
+  const gangCode = normalizeIdentity(column?.gang_code);
+  const adjustmentType = normalizeIdentity(column?.type);
+  const adjustmentName = normalizeIdentity(column?.name);
+
+  if (!month || !year || !empCode || !nik || !gangCode || !adjustmentType || !adjustmentName) {
+    return null;
+  }
+
+  const adCode = resolveColumnCode(column, 'ad_code');
+  const taskCode = resolveColumnCode(column, 'task_code');
+  const baseTaskCode = resolveColumnCode(column, 'base_task_code');
+  const taskDesc = normalizeIdentity(column?.task_desc);
+
+  return {
+    period_month: Number(month),
+    period_year: Number(year),
+    nik,
+    emp_code: empCode,
+    emp_name: normalizeIdentity(column?.emp_name) || null,
+    gang_code: gangCode,
+    division_code: division,
+    adjustment_type: adjustmentType,
+    adjustment_name: adjustmentName,
+    amount: 0,
+    remarks: normalizeIdentity(column?.remarks) || buildPlaceholderRemarks(column),
+    ad_code: adCode || undefined,
+    task_code: taskCode || undefined,
+    base_task_code: baseTaskCode || undefined,
+    task_desc: taskDesc || undefined,
   };
 }

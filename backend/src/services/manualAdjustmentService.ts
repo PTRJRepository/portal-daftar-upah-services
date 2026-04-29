@@ -36,14 +36,25 @@ export interface AdtransDuplicateSourceRow {
     amount: number;
 }
 
+type AdtransDocDescDetail = {
+    doc_desc: string;
+    doc_id: string | null;
+    amount: number;
+};
+
 export interface AdtransComparisonItem {
     emp_code: string;
+    stored_emp_identifier?: string | null;
     category: string;
     adjustment_name: string;
     source_amount: number;
     stored_amount: number | null;
+    db_ptrj_amount?: number;
+    extend_db_ptrj_amount?: number | null;
     diff: number | null;
     status: 'MATCH' | 'MISMATCH' | 'MISSING';
+    db_ptrj_doc_desc_details?: AdtransDocDescDetail[];
+    extend_db_ptrj_remarks?: string | null;
     gang_code: string | null;
     remarks: string | null;
 }
@@ -55,8 +66,12 @@ export interface ReverseAdtransComparisonItem {
     adjustment_name: string;
     stored_amount: number;
     source_amount: number;
+    db_ptrj_amount?: number;
+    extend_db_ptrj_amount?: number;
     diff: number;
     status: 'MATCH' | 'MISMATCH' | 'EXTRA_IN_ADJUSTMENTS';
+    db_ptrj_doc_desc_details?: AdtransDocDescDetail[];
+    extend_db_ptrj_remarks?: string | null;
     gang_code: string | null;
     division_code: string | null;
     remarks: string | null;
@@ -101,6 +116,24 @@ function resolveAdtransLocCode(divisionCode: string): string {
         return normalizeAdtransDivisionLocCode(sourceDivision);
     }
     return normalizeAdtransDivisionLocCode(resolved);
+}
+
+function getManualAdjustmentDivisionCodeVariants(divisionCode: string): string[] {
+    const normalized = normalizeText(divisionCode).toUpperCase();
+    if (!normalized) return [];
+
+    const codeGroups = [
+        { match: ['1A', 'P1A', 'PG1A'], query: ['P1A', 'PG1A'] },
+        { match: ['1B', 'P1B', 'PG1B'], query: ['P1B', 'PG1B'] },
+        { match: ['2A', 'P2A', 'PG2A'], query: ['P2A', 'PG2A'] },
+        { match: ['2B', 'P2B', 'PG2B'], query: ['P2B', 'PG2B'] },
+        { match: ['AB1', 'ARB1'], query: ['AB1', 'ARB1'] },
+        { match: ['AB2', 'ARB2'], query: ['AB2', 'ARB2'] },
+        { match: ['ARC', 'AREC'], query: ['ARC', 'AREC'] }
+    ];
+
+    const matchedGroup = codeGroups.find((group) => group.match.includes(normalized));
+    return matchedGroup ? [...matchedGroup.query] : [normalized];
 }
 
 function buildAdtransSqlPatterns(filter: string): string[] {
@@ -327,8 +360,14 @@ export class ManualAdjustmentService {
         const params: any[] = [month, year];
 
         if (divisionCode) {
-            query += ` AND division_code = ?`;
-            params.push(divisionCode);
+            const divisionCodes = getManualAdjustmentDivisionCodeVariants(divisionCode);
+            if (divisionCodes.length === 1) {
+                query += ` AND division_code = ?`;
+                params.push(divisionCodes[0]);
+            } else if (divisionCodes.length > 1) {
+                query += ` AND division_code IN (${divisionCodes.map(() => '?').join(', ')})`;
+                params.push(...divisionCodes);
+            }
         }
 
         if (gangCode && gangCode !== 'ALL') {
@@ -845,6 +884,54 @@ export class ManualAdjustmentService {
             normalizedDivisionCode, periodMonth, periodYear, ...uniqueVirtualGangCodes
         ]);
 
+        const detailRows = await dbPtrj.query<any>(`
+            SELECT
+                RTRIM(t.EmpCode) as emp_code,
+                RTRIM(t.DocID) as doc_id,
+                RTRIM(t.DocDesc) as doc_desc,
+                ln.Amount as amount
+            FROM PR_ADTRANS t
+            ${gangJoin}
+            JOIN PR_ADTRANSLN ln ON t.ID = ln.MasterID
+            WHERE UPPER(RTRIM(t.LocCode)) = ?
+              AND t.PhyMonth = ?
+              AND t.PhyYear = ?
+              ${gangWhere}
+
+            UNION ALL
+
+            SELECT
+                RTRIM(t.EmpCode) as emp_code,
+                RTRIM(t.DocID) as doc_id,
+                RTRIM(t.DocDesc) as doc_desc,
+                ln.Amount as amount
+            FROM PR_ADTRANS_ARC t
+            ${gangJoin}
+            JOIN PR_ADTRANSLN_ARC ln ON t.ID = ln.MasterID
+            WHERE UPPER(RTRIM(t.LocCode)) = ?
+              AND t.PhyMonth = ?
+              AND t.PhyYear = ?
+              ${gangWhere}
+        `, [
+            normalizedDivisionCode, periodMonth, periodYear, ...uniqueVirtualGangCodes,
+            normalizedDivisionCode, periodMonth, periodYear, ...uniqueVirtualGangCodes
+        ]);
+        const docDetailsByEmpAndCategory = new Map<string, AdtransDocDescDetail[]>();
+        for (const detail of detailRows) {
+            const empCode = String(detail.emp_code || '').trim().toUpperCase();
+            const docDesc = String(detail.doc_desc || '').trim();
+            for (const filterKey of normalizedFilters) {
+                if (!matchesAdtransFilter(docDesc, filterKey)) continue;
+                const key = `${empCode}|${filterKey}`;
+                if (!docDetailsByEmpAndCategory.has(key)) docDetailsByEmpAndCategory.set(key, []);
+                docDetailsByEmpAndCategory.get(key)!.push({
+                    doc_desc: docDesc,
+                    doc_id: detail.doc_id ? String(detail.doc_id).trim() : null,
+                    amount: Number(detail.amount || 0)
+                });
+            }
+        }
+
         // 2. Get payroll_manual_adjustments for AUTO_BUFFER from extend_db_ptrj
         const adjustmentDivisionCodes = Array.from(new Set([
             divisionCode.trim().toUpperCase(),
@@ -926,12 +1013,17 @@ export class ManualAdjustmentService {
 
                 comparisons.push({
                     emp_code: empCode,
+                    stored_emp_identifier: sourceNik && sourceNik !== empCode ? sourceNik : null,
                     category: filterKey,
                     adjustment_name: adjustmentName,
                     source_amount: sourceAmount,
                     stored_amount: storedAmount,
+                    db_ptrj_amount: sourceAmount,
+                    extend_db_ptrj_amount: storedAmount,
                     diff: storedAmount !== null ? sourceAmount - storedAmount : null,
                     status,
+                    db_ptrj_doc_desc_details: docDetailsByEmpAndCategory.get(`${empCode}|${filterKey}`) || [],
+                    extend_db_ptrj_remarks: stored?.remarks || null,
                     gang_code: stored?.gang_code || null,
                     remarks: stored?.remarks || null
                 });
@@ -1041,6 +1133,16 @@ export class ManualAdjustmentService {
         for (const row of adtransResult.totals || []) {
             sourceMap.set(String(row.emp_code || '').trim().toUpperCase(), row);
         }
+        const docDetailsByEmpAndCategory = new Map<string, AdtransDocDescDetail[]>();
+        for (const duplicate of adtransResult.duplicate_report?.duplicates || []) {
+            const empCode = String(duplicate.emp_code || '').trim().toUpperCase();
+            const category = String(duplicate.category || '').trim();
+            docDetailsByEmpAndCategory.set(`${empCode}|${category}`, (duplicate.records || []).map((record: any) => ({
+                doc_desc: String(record.doc_desc || '').trim(),
+                doc_id: record.doc_id ? String(record.doc_id).trim() : null,
+                amount: Number(record.amount || 0)
+            })));
+        }
 
         const comparisons: ReverseAdtransComparisonItem[] = [];
         let matchCount = 0;
@@ -1080,8 +1182,12 @@ export class ManualAdjustmentService {
                 adjustment_name: adjustmentName,
                 stored_amount: storedAmount,
                 source_amount: sourceAmount,
+                db_ptrj_amount: sourceAmount,
+                extend_db_ptrj_amount: storedAmount,
                 diff,
                 status,
+                db_ptrj_doc_desc_details: docDetailsByEmpAndCategory.get(`${ptrjEmpCode}|${category}`) || [],
+                extend_db_ptrj_remarks: row.remarks ? String(row.remarks) : null,
                 gang_code: row.gang_code ? String(row.gang_code).trim() : null,
                 division_code: row.division_code ? String(row.division_code).trim() : null,
                 remarks: row.remarks ? String(row.remarks) : null

@@ -9,7 +9,7 @@ import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -21,7 +21,7 @@ import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
-import { buildCanonicalManualAdjustmentName, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
+import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn } from '../utils/payrollManualAdjustmentNames';
 import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
 import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -205,6 +205,12 @@ const {
     UPAH_BERSIH
 } = PAYROLL_HEADER_GROUPS;
 
+const ADJUSTMENT_TYPE_BY_GROUP_LABEL = {
+    [PREMI]: 'PREMI',
+    [POTONGAN_UPAH_KOTOR]: 'POTONGAN_KOTOR',
+    [POTONGAN_UPAH_BERSIH]: 'POTONGAN_BERSIH'
+};
+
 const CustomPayrollTable = memo(function CustomPayrollTable({
     token, month, year, division, gangCode, onViewEmployeeDetail, onOpenHrProfile, fontSize = 100,
     onExportReady = null, refreshTrigger = 0,
@@ -324,7 +330,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const kontanValues = Object.values(editedKontanCells);
         const kontanCount = kontanValues.length;
         const deleteCount = kontanValues.filter((item) => item.value === 0).length;
-        const addedColumnCount = addedColumns.length;
+        const addedColumnCount = addedColumns.filter((item) => !item.placeholder_saved).length;
         return {
             manualCount,
             kontanCount,
@@ -911,7 +917,30 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         setManualAdjustmentModal({ isOpen: true, groupLabel });
     };
 
-    const handleManualAdjustmentSaved = (columnDefinition) => {
+    const persistManualColumnPlaceholder = async (column) => {
+        const payload = buildManualColumnPlaceholderPayload({
+            month,
+            year,
+            division,
+            column
+        });
+
+        if (!payload) {
+            throw new Error('Kolom belum bisa disimpan karena identitas karyawan/gang aktif tidak tersedia.');
+        }
+
+        const response = isProdMode()
+            ? await saveLockedManualEdit(token, payload)
+            : await saveManualAdjustment(token, payload);
+
+        if (!response?.success) {
+            throw new Error(response?.error || 'Gagal menyimpan placeholder kolom manual adjustment');
+        }
+
+        return response;
+    };
+
+    const handleManualAdjustmentSaved = async (columnDefinition) => {
         const groupLabelByType = {
             PREMI,
             POTONGAN_KOTOR: POTONGAN_UPAH_KOTOR,
@@ -926,6 +955,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         if (!pendingColumn) return;
+
+        const nextColumn = {
+            ...pendingColumn.payload,
+            field: pendingColumn.fieldName,
+            ad_code: columnDefinition.ad_code,
+            task_code: columnDefinition.task_code,
+            base_task_code: columnDefinition.base_task_code,
+            task_desc: columnDefinition.task_desc,
+            loc_code: columnDefinition.loc_code,
+            remarks: columnDefinition.remarks,
+            placeholder_saved: false
+        };
+
+        await persistManualColumnPlaceholder(nextColumn);
+        nextColumn.placeholder_saved = true;
 
         setDynamicHeaders(prev => ({
             ...prev,
@@ -942,19 +986,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         setAddedColumns(prev => {
-            const nextColumn = {
-                ...pendingColumn.payload,
-                field: pendingColumn.fieldName,
-                ad_code: columnDefinition.ad_code,
-                task_code: columnDefinition.task_code,
-                base_task_code: columnDefinition.base_task_code,
-                task_desc: columnDefinition.task_desc,
-                loc_code: columnDefinition.loc_code,
-                remarks: columnDefinition.remarks
-            };
             const exists = prev.some((item) => item.field === nextColumn.field && item.type === nextColumn.type);
             return exists ? prev : [...prev, nextColumn];
         });
+
+        showPayrollToast('success', 'Kolom tersimpan', `Kolom ${pendingColumn.adjustmentName} sudah disimpan sebagai placeholder di database.`);
     };
 
     const removeColumnFromScreen = (field) => {
@@ -995,7 +1031,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const targetColumn = resolveManualColumnDefinition(field);
         if (!targetColumn) return;
 
-        const isUnsaved = addedColumns.some((item) => item.field === field);
+        const isUnsaved = addedColumns.some((item) => item.field === field && !item.placeholder_saved);
         openPayrollConfirm({
             variant: 'danger',
             title: isUnsaved ? 'Hapus kolom tambahan?' : 'Hapus kolom manual adjustment?',
@@ -1127,6 +1163,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const saveEditedCellsAndColumns = async () => {
         const editsArray = Object.values(editedCells);
         const pendingColumns = addedColumns.filter(newCol =>
+            !newCol.placeholder_saved &&
             !editsArray.some(e => e.name === newCol.name && e.type === newCol.type)
         );
 
@@ -1227,6 +1264,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         for (const edit of legacyEdits) {
+            const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+            const shouldUseStoredRemarks = edit.value === 0 && edit.remarks;
             const payload = {
                 period_month: month,
                 period_year: year,
@@ -1238,8 +1277,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 adjustment_type: edit.type,
                 adjustment_name: edit.name,
                 amount: edit.value,
-                remarks: edit.remarks || (edit.ad_code
-                    ? `${edit.name} | ${edit.ad_code}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
+                remarks: shouldUseStoredRemarks ? edit.remarks : (editAdCode
+                    ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
                     : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
                 ad_code: edit.ad_code,
                 task_code: edit.task_code,
@@ -4111,6 +4150,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 onSaved={handleManualAdjustmentSaved}
                 token={token}
                 division={division}
+                initialAdjustmentType={ADJUSTMENT_TYPE_BY_GROUP_LABEL[manualAdjustmentModal.groupLabel] || 'PREMI'}
             />
             {payrollToast && (
                 <div className={`payroll-toast payroll-toast--${payrollToast.type}`} role="status">
