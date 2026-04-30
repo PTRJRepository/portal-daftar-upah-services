@@ -92,10 +92,26 @@
   },
   {
     "adjustment_type": "POTONGAN_KOTOR",
-    "adjustment_name": "KOREKSI",
-    "ad_code": "DE0004",
+    "adjustment_name": "KOREKSI X",
+    "ad_code": "(DE0004AB1) (DE) POTONGAN PREMI",
     "task_desc": "(DE) POTONGAN PREMI",
     "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_type": "POTONGAN_BERSIH",
+    "adjustment_name": "POTONGAN BPJS",
+    "ad_code": "(DE) POTONGAN BPJS",
+    "task_desc": "(DE) POTONGAN BPJS",
+    "input_type": "amount",
+    "is_active": true
+  },
+  {
+    "adjustment_type": "POTONGAN_BERSIH",
+    "adjustment_name": "POTONGAN X",
+    "ad_code": "(DE) POTONGAN HUTANG",
+    "task_desc": "(DE) POTONGAN HUTANG",
+    "input_type": "amount",
     "is_active": true
   }
 ]

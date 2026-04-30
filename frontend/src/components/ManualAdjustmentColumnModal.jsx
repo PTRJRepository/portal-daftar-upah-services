@@ -25,6 +25,23 @@ function removeLeadingPrefix(value, prefix) {
     return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
 }
 
+function isSuffixTemplateDefinition(definition) {
+    return /\bX$/i.test(String(definition?.adjustment_name || '').trim());
+}
+
+function buildNameFromTemplate(definition, suffix) {
+    const templateName = String(definition?.adjustment_name || '').trim();
+    if (!isSuffixTemplateDefinition(definition)) return templateName;
+    return templateName.replace(/\bX$/i, String(suffix || '').trim()).replace(/\s+/g, ' ').trim();
+}
+
+function getTemplateSuffix(definition, value) {
+    const templateName = String(definition?.adjustment_name || '').trim();
+    if (!isSuffixTemplateDefinition(definition)) return '';
+    const prefix = templateName.replace(/\bX$/i, '').trim();
+    return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
+}
+
 function containsWord(value, word) {
     return new RegExp(`\\b${word}\\b`, 'i').test(String(value || ''));
 }
@@ -102,13 +119,14 @@ export default function ManualAdjustmentColumnModal({
         });
     }, [activeDefinitions, premiumDefinitionSearch]);
 
-    const nameError = adjustmentType === 'POTONGAN_KOTOR'
-        ? validateAdjustmentName(adjustmentType, docDesc)
+    const nameError = selectedUsesSuffix && !String(docDesc || '').trim()
+        ? 'Lanjutkan nama kolom untuk mengganti X.'
         : '';
     const selectedDefinition = adjustmentType === 'POTONGAN_KOTOR' ? koreksiBaseDefinition : selectedPremiumDef;
-    const resolvedAdjustmentName = adjustmentType === 'POTONGAN_KOTOR'
-        ? buildAdjustmentName(adjustmentType, docDesc)
-        : selectedPremiumDef?.adjustment_name || '';
+    const selectedUsesSuffix = isSuffixTemplateDefinition(selectedDefinition);
+    const resolvedAdjustmentName = selectedUsesSuffix
+        ? buildNameFromTemplate(selectedDefinition, docDesc)
+        : selectedDefinition?.adjustment_name || '';
     const premiumSelectionError = !selectedDefinition
         ? 'Pilih definisi dari premium_definitions.json.'
         : '';
