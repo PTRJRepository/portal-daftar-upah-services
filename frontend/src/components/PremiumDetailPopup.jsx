@@ -190,6 +190,18 @@ const summaryCellStyle = {
     padding: '9px 10px'
 };
 
+const latestSummaryCellStyle = {
+    ...summaryCellStyle,
+    borderColor: '#86efac',
+    background: '#f0fdf4'
+};
+
+const infoSummaryCellStyle = {
+    ...summaryCellStyle,
+    borderColor: '#bae6fd',
+    background: '#f0f9ff'
+};
+
 function BlokEditor({ items, onChange, readOnly = false }) {
     const handleChange = (index, field, value) => {
         if (readOnly) return;
@@ -435,6 +447,9 @@ export default function PremiumDetailPopup({
     const detailDiffersFromDraft = hasAmountDifference(totalAmount, amountToSave);
     const isLegacyFallback = !!initialEditorState.parsed?.legacy_source;
     const canEdit = !readOnly;
+    const hasStoredAmountToCompare = Math.abs(storedAmountNumber) > 0.01;
+    const shouldShowAmountComparison = shouldAutoSyncDetailAmount && hasStoredAmountToCompare;
+    const shouldShowEmptyStoredAmountInfo = shouldAutoSyncDetailAmount && !hasStoredAmountToCompare && Math.abs(totalAmount) > 0.01;
 
     const handleSyncAmount = useCallback(() => {
         if (!canEdit || shouldAutoSyncDetailAmount) return;
@@ -556,41 +571,52 @@ export default function PremiumDetailPopup({
                 <div style={{ padding: 20, overflowY: 'auto', flex: 1, minHeight: 0 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
                         {isLegacyFallback ? (
-                            <div style={warningPanelStyle}>
-                                <strong>Detail belum tersedia di database.</strong> Popup ini membuat fallback dari amount awal supaya data lama tetap bisa dibuka. {canEdit ? 'Isi uraian subblok/metadata yang benar lalu simpan agar detail tersimpan di payroll_manual_adjustments.' : 'Mode lihat saja hanya menampilkan fallback; masuk mode edit untuk mengubah dan menyimpan detail.'}
+                            <div style={infoPanelStyle}>
+                                <strong>Detail belum tersimpan di database.</strong> Popup ini membuat fallback dari amount awal supaya data lama tetap bisa dibuka. {canEdit ? 'Isi uraian subblok/metadata yang benar lalu simpan agar detail terbaru tersimpan di payroll_manual_adjustments.' : 'Mode lihat saja hanya menampilkan fallback; masuk mode edit untuk mengubah dan menyimpan detail.'}
                             </div>
                         ) : (
                             <div style={infoPanelStyle}>
-                                {canEdit
-                                    ? 'Detail dibaca dari database payroll_manual_adjustments metadata_json. Bagian verifikasi di bawah membandingkan amount tersimpan dengan total uraian detail.'
-                                    : 'Mode lihat saja. Detail dibaca dari database payroll_manual_adjustments metadata_json, dan perubahan hanya bisa dilakukan dari mode edit.'}
+                                {shouldAutoSyncDetailAmount
+                                    ? (canEdit
+                                        ? 'Detail terbaru akan dipakai saat simpan. Amount awal hanya informasi pembanding.'
+                                        : 'Mode lihat saja. Detail terbaru dibaca dari payroll_manual_adjustments metadata_json.')
+                                    : (canEdit
+                                        ? 'Detail dibaca dari database payroll_manual_adjustments metadata_json.'
+                                        : 'Mode lihat saja. Detail dibaca dari database payroll_manual_adjustments metadata_json, dan perubahan hanya bisa dilakukan dari mode edit.')}
                             </div>
                         )}
 
                         <div style={summaryGridStyle}>
-                            <div style={summaryCellStyle}>
-                                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Total amount awal</div>
-                                <div style={{ fontSize: 15, color: '#0f172a', fontWeight: 800 }}>{formatAmount(storedAmountNumber)}</div>
-                            </div>
-                            <div style={summaryCellStyle}>
-                                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Total detail</div>
+                            {shouldShowAmountComparison && (
+                                <div style={summaryCellStyle}>
+                                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>Total amount awal</div>
+                                    <div style={{ fontSize: 15, color: '#0f172a', fontWeight: 800 }}>{formatAmount(storedAmountNumber)}</div>
+                                </div>
+                            )}
+                            <div style={shouldAutoSyncDetailAmount ? latestSummaryCellStyle : summaryCellStyle}>
+                                <div style={{ fontSize: 11, color: shouldAutoSyncDetailAmount ? '#15803d' : '#64748b', fontWeight: 700 }}>Total detail terbaru</div>
                                 <div style={{ fontSize: 15, color: '#0f172a', fontWeight: 800 }}>{formatAmount(totalAmount)}</div>
+                                {shouldAutoSyncDetailAmount && (
+                                    <div style={{ fontSize: 11, color: '#15803d', fontWeight: 700, marginTop: 2 }}>Dipakai saat simpan</div>
+                                )}
                             </div>
-                            <div style={{
-                                ...summaryCellStyle,
-                                borderColor: detailDiffersFromStored ? '#f97316' : '#86efac',
-                                background: detailDiffersFromStored ? '#fff7ed' : '#f0fdf4'
-                            }}>
-                                <div style={{ fontSize: 11, color: detailDiffersFromStored ? '#9a3412' : '#15803d', fontWeight: 700 }}>Selisih</div>
-                                <div style={{ fontSize: 15, color: detailDiffersFromStored ? '#9a3412' : '#15803d', fontWeight: 800 }}>{formatAmount(Math.abs(diffFromStored))}</div>
-                            </div>
+                            {shouldShowAmountComparison && (
+                                <div style={infoSummaryCellStyle}>
+                                    <div style={{ fontSize: 11, color: '#075985', fontWeight: 700 }}>Selisih</div>
+                                    <div style={{ fontSize: 15, color: '#075985', fontWeight: 800 }}>{formatAmount(Math.abs(diffFromStored))}</div>
+                                </div>
+                            )}
                         </div>
 
-                        {detailDiffersFromStored && (
-                            <div style={warningPanelStyle}>
-                                Amount tersimpan berbeda dengan total detail metadata sebesar {formatAmount(Math.abs(diffFromStored))}. {canEdit
-                                    ? (shouldAutoSyncDetailAmount ? 'Saat disimpan, amount akan otomatis mengikuti total detail.' : 'Gunakan tombol Sync ke Total Detail jika amount awal ingin disamakan dengan uraian detail.')
-                                    : 'Masuk mode edit untuk sync amount awal dengan uraian detail.'}
+                        {shouldShowAmountComparison && detailDiffersFromStored && (
+                            <div style={infoPanelStyle}>
+                                Info: total detail terbaru berbeda {formatAmount(Math.abs(diffFromStored))} dari amount awal. Saat disimpan, amount akan otomatis mengikuti total detail terbaru.
+                            </div>
+                        )}
+
+                        {shouldShowEmptyStoredAmountInfo && (
+                            <div style={infoPanelStyle}>
+                                Amount awal kosong, total detail terbaru akan dipakai saat disimpan.
                             </div>
                         )}
 
@@ -617,7 +643,7 @@ export default function PremiumDetailPopup({
                                         checked={isAmountEditable}
                                         onChange={(event) => setIsAmountEditable(event.target.checked)}
                                     />
-                                    Edit amount awal/tersimpan
+                                    Amount simpan manual
                                 </label>
                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
                                     <input
@@ -642,7 +668,7 @@ export default function PremiumDetailPopup({
                                                 fontWeight: 800
                                             }}
                                         >
-                                            Sync ke Total Detail
+                                            Gunakan total detail
                                         </button>
                                     )}
                                 </div>

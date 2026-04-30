@@ -184,6 +184,26 @@ function resolveManualAdjustmentAdCode(data: Pick<ManualAdjustment, 'ad_code' | 
     return normalizeText(data.ad_code || data.base_task_code || data.task_code).toUpperCase();
 }
 
+function normalizeManualAdjustmentPresetCode(value: unknown): string {
+    const normalized = normalizeText(value).toUpperCase();
+    if (!normalized) return "";
+
+    const parenthesizedCode = normalized.match(/^\(([A-Z]{2}\d[A-Z0-9_-]*)\)/);
+    if (parenthesizedCode?.[1]?.length <= 50) return parenthesizedCode[1];
+
+    if (normalized.length <= 50 && /^[A-Z]{2}\d[A-Z0-9_-]*$/.test(normalized)) {
+        return normalized;
+    }
+
+    return "";
+}
+
+function resolveManualAdjustmentPresetCode(data: Pick<ManualAdjustment, 'ad_code' | 'base_task_code' | 'task_code'>): string {
+    return normalizeManualAdjustmentPresetCode(data.ad_code)
+        || normalizeManualAdjustmentPresetCode(data.base_task_code)
+        || normalizeManualAdjustmentPresetCode(data.task_code);
+}
+
 export function manualAdjustmentRequiresAdCode(adjustmentType: string): boolean {
     return normalizeText(adjustmentType).toUpperCase() !== 'AUTO_BUFFER';
 }
@@ -307,7 +327,7 @@ export async function resolveManualAdjustmentPresetMapping(data: ManualAdjustmen
         };
     }
 
-    if (resolveManualAdjustmentAdCode(data)) return {};
+    if (resolveManualAdjustmentPresetCode(data)) return {};
 
     const prefix = expectedTaskDescPrefix(data.adjustment_type);
     if (!prefix) return {};
@@ -412,8 +432,65 @@ export interface ManualAdjustment {
     updated_by?: string;
 }
 
+type ResolvedManualAdjustmentIdentity = {
+    empCode: string;
+    nik: string | null;
+    empName: string | null;
+    originalIdentifier: string;
+};
+
+function normalizeIdentityValue(value: unknown): string {
+    return normalizeText(value).toUpperCase();
+}
+
+function isNumericNik(value: unknown): boolean {
+    return /^\d{10,}$/.test(normalizeIdentityValue(value));
+}
+
+async function resolveManualAdjustmentIdentity(data: ManualAdjustment): Promise<ResolvedManualAdjustmentIdentity> {
+    const inputEmpCode = normalizeIdentityValue(data.emp_code);
+    const inputNik = normalizeIdentityValue(data.nik);
+    const lookupIdentifier = inputEmpCode && !isNumericNik(inputEmpCode)
+        ? inputEmpCode
+        : inputNik || inputEmpCode;
+    const fallbackIdentifier = inputNik && inputNik !== lookupIdentifier ? inputNik : inputEmpCode;
+    const identity = await employeeIdentityResolverService.resolve(lookupIdentifier)
+        || (fallbackIdentifier && fallbackIdentifier !== lookupIdentifier
+            ? await employeeIdentityResolverService.resolve(fallbackIdentifier)
+            : null);
+
+    const resolvedEmpCode = normalizeIdentityValue(identity?.emp_code)
+        || (!isNumericNik(inputEmpCode) ? inputEmpCode : "");
+    const resolvedNik = normalizeIdentityValue(identity?.nik)
+        || (isNumericNik(inputNik) ? inputNik : isNumericNik(inputEmpCode) ? inputEmpCode : "");
+
+    if (!resolvedEmpCode) {
+        throw new Error(`NIK/EmpCode "${inputNik || inputEmpCode}" tidak bisa diresolve ke EmpCode PTRJ. Simpan dibatalkan agar payroll_manual_adjustments tetap konsisten.`);
+    }
+
+    return {
+        empCode: resolvedEmpCode,
+        nik: resolvedNik || null,
+        empName: normalizeIdentityValue(data.emp_name || identity?.emp_name) || null,
+        originalIdentifier: inputEmpCode || inputNik
+    };
+}
+
+async function resolveManualAdjustmentLookupIdentity(identifier: string): Promise<{ empCode: string | null; nik: string | null; originalIdentifier: string }> {
+    const normalized = normalizeIdentityValue(identifier);
+    if (!normalized) return { empCode: null, nik: null, originalIdentifier: "" };
+
+    const identity = await employeeIdentityResolverService.resolve(normalized);
+    return {
+        empCode: normalizeIdentityValue(identity?.emp_code) || (!isNumericNik(normalized) ? normalized : null),
+        nik: normalizeIdentityValue(identity?.nik) || (isNumericNik(normalized) ? normalized : null),
+        originalIdentifier: normalized
+    };
+}
+
 export class ManualAdjustmentService {
     private static instance: ManualAdjustmentService;
+    private static identitySchemaEnsured = false;
 
     private constructor() { }
 
@@ -426,6 +503,39 @@ export class ManualAdjustmentService {
 
     private getDatabase(): Database {
         return Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
+    }
+
+    private async ensureManualAdjustmentIdentitySchema(db: Database): Promise<void> {
+        if (ManualAdjustmentService.identitySchemaEnsured) return;
+
+        await db.query(`
+            IF COL_LENGTH('dbo.payroll_manual_adjustments', 'nik') IS NULL
+            BEGIN
+                ALTER TABLE dbo.payroll_manual_adjustments ADD nik VARCHAR(50) NULL;
+            END;
+
+            IF COL_LENGTH('dbo.payroll_manual_adjustments', 'emp_name') IS NULL
+            BEGIN
+                ALTER TABLE dbo.payroll_manual_adjustments ADD emp_name VARCHAR(150) NULL;
+            END;
+
+            IF COL_LENGTH('dbo.payroll_manual_adjustments', 'metadata_json') IS NULL
+            BEGIN
+                ALTER TABLE dbo.payroll_manual_adjustments ADD metadata_json NVARCHAR(MAX) NULL;
+            END;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = 'IX_payroll_manual_adjustments_nik'
+                  AND object_id = OBJECT_ID('dbo.payroll_manual_adjustments')
+            )
+            BEGIN
+                CREATE INDEX IX_payroll_manual_adjustments_nik
+                    ON dbo.payroll_manual_adjustments (nik, period_year, period_month);
+            END;
+        `);
+
+        ManualAdjustmentService.identitySchemaEnsured = true;
     }
 
     /**
@@ -441,6 +551,7 @@ export class ManualAdjustmentService {
         adjustmentName?: string
     ): Promise<ManualAdjustment[]> {
         const db = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(db);
         let query = `
             SELECT * FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
@@ -465,8 +576,9 @@ export class ManualAdjustmentService {
         }
 
         if (empCode) {
-            query += ` AND emp_code = ?`;
-            params.push(empCode);
+            const lookup = await resolveManualAdjustmentLookupIdentity(empCode);
+            query += ` AND (emp_code = ? OR nik = ? OR emp_code = ?)`;
+            params.push(lookup.empCode, lookup.nik, lookup.originalIdentifier);
         }
 
         if (adjustmentType) {
@@ -586,7 +698,6 @@ export class ManualAdjustmentService {
      * - is_taxable = false (not taxable income)
      */
     public async saveAdjustment(data: ManualAdjustment, user?: string): Promise<number> {
-        const db = this.getDatabase();
         data = normalizeManualAdjustmentForSave(data);
 
         // Ensure amount is a valid float
@@ -602,8 +713,10 @@ export class ManualAdjustmentService {
         validatePremiumAdjustmentDefinition(data, normalizedAdjustmentName);
         validateManualAdjustmentAdCode(data);
         const remarks = buildManualAdjustmentRemarks(data);
-        const identity = await employeeIdentityResolverService.resolve(data.nik || data.emp_code);
-        const empName = String(data.emp_name || identity?.emp_name || '').trim().toUpperCase() || null;
+        const db = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(db);
+        const identity = await resolveManualAdjustmentIdentity(data);
+        const empName = identity.empName;
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
@@ -615,11 +728,25 @@ export class ManualAdjustmentService {
 
         // Check if an exact match exists
         const existing = await db.queryOne<{ id: number }>(`
-            SELECT id FROM dbo.payroll_manual_adjustments
+            SELECT TOP 1 id FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ? 
-            AND emp_code = ? AND adjustment_type = ?
+            AND (emp_code = ? OR nik = ? OR emp_code = ?)
+            AND adjustment_type = ?
             AND ${normalizedAdjustmentNameSql} = ?
-        `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, normalizedAdjustmentName]);
+            ORDER BY
+                CASE
+                    WHEN emp_code = ? THEN 0
+                    WHEN nik = ? THEN 1
+                    WHEN emp_code = ? THEN 2
+                    ELSE 3
+                END,
+                id DESC
+        `, [
+            data.period_month, data.period_year,
+            identity.empCode, identity.nik, identity.originalIdentifier,
+            data.adjustment_type, normalizedAdjustmentName,
+            identity.empCode, identity.nik, identity.originalIdentifier
+        ]);
 
         if (existing) {
             if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks)) {
@@ -631,7 +758,9 @@ export class ManualAdjustmentService {
                 // does not submit metadata_json, otherwise seeded sub-block detail is lost.
                 await db.query(`
                     UPDATE dbo.payroll_manual_adjustments
-                    SET amount = ?,
+                    SET emp_code = ?,
+                        nik = ?,
+                        amount = ?,
                         remarks = ?,
                         metadata_json = ${hasMetadataJsonInput ? '?' : 'metadata_json'},
                         emp_name = ?,
@@ -639,8 +768,8 @@ export class ManualAdjustmentService {
                         updated_by = ?
                     WHERE id = ?
                 `, hasMetadataJsonInput
-                    ? [effectiveAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
-                    : [effectiveAmount, remarks, empName, user || 'system', existing.id]);
+                    ? [identity.empCode, identity.nik, effectiveAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
+                    : [identity.empCode, identity.nik, effectiveAmount, remarks, empName, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {
@@ -649,13 +778,13 @@ export class ManualAdjustmentService {
             // Insert
             const result = await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
-                    period_month, period_year, emp_code, emp_name, gang_code, division_code,
+                    period_month, period_year, emp_code, nik, emp_name, gang_code, division_code,
                     adjustment_type, adjustment_name, amount, remarks, metadata_json, created_by
                 ) OUTPUT INSERTED.id VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
-                data.period_month, data.period_year, data.emp_code, empName, data.gang_code, normalizedDivisionCode,
+                data.period_month, data.period_year, identity.empCode, identity.nik, empName, data.gang_code, normalizedDivisionCode,
                 data.adjustment_type, normalizedAdjustmentName, effectiveAmount, remarks, metadataJsonStr, user || 'system'
             ]);
 
@@ -664,14 +793,16 @@ export class ManualAdjustmentService {
                 const { manualAdjustmentPresetService } = await import("./manualAdjustmentPresetService");
                 const mappedPresetFields = await resolveManualAdjustmentPresetMapping(data, normalizedAdjustmentName);
                 const presetData = { ...data, ...mappedPresetFields };
-                const presetAdCode = resolveManualAdjustmentAdCode(presetData);
+                const presetAdCode = resolveManualAdjustmentPresetCode(presetData);
                 if (presetAdCode) {
+                    const presetTaskCode = normalizeManualAdjustmentPresetCode(presetData.task_code) || presetAdCode;
+                    const presetBaseTaskCode = normalizeManualAdjustmentPresetCode(presetData.base_task_code) || presetAdCode;
                     await manualAdjustmentPresetService.upsertPreset({
                         adjustment_type: data.adjustment_type,
                         adjustment_name: normalizedAdjustmentName,
                         ad_code: presetAdCode,
-                        task_code: presetData.task_code,
-                        base_task_code: presetData.base_task_code,
+                        task_code: presetTaskCode,
+                        base_task_code: presetBaseTaskCode,
                         task_desc: presetData.task_desc,
                         division_code: data.division_code || null,
                         remarks_template: buildManualAdjustmentRemarks({
@@ -907,6 +1038,7 @@ export class ManualAdjustmentService {
     }> {
         const dbPtrj = Database.getInstance(); // db_ptrj - source of truth
         const dbExtend = this.getDatabase();   // extend_db_ptrj - stored adjustments
+        await this.ensureManualAdjustmentIdentitySchema(dbExtend);
 
         // Virtual divisions (NRS, INF, WKS_AR, etc.) resolve to their source division's LocCode
         const normalizedDivisionCode = resolveAdtransLocCode(divisionCode);
@@ -1046,6 +1178,7 @@ export class ManualAdjustmentService {
         const adjustmentRows = await dbExtend.query<any>(`
             SELECT
                 emp_code,
+                nik,
                 adjustment_type,
                 adjustment_name,
                 amount,
@@ -1066,7 +1199,10 @@ export class ManualAdjustmentService {
         // 3. Build map of stored adjustments: emp_code -> category -> amount
         const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string; adjustment_name: string }>>();
         for (const row of adjustmentRows) {
-            const empCode = String(row.emp_code || '').trim().toUpperCase();
+            const storedIdentityKeys = Array.from(new Set([
+                String(row.emp_code || '').trim().toUpperCase(),
+                String(row.nik || '').trim().toUpperCase()
+            ].filter(Boolean)));
             const adjustmentType = String(row.adjustment_type || '').trim().toUpperCase();
             const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
             let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === adjustmentName);
@@ -1074,13 +1210,15 @@ export class ManualAdjustmentService {
             if (!category && adjustmentType === 'POTONGAN_KOTOR') category = adjustmentName.includes('KOREKSI') ? 'koreksi' : 'potongan';
             if (!category || !normalizedFilters.includes(category)) continue;
 
-            if (!storedMap.has(empCode)) storedMap.set(empCode, new Map());
-            storedMap.get(empCode)!.set(category, {
-                amount: Number(row.amount || 0),
-                remarks: String(row.remarks || ''),
-                gang_code: String(row.gang_code || ''),
-                adjustment_name: adjustmentName
-            });
+            for (const identityKey of storedIdentityKeys) {
+                if (!storedMap.has(identityKey)) storedMap.set(identityKey, new Map());
+                storedMap.get(identityKey)!.set(category, {
+                    amount: Number(row.amount || 0),
+                    remarks: String(row.remarks || ''),
+                    gang_code: String(row.gang_code || ''),
+                    adjustment_name: adjustmentName
+                });
+            }
         }
 
         // 4. Map ADTRANS category to adjustment name
@@ -1167,6 +1305,7 @@ export class ManualAdjustmentService {
         comparisons: ReverseAdtransComparisonItem[];
     }> {
         const dbExtend = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(dbExtend);
         const normalizedFilters = filters.map(normalizeAdtransFilter).filter(Boolean);
         const categoryToAdjustmentName: Record<string, string> = {
             'spsi': 'AUTO SPSI',
@@ -1187,6 +1326,7 @@ export class ManualAdjustmentService {
         const adjustmentRows = await dbExtend.query<any>(`
             SELECT
                 emp_code,
+                nik,
                 adjustment_type,
                 adjustment_name,
                 amount,
@@ -1228,6 +1368,10 @@ export class ManualAdjustmentService {
 
             const identity = gangScopedIdentity || await employeeIdentityResolverService.resolve(storedIdentifier);
             ptrjEmpCodeByStoredIdentifier.set(storedIdentifier, identity?.emp_code || storedIdentifier.toUpperCase());
+            const storedNik = String((row as any).nik || '').trim().toUpperCase();
+            if (storedNik) {
+                ptrjEmpCodeByStoredIdentifier.set(storedNik, identity?.emp_code || storedIdentifier.toUpperCase());
+            }
         }
 
         // PR_ADTRANS.EmpCode is the PTRJ employee code (letter-prefixed, e.g. A0001), not numeric NIK/KTP.
@@ -1337,6 +1481,7 @@ export class ManualAdjustmentService {
     }> {
         const comparison = await this.compareAdtransWithAdjustments(periodMonth, periodYear, divisionCode, filters);
         const dbExtend = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(dbExtend);
 
         const toSync = comparison.comparisons.filter((item) => {
             if (syncMode === 'ALL') return true;
@@ -1357,20 +1502,21 @@ export class ManualAdjustmentService {
             const remarks = `${item.adjustment_name} | ${adcode} | ${item.source_amount} | sync:SYNC | match:MATCH`;
             const identity = await employeeIdentityResolverService.resolve(item.emp_code);
             const empName = identity?.emp_name || null;
+            const nik = identity?.nik || null;
 
             if (item.status === 'MISSING' || item.stored_amount === null) {
                 // INSERT - need gang_code, get from PR_ADTRANS or default
                 const gangCode = item.gang_code || 'UNKNOWN';
                 const result = await dbExtend.query<{ id: number }>(`
                     INSERT INTO dbo.payroll_manual_adjustments (
-                        period_month, period_year, emp_code, emp_name, gang_code, division_code,
+                        period_month, period_year, emp_code, nik, emp_name, gang_code, division_code,
                         adjustment_type, adjustment_name, amount, remarks, created_by
                     ) OUTPUT INSERTED.id VALUES (
-                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?,
                         'AUTO_BUFFER', ?, ?, ?, ?
                     )
                 `, [
-                    periodMonth, periodYear, item.emp_code, empName, gangCode, divisionCode,
+                    periodMonth, periodYear, item.emp_code, nik, empName, gangCode, divisionCode,
                     item.adjustment_name, item.source_amount, remarks, createdBy
                 ]);
                 syncedDetails.push({
@@ -1386,15 +1532,15 @@ export class ManualAdjustmentService {
                 const normalizedAdjNameSql = buildNormalizedSqlNameExpression('adjustment_name');
                 await dbExtend.query(`
                     UPDATE dbo.payroll_manual_adjustments
-                    SET amount = ?, remarks = ?, emp_name = ?, updated_at = GETDATE(), updated_by = ?
+                    SET emp_code = ?, nik = ?, amount = ?, remarks = ?, emp_name = ?, updated_at = GETDATE(), updated_by = ?
                     WHERE period_month = ? AND period_year = ?
-                      AND emp_code = ?
+                      AND (emp_code = ? OR nik = ?)
                       AND adjustment_type = 'AUTO_BUFFER'
                       AND ${normalizedAdjNameSql} = ?
                 `, [
-                    item.source_amount, remarks, empName, createdBy,
+                    item.emp_code, nik, item.source_amount, remarks, empName, createdBy,
                     periodMonth, periodYear,
-                    item.emp_code,
+                    item.emp_code, nik,
                     item.adjustment_name
                 ]);
                 syncedDetails.push({

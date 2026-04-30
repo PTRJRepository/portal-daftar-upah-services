@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
     attachManualAdjustmentMetadata,
+    buildManualAdjustmentIdentityIndex,
+    getManualAdjustmentsForEmployee,
     registerManualAdjustmentMetadataDynamicHeaders
 } from "./dataExtractorService";
 
@@ -75,5 +77,24 @@ describe("manual adjustment metadata extraction", () => {
             koreksi_panen: "KOREKSI PANEN",
             potongan_lainnya_kasbon: "POTONGAN LAINNYA KASBON"
         });
+    });
+
+    it("matches manual adjustment rows by PTRJ EmpCode and legacy numeric NIK identifiers", () => {
+        const adjustments = [
+            { id: 1, emp_code: "B0001", nik: "3171000000000001", adjustment_name: "PREMI PRUNING" },
+            { id: 2, emp_code: "3171000000000002", nik: null, adjustment_name: "PREMI RAKING" },
+            { id: 3, emp_code: "B0003", nik: "3171000000000003", adjustment_name: "PREMI TBS" }
+        ];
+        const index = buildManualAdjustmentIdentityIndex(adjustments);
+
+        expect(getManualAdjustmentsForEmployee(index, {
+            emp_code: "B0001",
+            actual_nik: "3171000000000001"
+        }).map((row) => row.id)).toEqual([1]);
+
+        expect(getManualAdjustmentsForEmployee(index, {
+            emp_code: "B0002",
+            actual_nik: "3171000000000002"
+        }).map((row) => row.id)).toEqual([2]);
     });
 });

@@ -190,6 +190,7 @@ describe("manual adjustment ADCode rules", () => {
 
     it("allows legacy inline manual edits without ADCode", async () => {
         const originalGetInstance = Database.getInstance;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
         const calls: QueryCall[] = [];
         const mockDb = {
             queryOne: async (sql: string, params?: any[]) => {
@@ -203,6 +204,7 @@ describe("manual adjustment ADCode rules", () => {
         };
 
         (Database as any).getInstance = () => mockDb;
+        (manualAdjustmentPresetService as any).upsertPreset = mock(async () => 88);
 
         try {
             const id = await manualAdjustmentService.saveAdjustment({
@@ -220,11 +222,13 @@ describe("manual adjustment ADCode rules", () => {
             expect(calls.some((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"))).toBe(true);
         } finally {
             (Database as any).getInstance = originalGetInstance;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
         }
     });
 
     it("allows edit-mode sync manual remarks without ADCode", async () => {
         const originalGetInstance = Database.getInstance;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
         const calls: QueryCall[] = [];
         const mockDb = {
             queryOne: async (sql: string, params?: any[]) => {
@@ -238,6 +242,7 @@ describe("manual adjustment ADCode rules", () => {
         };
 
         (Database as any).getInstance = () => mockDb;
+        (manualAdjustmentPresetService as any).upsertPreset = mock(async () => 90);
 
         try {
             const id = await manualAdjustmentService.saveAdjustment({
@@ -255,6 +260,7 @@ describe("manual adjustment ADCode rules", () => {
             expect(calls.some((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"))).toBe(true);
         } finally {
             (Database as any).getInstance = originalGetInstance;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
         }
     });
 
@@ -293,6 +299,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(id).toBe(55);
             expect(updateCall?.sql).toContain("metadata_json = metadata_json");
             expect(updateCall?.params).toEqual([
+                "A0001",
+                null,
                 123000,
                 "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
                 null,
@@ -346,6 +354,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(id).toBe(56);
             expect(updateCall?.sql).toContain("metadata_json = ?");
             expect(updateCall?.params).toEqual([
+                "A0001",
+                null,
                 123000,
                 "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
                 metadata,
@@ -360,6 +370,7 @@ describe("manual adjustment ADCode rules", () => {
 
     it("inserts new pruning detail with amount synced from metadata total", async () => {
         const originalGetInstance = Database.getInstance;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
         const calls: QueryCall[] = [];
         const mockDb = {
             queryOne: async (sql: string, params?: any[]) => {
@@ -373,6 +384,7 @@ describe("manual adjustment ADCode rules", () => {
         };
 
         (Database as any).getInstance = () => mockDb;
+        (manualAdjustmentPresetService as any).upsertPreset = mock(async () => 57);
 
         try {
             const metadata = JSON.stringify({
@@ -400,7 +412,7 @@ describe("manual adjustment ADCode rules", () => {
             const insertCall = calls.find((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
             expect(id).toBe(57);
             expect(insertCall?.params).toEqual([
-                4, 2026, "A0001", null, "G1H", "P2A",
+                4, 2026, "A0001", null, null, "G1H", "P2A",
                 "PREMI", "PREMI PRUNING", 200000,
                 "PREMI PRUNING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
                 metadata,
@@ -408,6 +420,7 @@ describe("manual adjustment ADCode rules", () => {
             ]);
         } finally {
             (Database as any).getInstance = originalGetInstance;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
         }
     });
 
@@ -464,12 +477,78 @@ describe("manual adjustment ADCode rules", () => {
             });
             expect(id).toBe(58);
             expect(updateCall?.params).toEqual([
+                "A0002",
+                null,
                 125000,
                 "PREMI RAKING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
                 expectedMetadata,
                 null,
                 "system",
                 58
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("normalizes numeric emp_code into PTRJ EmpCode and stores NIK separately when updating a legacy row", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("HR_EMPLOYEE")) {
+                    return { nik: "3171000000000001", emp_code: "B0001", emp_name: "ANANDA DIKI PALINTONI ( ELSI )" };
+                }
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 88 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "3171000000000001",
+                gang_code: "B1H",
+                division_code: "P1A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 250000,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 250000 | sync:MANUAL | match:MANUAL"
+            });
+
+            const lookupCall = calls.find((call) => call.sql.includes("SELECT TOP 1 id FROM dbo.payroll_manual_adjustments"));
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(88);
+            expect(lookupCall?.params).toEqual([
+                4,
+                2026,
+                "B0001",
+                "3171000000000001",
+                "3171000000000001",
+                "PREMI",
+                "PREMI PRUNING",
+                "B0001",
+                "3171000000000001",
+                "3171000000000001"
+            ]);
+            expect(updateCall?.params).toEqual([
+                "B0001",
+                "3171000000000001",
+                250000,
+                "PREMI PRUNING | MANUAL EDIT | 250000 | sync:MANUAL | match:MANUAL",
+                "ANANDA DIKI PALINTONI ( ELSI )",
+                "system",
+                88
             ]);
         } finally {
             (Database as any).getInstance = originalGetInstance;
@@ -529,8 +608,109 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("replaces descriptive preset ADCode with task mapping before auto-preset upsert", async () => {
+        const originalGetInstance = Database.getInstance;
+        const originalSearchOptions = taskCodeOptionService.searchOptions;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
+        const upsertPreset = mock(async () => 124);
+        const mockDb = {
+            queryOne: async () => null,
+            query: async () => [{ id: 92 }]
+        };
+
+        (Database as any).getInstance = () => mockDb;
+        (taskCodeOptionService as any).searchOptions = async () => [{
+            ad_code: "AL3PM0101",
+            task_code: "AL3PM0101P2A",
+            base_task_code: "AL3PM0101",
+            task_desc: "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+            loc_code: "P2A",
+            task_type: null,
+            task_grp: null,
+            task_nature: null,
+            is_deduction: 0,
+            adj_ad_code: "AL3PM0101",
+            doc_desc: "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)"
+        }];
+        (manualAdjustmentPresetService as any).upsertPreset = upsertPreset;
+
+        try {
+            const descriptiveAdCode = "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)";
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                division_code: "PG2A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI TBS",
+                amount: 1000,
+                remarks: "PREMI TBS | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL",
+                ad_code: descriptiveAdCode,
+                task_code: descriptiveAdCode,
+                base_task_code: descriptiveAdCode,
+                task_desc: descriptiveAdCode
+            });
+
+            expect(id).toBe(92);
+            expect(upsertPreset).toHaveBeenCalledTimes(1);
+            expect(upsertPreset.mock.calls[0][0]).toMatchObject({
+                ad_code: "AL3PM0101",
+                task_code: "AL3PM0101P2A",
+                base_task_code: "AL3PM0101",
+                task_desc: "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)"
+            });
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+            (taskCodeOptionService as any).searchOptions = originalSearchOptions;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
+        }
+    });
+
+    it("skips auto-preset upsert when ADCode remains descriptive after mapping lookup", async () => {
+        const originalGetInstance = Database.getInstance;
+        const originalSearchOptions = taskCodeOptionService.searchOptions;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
+        const upsertPreset = mock(async () => 125);
+        const mockDb = {
+            queryOne: async () => null,
+            query: async () => [{ id: 93 }]
+        };
+
+        (Database as any).getInstance = () => mockDb;
+        (taskCodeOptionService as any).searchOptions = async () => [];
+        (manualAdjustmentPresetService as any).upsertPreset = upsertPreset;
+
+        try {
+            const descriptiveAdCode = "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)";
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                division_code: "PG2A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI TBS",
+                amount: 1000,
+                remarks: "PREMI TBS | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL",
+                ad_code: descriptiveAdCode,
+                task_code: descriptiveAdCode,
+                base_task_code: descriptiveAdCode,
+                task_desc: descriptiveAdCode
+            });
+
+            expect(id).toBe(93);
+            expect(upsertPreset).not.toHaveBeenCalled();
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+            (taskCodeOptionService as any).searchOptions = originalSearchOptions;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
+        }
+    });
+
     it("stores emp_name when saving manual adjustment rows", async () => {
         const originalGetInstance = Database.getInstance;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
         const calls: QueryCall[] = [];
         const mockDb = {
             queryOne: async (sql: string, params?: any[]) => {
@@ -544,12 +724,14 @@ describe("manual adjustment ADCode rules", () => {
         };
 
         (Database as any).getInstance = () => mockDb;
+        (manualAdjustmentPresetService as any).upsertPreset = mock(async () => 89);
 
         try {
             const id = await manualAdjustmentService.saveAdjustment({
                 period_month: 4,
                 period_year: 2026,
-                emp_code: "1902050504860001",
+                emp_code: "A0001",
+                nik: "1902050504860001",
                 gang_code: "P1A",
                 division_code: "P1A",
                 adjustment_type: "PREMI",
@@ -565,6 +747,7 @@ describe("manual adjustment ADCode rules", () => {
             expect(insertCall?.params).toContain("BUDI TEST");
         } finally {
             (Database as any).getInstance = originalGetInstance;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
         }
     });
 

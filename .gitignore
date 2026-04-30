@@ -15,5 +15,11 @@ worktrees/
 backend/logs/
 logs/
 backend/tsconfig.tsbuildinfo
-_dev_utils/
+_dev_utils/*
+!_dev_utils/scripts/
+_dev_utils/scripts/*
+!_dev_utils/scripts/normalize_manual_adjustment_identity_columns.ts
+!_dev_utils/scripts/pruning_seed_payloads.ts
+!_dev_utils/scripts/pruning_seed_payloads.test.ts
+!_dev_utils/scripts/seed_raking_data.ts
 backend/_dev_utils/

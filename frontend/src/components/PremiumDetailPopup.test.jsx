@@ -33,12 +33,12 @@ describe('PremiumDetailPopup', () => {
             />
         );
 
-        expect(html).toContain('Detail belum tersedia di database');
+        expect(html).toContain('Detail belum tersimpan di database');
         expect(html).toContain('fallback dari amount awal');
         expect(html).toContain('382.800');
     });
 
-    it('shows verification between stored amount and metadata detail total', () => {
+    it('shows old amount as info only for pruning detail and marks latest detail as the saved value', () => {
         const html = renderToString(
             <PremiumDetailPopup
                 isOpen
@@ -57,10 +57,64 @@ describe('PremiumDetailPopup', () => {
 
         expect(html).toContain('Total amount awal');
         expect(html).toContain('650.000');
-        expect(html).toContain('Total detail');
+        expect(html).toContain('Total detail terbaru');
+        expect(html).toContain('Dipakai saat simpan');
         expect(html).toContain('677.650');
         expect(html).toContain('Selisih');
         expect(html).toContain('27.650');
+        expect(html).not.toContain('Amount tersimpan berbeda');
+        expect(html).not.toContain('Sync ke Total Detail');
+    });
+
+    it('ignores zero old amount for pruning detail and only highlights the latest detail total', () => {
+        const html = renderToString(
+            <PremiumDetailPopup
+                isOpen
+                onClose={() => {}}
+                onSave={() => {}}
+                inputType="blok"
+                definitionName="PREMI PRUNING"
+                storedAmount={0}
+                initialData={{
+                    input_type: 'blok',
+                    items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 677650 }],
+                    total_amount: 677650
+                }}
+            />
+        );
+
+        expect(html).toContain('Amount awal kosong, total detail terbaru akan dipakai');
+        expect(html).toContain('Total detail terbaru');
+        expect(html).toContain('677.650');
+        expect(html).not.toContain('Selisih');
+        expect(html).not.toContain('Amount tersimpan berbeda');
+    });
+
+    it('does not show old-vs-detail verification for non pruning/raking premium detail', () => {
+        const html = renderToString(
+            <PremiumDetailPopup
+                isOpen
+                onClose={() => {}}
+                onSave={() => {}}
+                inputType="blok"
+                definitionName="PREMI TBS"
+                storedAmount={650000}
+                initialData={{
+                    input_type: 'blok',
+                    items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 677650 }],
+                    total_amount: 677650
+                }}
+            />
+        );
+
+        expect(html).toContain('Total detail terbaru');
+        expect(html).toContain('677.650');
+        expect(html).not.toContain('Total amount awal');
+        expect(html).not.toContain('Selisih');
+        expect(html).not.toContain('Amount tersimpan berbeda');
+        expect(html).not.toContain('Edit amount awal/tersimpan');
+        expect(html).not.toContain('Sync ke Total Detail');
+        expect(html).toContain('Amount simpan manual');
     });
 
     it('saves pruning detail with amount automatically synced to the detail total', async () => {

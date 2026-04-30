@@ -75,6 +75,48 @@ function parseManualAdjustmentMetadata(value: any): any | null {
     }
 }
 
+function normalizeManualAdjustmentIdentityKey(value: any): string {
+    return String(value || '').trim().toUpperCase();
+}
+
+function manualAdjustmentIdentityKeys(source: any): string[] {
+    const keys = [
+        source?.emp_code,
+        source?.nik,
+        source?.new_nik,
+        source?.actual_nik
+    ].map(normalizeManualAdjustmentIdentityKey).filter(Boolean);
+    return Array.from(new Set(keys));
+}
+
+type ManualAdjustmentIdentityIndex = Map<string, any[]>;
+
+export function buildManualAdjustmentIdentityIndex(adjustments: any[] = []): ManualAdjustmentIdentityIndex {
+    const index: ManualAdjustmentIdentityIndex = new Map();
+    for (const adjustment of adjustments || []) {
+        for (const key of manualAdjustmentIdentityKeys(adjustment)) {
+            const current = index.get(key) || [];
+            current.push(adjustment);
+            index.set(key, current);
+        }
+    }
+    return index;
+}
+
+export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityIndex, employee: any): any[] {
+    const result: any[] = [];
+    const seen = new Set<any>();
+    for (const key of manualAdjustmentIdentityKeys(employee)) {
+        for (const adjustment of index.get(key) || []) {
+            const dedupeKey = adjustment?.id ?? adjustment;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            result.push(adjustment);
+        }
+    }
+    return result;
+}
+
 type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
 
 function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetadataType | null {
@@ -899,6 +941,7 @@ export class DataExtractorService {
         const manualAdjustments = fetchManualAdjustmentRows && Array.isArray(manualAdjustmentsRaw)
             ? manualAdjustmentsRaw
             : [];
+        const manualAdjustmentIndex = buildManualAdjustmentIdentityIndex(manualAdjustments);
 
         // Destructure premi result - uses DocDesc as title
         const { amounts: premi, titleMap: premiTitleMap, details: premiDetails } = premiResult;
@@ -1263,9 +1306,7 @@ export class DataExtractorService {
                 }
             }
 
-            const empAdjustments = manualAdjustments
-                ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim())
-                : [];
+            const empAdjustments = getManualAdjustmentsForEmployee(manualAdjustmentIndex, emp);
             registerManualAdjustmentMetadataDynamicHeaders(
                 empAdjustments,
                 dynamicPremiSet,
@@ -4286,16 +4327,9 @@ export class DataExtractorService {
         }
 
         const manualAdjustmentsRaw = await manualAdjustmentsPromise;
-        const manualAdjustmentsByEmpCode = new Map<string, any[]>();
-        if (Array.isArray(manualAdjustmentsRaw)) {
-            for (const adjustment of manualAdjustmentsRaw) {
-                const empCodeKey = String(adjustment?.emp_code || '').trim().toUpperCase();
-                if (!empCodeKey) continue;
-                const current = manualAdjustmentsByEmpCode.get(empCodeKey) || [];
-                current.push(adjustment);
-                manualAdjustmentsByEmpCode.set(empCodeKey, current);
-            }
-        }
+        const manualAdjustmentsByIdentity = buildManualAdjustmentIdentityIndex(
+            Array.isArray(manualAdjustmentsRaw) ? manualAdjustmentsRaw : []
+        );
 
         // Update employees with premium data
         for (const emp of employees) {
@@ -4307,7 +4341,6 @@ export class DataExtractorService {
                 : { ...dbEmpPotonganSource };
             const empBrondol = manualBufferOnlyMode ? 0 : (globalBrondolMap[emp.emp_code] || 0);
             const empPremiBrondol = manualBufferOnlyMode ? 0 : (empPremi["brondol"] || 0);
-            const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
             const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
 
             let total_premi = 0;
@@ -4317,7 +4350,7 @@ export class DataExtractorService {
             total_premi += empBrondol;
 
             const empAdjustments = fetchManualAdjustmentRows
-                ? (manualAdjustmentsByEmpCode.get(empCodeKey) || [])
+                ? getManualAdjustmentsForEmployee(manualAdjustmentsByIdentity, emp)
                 : [];
             registerManualAdjustmentMetadataDynamicHeaders(
                 empAdjustments,
