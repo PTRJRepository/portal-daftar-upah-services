@@ -67,4 +67,30 @@ describe('buildPremiumDetailEdit', () => {
             metadata_json: JSON.stringify(metadata)
         }));
     });
+
+    it('omits metadata for amount-only popup edits', () => {
+        const result = buildPremiumDetailEdit({
+            existingEdit: null,
+            editBase: {
+                emp_code: 'B0001',
+                field: 'premi_jarak',
+                value: 0,
+                originalValue: 0,
+                type: 'PREMI',
+                name: 'PREMI JARAK'
+            },
+            metadataJson: null,
+            amountToSave: 125000
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            emp_code: 'B0001',
+            field: 'premi_jarak',
+            value: 125000,
+            originalValue: 0,
+            type: 'PREMI',
+            name: 'PREMI JARAK'
+        }));
+        expect(result).not.toHaveProperty('metadata_json');
+    });
 });

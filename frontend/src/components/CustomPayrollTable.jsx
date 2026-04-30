@@ -303,7 +303,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [editedCells, setEditedCells] = useState({}); // { 'nik-field': { value, originalValue, gang_code, type, name } }
     const [addedColumns, setAddedColumns] = useState([]); // Track new columns added in edit mode
     const [pendingDeletedColumns, setPendingDeletedColumns] = useState([]);
-    const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null });
+    const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null, adjustmentType: 'PREMI' });
     const [isSavingEdits, setIsSavingEdits] = useState(false);
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
@@ -680,7 +680,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     if (!normalizedField) continue;
 
                     const parsedMetadata = parseMetadataObjectValue(rawMetadata);
-                    if (isPremiFieldKey(normalizedField)) {
+                    const metadataAdjustmentType = String(parsedMetadata?.adjustment_type || '').trim().toUpperCase();
+                    if (metadataAdjustmentType === 'PREMI' || (!metadataAdjustmentType && isPremiFieldKey(normalizedField))) {
                         register(
                             'premi',
                             String(parsedMetadata?.adjustment_name || formatFallbackPremiLabel(normalizedField)).trim().toUpperCase(),
@@ -689,7 +690,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         continue;
                     }
 
-                    if (isDynamicPotonganFieldKey(normalizedField)) {
+                    if (metadataAdjustmentType === 'POTONGAN_KOTOR' || metadataAdjustmentType === 'POTONGAN_BERSIH' || isDynamicPotonganFieldKey(normalizedField)) {
                         register(
                             'potongan',
                             String(parsedMetadata?.adjustment_name || formatFallbackPotonganLabel(normalizedField)).trim().toUpperCase(),
@@ -1068,7 +1069,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, [token]);
 
     const handleAddColumn = (groupLabel) => {
-        setManualAdjustmentModal({ isOpen: true, groupLabel });
+        setManualAdjustmentModal({
+            isOpen: true,
+            groupLabel,
+            adjustmentType: ADJUSTMENT_TYPE_BY_GROUP_LABEL[groupLabel] || 'PREMI'
+        });
     };
 
     const persistManualColumnPlaceholder = async (column) => {
@@ -1297,6 +1302,47 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const parsePremiumMetadataValue = (value) => {
         return parseMetadataObjectValue(value);
     };
+
+    const getManualCellDisplayAmount = ({ row, field, edit, fallbackAmount = 0 }) => {
+        if (edit?.value !== undefined) return Number(edit.value) || 0;
+        const storedMetadata = parseMetadataObjectValue(row?.manual_adjustment_metadata?.[field]);
+        if (storedMetadata?.total_amount !== undefined) return Number(storedMetadata.total_amount) || 0;
+        return Number(row?.[field] ?? fallbackAmount) || 0;
+    };
+
+    const hasManualCellData = ({ row, field, edit, displayAmount }) => {
+        if (edit) return true;
+        if (parseMetadataObjectValue(row?.manual_adjustment_metadata?.[field])) return true;
+        return Number(displayAmount || 0) !== 0;
+    };
+
+    const getManualCellTriggerStyle = ({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch }) => ({
+        border: '1px solid #cbd5e1',
+        background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
+        borderRadius: 6,
+        padding: '3px 7px',
+        cursor: 'pointer',
+        fontSize: 11,
+        color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#475569',
+        fontWeight: 800,
+        lineHeight: 1.1,
+        minWidth: hasData ? 58 : 46,
+        textAlign: 'center'
+    });
+
+    const renderManualCellTrigger = ({ label, hasData, displayAmount, hasDbMetadata, hasFallbackMetadata, mismatch, onClick }) => (
+        <button
+            type="button"
+            title={hasData ? 'Edit input manual adjustment' : 'Input manual adjustment'}
+            onClick={(event) => {
+                event.stopPropagation();
+                onClick?.();
+            }}
+            style={getManualCellTriggerStyle({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch })}
+        >
+            {label || (hasData ? formatNumber(displayAmount) : 'Input')}
+        </button>
+    );
 
     const resolvePremiumPopupInitialData = ({ edit, amount, inputType, row, field, adjustmentName }) => {
         if (edit?.metadata_json) return edit.metadata_json;
@@ -2806,100 +2852,48 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             ) : null;
 
                             if (isEditMode && row.type === 'employee') {
-                                const edit = editedCells[editKey];
-                                const displayVal = edit?.value ?? val;
-                                const resolvedPremium = resolvePremiumDefinitionForAdjustment({
-                                    label,
-                                    canonicalName,
-                                    definitions: premiumDefinitions,
-                                    remarks: edit?.remarks || row?.manual_adjustment_remarks || row?.remarks
-                                });
-                                const premiumDef = resolvedPremium.definition;
-                                const resolvedAdjustmentName = resolvedPremium.adjustmentName || canonicalName;
-                                const inputType = premiumDef?.input_type || 'amount';
-                                const popupInitialData = resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: resolvedAdjustmentName });
-                                const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
-                                const popupMetadata = parsePremiumMetadataValue(popupInitialData);
-                                const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
-                                const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
-                                const hasFallbackMetadata = !!popupMetadata?.legacy_source;
-                                const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
-                                const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'PREMI');
-                                const editBase = {
-                                    emp_code: empCode,
-                                    nik: row.nik,
-                                    emp_name: row.nama || row.emp_name || null,
-                                    field,
-                                    value: popupStoredAmount,
-                                    originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
-                                    gang_code: row.gang_code,
-                                    type: 'PREMI',
-                                    name: resolvedAdjustmentName,
-                                    ad_code: edit?.ad_code || addedColumn?.ad_code || premiumDef?.ad_code,
-                                    task_code: edit?.task_code || addedColumn?.task_code || premiumDef?.ad_code,
-                                    base_task_code: edit?.base_task_code || addedColumn?.base_task_code || premiumDef?.ad_code,
-                                    task_desc: edit?.task_desc || addedColumn?.task_desc || premiumDef?.task_desc,
-                                    remarks: edit?.remarks || addedColumn?.remarks
+                                const triggerAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
+                                const triggerHasData = hasManualCellData({ row, field, edit, displayAmount: triggerAmount });
+                                const triggerInitialData = inputType !== 'amount'
+                                    ? resolvePremiumPopupInitialData({ edit, amount: triggerAmount, inputType, row, field, adjustmentName: resolvedAdjustmentName })
+                                    : null;
+                                const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
+                                const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
+                                const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
+                                const triggerEditBase = {
+                                    ...editBase,
+                                    value: triggerStoredAmount,
+                                    originalValue: resolvePersistentOriginalNumber(edit?.originalValue, triggerStoredAmount)
                                 };
 
-                                if (inputType !== 'amount' && premiumDef) {
-                                    return (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <DeferredPayrollNumberInput
-                                                className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                                value={displayVal}
-                                                emptyWhenZero
-                                                onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', resolvedAdjustmentName)}
-                                                placeholder="0"
-                                                style={{ flex: 1 }}
-                                            />
-                                            {mismatch && (
-                                                <span
-                                                    title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
-                                                    style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
-                                                >
-                                                    !
-                                                </span>
-                                            )}
-                                            <button
-                                                type="button"
-                                                title={mismatch ? `Detail beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail'}
-                                                onClick={() => setPremiumPopup({
-                                                    isOpen: true,
-                                                    editKey,
-                                                    inputType,
-                                                    definitionName: premiumDef.adjustment_name,
-                                                    initialData: popupInitialData,
-                                                    storedAmount: popupStoredAmount,
-                                                    mismatch,
-                                                    editBase
-                                                })}
-                                                style={{
-                                                    border: '1px solid #cbd5e1',
-                                                    background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
-                                                    borderRadius: 6,
-                                                    padding: '2px 6px',
-                                                    cursor: 'pointer',
-                                                    fontSize: 12,
-                                                    color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#64748b',
-                                                    fontWeight: 700,
-                                                    lineHeight: 1
-                                                }}
-                                            >
-                                                {mismatch ? '!' : hasDbMetadata ? '✓' : '⋯'}
-                                            </button>
-                                        </div>
-                                    );
-                                }
-
                                 return (
-                                    <DeferredPayrollNumberInput
-                                        className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                        value={displayVal}
-                                        emptyWhenZero
-                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'PREMI', resolvedAdjustmentName)}
-                                        placeholder="0"
-                                    />
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                        {mismatch && (
+                                            <span
+                                                title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                                style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                            >
+                                                !
+                                            </span>
+                                        )}
+                                        {renderManualCellTrigger({
+                                            hasData: triggerHasData,
+                                            displayAmount: triggerAmount,
+                                            hasDbMetadata,
+                                            hasFallbackMetadata: triggerHasFallbackMetadata,
+                                            mismatch,
+                                            onClick: () => setPremiumPopup({
+                                                isOpen: true,
+                                                editKey,
+                                                inputType,
+                                                definitionName: premiumDef?.adjustment_name || resolvedAdjustmentName,
+                                                initialData: triggerInitialData,
+                                                storedAmount: triggerStoredAmount,
+                                                mismatch,
+                                                editBase: triggerEditBase
+                                            })
+                                        })}
+                                    </div>
                                 );
                             }
 
@@ -3164,17 +3158,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         ) : null;
 
                         if (isEditMode && row.type === 'employee') {
-                            const isEdited = !!editedCells[editKey];
+                            const triggerAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
+                            const triggerHasData = hasManualCellData({ row, field, edit, displayAmount: triggerAmount });
+                            const triggerInitialData = inputType !== 'amount'
+                                ? resolvePremiumPopupInitialData({ edit, amount: triggerAmount, inputType, row, field, adjustmentName: canonicalName })
+                                : null;
+                            const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
+                            const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
+                            const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
+                            const triggerEditBase = {
+                                ...editBase,
+                                value: triggerStoredAmount,
+                                originalValue: resolvePersistentOriginalNumber(edit?.originalValue, triggerStoredAmount)
+                            };
                             return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <DeferredPayrollNumberInput
-                                        className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                        value={displayVal}
-                                        emptyWhenZero
-                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_KOTOR', canonicalName)}
-                                        placeholder="0"
-                                        style={{ flex: 1 }}
-                                    />
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                     {mismatch && (
                                         <span
                                             title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
@@ -3183,7 +3181,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             !
                                         </span>
                                     )}
-                                    {detailButton}
+                                    {renderManualCellTrigger({
+                                        hasData: triggerHasData,
+                                        displayAmount: triggerAmount,
+                                        hasDbMetadata,
+                                        hasFallbackMetadata: triggerHasFallbackMetadata,
+                                        mismatch,
+                                        onClick: () => setPremiumPopup({
+                                            isOpen: true,
+                                            editKey,
+                                            inputType,
+                                            definitionName: canonicalName,
+                                            initialData: triggerInitialData,
+                                            storedAmount: triggerStoredAmount,
+                                            mismatch,
+                                            editBase: triggerEditBase
+                                        })
+                                    })}
                                 </div>
                             );
                         }
@@ -3343,16 +3357,62 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         if (isEditMode && row.type === 'employee') {
                             const empCode = row.emp_code || row.nik;
                             const editKey = `${empCode}-${field}`;
-                            const isEdited = !!editedCells[editKey];
-                            const displayVal = editedCells[editKey]?.value ?? val;
+                            const edit = editedCells[editKey];
+                            const displayAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
+                            const hasData = hasManualCellData({ row, field, edit, displayAmount });
+                            const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                            const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                            const inputType = storedMetadata?.input_type || 'amount';
+                            const initialData = inputType !== 'amount'
+                                ? resolvePremiumPopupInitialData({ edit, amount: displayAmount, inputType, row, field, adjustmentName: canonicalName })
+                                : null;
+                            const popupMetadata = parsePremiumMetadataValue(initialData);
+                            const storedAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayAmount) || 0;
+                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_BERSIH');
+                            const editBase = {
+                                emp_code: empCode,
+                                nik: row.nik,
+                                emp_name: row.nama || row.emp_name || null,
+                                field,
+                                value: storedAmount,
+                                originalValue: resolvePersistentOriginalNumber(edit?.originalValue, storedAmount),
+                                gang_code: row.gang_code,
+                                type: 'POTONGAN_BERSIH',
+                                name: canonicalName,
+                                ad_code: edit?.ad_code || addedColumn?.ad_code,
+                                task_code: edit?.task_code || addedColumn?.task_code,
+                                base_task_code: edit?.base_task_code || addedColumn?.base_task_code,
+                                task_desc: edit?.task_desc || addedColumn?.task_desc,
+                                remarks: edit?.remarks || addedColumn?.remarks
+                            };
                             return (
-                                <DeferredPayrollNumberInput
-                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={displayVal}
-                                    emptyWhenZero
-                                    onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_BERSIH', canonicalName)}
-                                    placeholder="0"
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                    {mismatch && (
+                                        <span
+                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                        >
+                                            !
+                                        </span>
+                                    )}
+                                    {renderManualCellTrigger({
+                                        hasData,
+                                        displayAmount,
+                                        hasDbMetadata: !!edit?.metadata_json || !!storedMetadata,
+                                        hasFallbackMetadata: !!popupMetadata?.legacy_source,
+                                        mismatch,
+                                        onClick: () => setPremiumPopup({
+                                            isOpen: true,
+                                            editKey,
+                                            inputType,
+                                            definitionName: canonicalName,
+                                            initialData,
+                                            storedAmount,
+                                            mismatch,
+                                            editBase
+                                        })
+                                    })}
+                                </div>
                             );
                         }
                         if (val === 0) return '-';
@@ -4680,11 +4740,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             <SelectionStatusBar stats={selectionStats} />
             <ManualAdjustmentColumnModal
                 isOpen={manualAdjustmentModal.isOpen}
-                onClose={() => setManualAdjustmentModal({ isOpen: false, groupLabel: null })}
+                onClose={() => setManualAdjustmentModal({ isOpen: false, groupLabel: null, adjustmentType: 'PREMI' })}
                 onSaved={handleManualAdjustmentSaved}
                 token={token}
                 division={division}
-                initialAdjustmentType={ADJUSTMENT_TYPE_BY_GROUP_LABEL[manualAdjustmentModal.groupLabel] || 'PREMI'}
+                initialAdjustmentType={manualAdjustmentModal.adjustmentType || 'PREMI'}
             />
             <PremiumDetailPopup
                 isOpen={premiumPopup.isOpen}

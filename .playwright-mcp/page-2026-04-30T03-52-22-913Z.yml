@@ -1,0 +1,19 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - img "Logo" [ref=e7]
+      - heading "PT REBINMAS JAYA" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Sistem Laporan Daftar Upah
+    - generic [ref=e10]: © 2026 Plantation Management System
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Selamat Datang" [level=2] [ref=e14]
+      - paragraph [ref=e15]: Silakan login untuk mengakses dashboard
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: Username
+        - textbox "Masukkan username Anda" [ref=e19]
+      - generic [ref=e20]:
+        - generic [ref=e21]: Password
+        - textbox "••••••••" [ref=e22]
+      - button "Masuk ke Dashboard" [ref=e23] [cursor=pointer]

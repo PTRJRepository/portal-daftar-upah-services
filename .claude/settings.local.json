@@ -158,7 +158,8 @@
       "Bash(PORT=8012 bun run src/index.ts)",
       "Bash(npx vitest *)",
       "PowerShell(Get-Content *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "mcp__plugin_playwright_playwright__browser_navigate"
     ],
     "deny": [],
     "ask": [],

@@ -63,7 +63,7 @@ describe('PremiumDetailPopup', () => {
         expect(html).toContain('27.650');
     });
 
-    it('saves the synced amount only after the sync button is used', async () => {
+    it('saves pruning detail with amount automatically synced to the detail total', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
@@ -88,12 +88,8 @@ describe('PremiumDetailPopup', () => {
                 );
             });
 
-            const syncButton = findButton(container, 'Sync ke Total Detail');
-            expect(syncButton).toBeTruthy();
-
-            await act(async () => {
-                syncButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            });
+            expect(findButton(container, 'Sync ke Total Detail')).toBeFalsy();
+            expect(container.textContent || '').not.toContain('Edit amount awal/tersimpan');
 
             const saveButton = findButton(container, 'Simpan Detail');
             expect(saveButton).toBeTruthy();
@@ -108,6 +104,9 @@ describe('PremiumDetailPopup', () => {
                 total_amount: 677650
             }));
             expect(onSave.mock.calls[0][1]).toBe(677650);
+            expect(onSave.mock.calls[0][2]).toEqual(expect.objectContaining({
+                amountSyncedToDetail: true
+            }));
         } finally {
             await act(async () => {
                 root.unmount();

@@ -109,9 +109,6 @@ export function attachManualAdjustmentMetadata(
 
         target.manual_adjustment_metadata ||= {};
         target.manual_adjustment_metadata[fieldName] = enrichedMetadata;
-        if (!fieldName.startsWith('premi_')) {
-            target.manual_adjustment_metadata[`premi_${fieldName}`] = enrichedMetadata;
-        }
 
         if (!enrichedMetadata.detail_matches_amount) {
             target.manual_adjustment_metadata_mismatch ||= {};
@@ -134,9 +131,6 @@ export function registerManualAdjustmentMetadataDynamicHeaders(
     for (const adjustment of adjustments || []) {
         const adjustmentType = resolveManualAdjustmentMetadataType(adjustment.adjustment_type);
         if (!adjustmentType) continue;
-
-        const metadata = parseManualAdjustmentMetadata(adjustment.metadata_json);
-        if (!metadata) continue;
 
         const adjustmentName = String(adjustment.adjustment_name || '').trim();
         const fieldName = toManualAdjustmentFieldName(adjustmentType, adjustmentName);

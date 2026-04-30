@@ -358,6 +358,116 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("inserts new pruning detail with amount synced from metadata total", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 57 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const metadata = JSON.stringify({
+                input_type: "blok",
+                items: [
+                    { subblok: "P0808", gang_code: "G1H", jumlah: 123000 },
+                    { subblok: "P0809", gang_code: "G1H", jumlah: 77000 }
+                ],
+                total_amount: 200000
+            });
+
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                division_code: "P2A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 0,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
+                metadata_json: metadata
+            });
+
+            const insertCall = calls.find((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
+            expect(id).toBe(57);
+            expect(insertCall?.params).toEqual([
+                4, 2026, "A0001", null, "G1H", "P2A",
+                "PREMI", "PREMI PRUNING", 200000,
+                "PREMI PRUNING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
+                metadata,
+                "system"
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("updates existing raking detail with amount synced from metadata item sum", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 58 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const metadata = JSON.stringify({
+                input_type: "blok",
+                items: [
+                    { subblok: "P0101", gang_code: "G1H", jumlah: 50000 },
+                    { subblok: "P0102", gang_code: "G1H", jumlah: 75000 }
+                ],
+                total_amount: 0
+            });
+
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0002",
+                gang_code: "G1H",
+                division_code: "P2A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RAKING",
+                amount: 0,
+                remarks: "PREMI RAKING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
+                metadata_json: metadata
+            });
+
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(58);
+            expect(updateCall?.params).toEqual([
+                125000,
+                "PREMI RAKING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
+                metadata,
+                null,
+                "system",
+                58
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("fills preset ADCode from task mapping for edit-mode saves", async () => {
         const originalGetInstance = Database.getInstance;
         const originalSearchOptions = taskCodeOptionService.searchOptions;
@@ -435,7 +545,7 @@ describe("manual adjustment ADCode rules", () => {
                 gang_code: "P1A",
                 division_code: "P1A",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI JARAK",
+                adjustment_name: "PREMI PRUNING",
                 amount: 1000,
                 remarks: "Edited via UI",
                 emp_name: "BUDI TEST"

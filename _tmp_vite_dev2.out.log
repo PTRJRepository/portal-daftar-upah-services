@@ -1,0 +1,36 @@
+
+> payroll-frontend@0.1.0 dev
+> vite --host 127.0.0.1 --port 5173
+
+🌐 Network mode detected, using IP: localhost
+Proxy configuration: {
+  isDev: false,
+  backendTarget: 'http://localhost:8002',
+  isProxyMode: undefined,
+  basePath: '/',
+  envVars: {
+    VITE_BACKEND_HOST: undefined,
+    BACKEND_HOST: undefined,
+    VITE_BACKEND_PORT: undefined,
+    BACKEND_PORT: undefined,
+    DEV_MODE: undefined,
+    VITE_DEV_MODE: undefined,
+    VITE_BASE_PATH: undefined
+  }
+}
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m901[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m10.40.49[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/PremiumDetailPopup.jsx[22m
+[2m10.40.49[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/PremiumDetailPopup.jsx[22m
+[2m10.41.04[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/PremiumDetailPopup.jsx[22m
+[2m10.41.30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m10.41.59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m10.42.09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m10.42.19[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m11.31.43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m11.31.49[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m11.31.54[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m11.32.01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m
+[2m12.26.09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CustomPayrollTable.jsx[22m

@@ -7,9 +7,17 @@ export function buildPremiumDetailEdit({ existingEdit, editBase, metadataJson, a
     const source = existingEdit || editBase;
     if (!source) return null;
 
-    return {
+    const nextEdit = {
         ...source,
-        value: Number(amountToSave) || 0,
-        metadata_json: serializePremiumMetadata(metadataJson)
+        value: Number(amountToSave) || 0
     };
+
+    const serializedMetadata = serializePremiumMetadata(metadataJson);
+    if (serializedMetadata !== undefined) {
+        nextEdit.metadata_json = serializedMetadata;
+    } else if (existingEdit?.metadata_json) {
+        nextEdit.metadata_json = existingEdit.metadata_json;
+    }
+
+    return nextEdit;
 }

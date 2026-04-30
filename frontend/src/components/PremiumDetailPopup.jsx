@@ -402,6 +402,8 @@ export default function PremiumDetailPopup({
     // Calculate total based on input type
     const totalAmount = useMemo(() => {
         switch (inputType) {
+            case 'amount':
+                return Number(amountDraft) || 0;
             case 'blok':
                 return sumItems(blokItems);
             case 'exp':
@@ -413,10 +415,10 @@ export default function PremiumDetailPopup({
             default:
                 return 0;
         }
-    }, [inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense]);
+    }, [inputType, amountDraft, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense]);
 
     const storedAmountNumber = resolveInitialStoredAmount(initialEditorState.parsed, storedAmount);
-    const amountToSave = isAmountEditable ? (Number(amountDraft) || 0) : storedAmountNumber;
+    const amountToSave = inputType === 'amount' ? totalAmount : (isAmountEditable ? (Number(amountDraft) || 0) : storedAmountNumber);
     const diffFromStored = totalAmount - storedAmountNumber;
     const diffFromDraft = totalAmount - amountToSave;
     const detailDiffersFromStored = hasAmountDifference(totalAmount, storedAmountNumber);
@@ -439,6 +441,9 @@ export default function PremiumDetailPopup({
         let metadataJson;
 
         switch (inputType) {
+            case 'amount':
+                metadataJson = null;
+                break;
             case 'blok':
                 metadataJson = {
                     input_type: 'blok',
@@ -480,9 +485,10 @@ export default function PremiumDetailPopup({
         onClose?.();
     }, [canEdit, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, onSave, onClose]);
 
-    if (!isOpen || inputType === 'amount') return null;
+    if (!isOpen) return null;
 
     const inputTypeLabel = {
+        'amount': 'Input Amount',
         'blok': 'Detail Blok',
         'exp': 'Detail Expense',
         'kendaraan': 'Detail Kendaraan',
@@ -576,7 +582,22 @@ export default function PremiumDetailPopup({
                             </div>
                         )}
 
-                        {canEdit && (
+                        {canEdit && inputType === 'amount' && (
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
+                                <label style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: 8 }}>
+                                    Amount
+                                </label>
+                                <input
+                                    style={{ ...numberInputStyle, maxWidth: 220 }}
+                                    type="number"
+                                    value={amountDraft}
+                                    onChange={(event) => setAmountDraft(Number(event.target.value) || 0)}
+                                    placeholder="0"
+                                />
+                            </div>
+                        )}
+
+                        {canEdit && inputType !== 'amount' && (
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
                                     <input
@@ -616,6 +637,12 @@ export default function PremiumDetailPopup({
                             </div>
                         )}
                     </div>
+
+                    {inputType === 'amount' && !canEdit && (
+                        <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textAlign: 'center', padding: '12px 0' }}>
+                            {formatAmount(totalAmount)}
+                        </div>
+                    )}
 
                     {inputType === 'blok' && (
                         <BlokEditor items={blokItems} onChange={setBlokItems} readOnly={!canEdit} />
