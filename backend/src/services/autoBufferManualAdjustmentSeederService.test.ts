@@ -116,6 +116,25 @@ describe("autoBufferManualAdjustmentSeederService", () => {
         expect(entries.find((entry) => entry.adjustment_name === "AUTO MASA KERJA")?.amount).toBeGreaterThan(0);
     });
 
+    it("normalizes stored division_code to the 3-character payroll format", () => {
+        const entries = buildAutoBufferSeedEntries([
+            {
+                emp_code: "A0005",
+                gang_code: "A1H",
+                jabatan_estate: "Karyawan Panen",
+                hari_kerja: 25,
+                jumlah_hk: 25,
+                masa_kerja_tahun: 1,
+                is_spsi_member: true,
+                jabatan_jumlah: 0,
+                masa_kerja_jumlah: 0
+            }
+        ], 4, 2026, "PG1A");
+
+        expect(entries.length).toBe(3);
+        expect(entries.every((entry) => entry.division_code === "P1A")).toBe(true);
+    });
+
     describe("seedPeriod", () => {
         let originalExtractor: typeof dataExtractorService.extractPayrollData;
         let originalGetExtendedInstance: typeof Database.getExtendedInstance;

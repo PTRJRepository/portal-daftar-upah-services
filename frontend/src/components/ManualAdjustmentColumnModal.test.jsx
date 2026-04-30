@@ -8,6 +8,25 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => ({
     fetchTaskCodeOptions: vi.fn(() => Promise.resolve({ success: true, data: [] })),
+    fetchPremiumDefinitions: vi.fn(() => Promise.resolve({
+        success: true,
+        data: [
+            {
+                adjustment_name: 'PREMI PRUNING',
+                ad_code: 'AL3PM0601',
+                task_desc: '(AL) TUNJANGAN PREMI ((PM) PRUNING)',
+                input_type: 'blok',
+                is_active: true
+            },
+            {
+                adjustment_name: 'PREMI RAKING',
+                ad_code: 'AL3PM0602',
+                task_desc: '(AL) TUNJANGAN PREMI ((PM) WEEDING - CIRCLE RAKING)',
+                input_type: 'blok',
+                is_active: true
+            }
+        ]
+    })),
     fetchManualAdjustmentPresets: vi.fn(() => Promise.resolve({
         success: true,
         data: [
@@ -28,7 +47,8 @@ const mocked = vi.hoisted(() => ({
 }));
 
 vi.mock('../services/manualAdjustmentService', () => ({
-    fetchTaskCodeOptions: mocked.fetchTaskCodeOptions
+    fetchTaskCodeOptions: mocked.fetchTaskCodeOptions,
+    fetchPremiumDefinitions: mocked.fetchPremiumDefinitions
 }));
 
 vi.mock('../services/manualAdjustmentPresetService', () => ({
@@ -60,12 +80,13 @@ function changeInputValue(input, value) {
 describe('ManualAdjustmentColumnModal', () => {
     beforeEach(() => {
         mocked.fetchTaskCodeOptions.mockClear();
+        mocked.fetchPremiumDefinitions.mockClear();
         mocked.fetchManualAdjustmentPresets.mockClear();
         mocked.createManualAdjustmentPreset.mockClear();
         vi.useRealTimers();
     });
 
-    it('loads all saved column presets without applying category or division filters', async () => {
+    it('does not load or show database presets while using the PREMI definition list', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
@@ -84,7 +105,39 @@ describe('ManualAdjustmentColumnModal', () => {
             });
             await flushEffects();
 
+            expect(mocked.fetchManualAdjustmentPresets).not.toHaveBeenCalled();
+            expect(container.textContent || '').not.toContain('Preset Kolom Tersimpan');
+            expect(container.textContent || '').not.toContain('KOREKSI DENDA PANEN');
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
+    it('loads all saved column presets for non-PREMI categories', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        try {
+            await act(async () => {
+                root.render(
+                    <ManualAdjustmentColumnModal
+                        isOpen
+                        onClose={() => {}}
+                        onSaved={() => {}}
+                        token="test-token"
+                        division="PG2A"
+                        initialAdjustmentType="POTONGAN_KOTOR"
+                    />
+                );
+            });
+            await flushEffects();
+
             expect(mocked.fetchManualAdjustmentPresets).toHaveBeenCalledWith('test-token', {});
+            expect(container.textContent || '').toContain('Preset Kolom Tersimpan');
         } finally {
             await act(async () => {
                 root.unmount();
@@ -108,6 +161,7 @@ describe('ManualAdjustmentColumnModal', () => {
                         onSaved={onSaved}
                         token="test-token"
                         division="PG2A"
+                        initialAdjustmentType="POTONGAN_KOTOR"
                     />
                 );
             });
@@ -144,8 +198,64 @@ describe('ManualAdjustmentColumnModal', () => {
         }
     });
 
-    it('does not search ADCode again while typing the column name', async () => {
-        vi.useFakeTimers();
+    it('uses premium definitions as the only selectable PREMI category source', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSaved = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <ManualAdjustmentColumnModal
+                        isOpen
+                        onClose={() => {}}
+                        onSaved={onSaved}
+                        token="test-token"
+                        division="PG2A"
+                    />
+                );
+            });
+            await flushEffects();
+
+            const nameInput = container.querySelector('input[placeholder="Ketik nama premi, contoh: PRUNING"]');
+            expect(nameInput).toBeFalsy();
+            const adCodeInput = container.querySelector('input[placeholder*="Cari ADCode"]');
+            expect(adCodeInput).toBeFalsy();
+
+            const saveButton = findButton(container, 'Simpan Kolom');
+            expect(saveButton).toBeTruthy();
+            expect(saveButton.disabled).toBe(true);
+
+            const pruningButton = findButton(container, 'PREMI PRUNING');
+            expect(pruningButton).toBeTruthy();
+
+            await act(async () => {
+                pruningButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({
+                adjustment_type: 'PREMI',
+                adjustment_name: 'PREMI PRUNING',
+                ad_code: 'AL3PM0601',
+                task_desc: '(AL) TUNJANGAN PREMI ((PM) PRUNING)',
+                input_type: 'blok'
+            }));
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
+    it('filters premium definitions with local search instead of database presets', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
@@ -162,37 +272,24 @@ describe('ManualAdjustmentColumnModal', () => {
                     />
                 );
             });
-
-            await act(async () => {
-                vi.advanceTimersByTime(300);
-            });
             await flushEffects();
-            expect(mocked.fetchTaskCodeOptions).toHaveBeenCalledTimes(1);
 
-            const nameInput = container.querySelector('input[placeholder="Ketik nama premi, contoh: PRUNING"]');
-            expect(nameInput).toBeTruthy();
+            const searchInput = container.querySelector('input[placeholder="Cari definisi premi..."]');
+            expect(searchInput).toBeTruthy();
 
             await act(async () => {
-                changeInputValue(nameInput, 'PREMI RAWAT');
+                changeInputValue(searchInput, 'raking');
             });
             await flushEffects();
 
-            await act(async () => {
-                vi.advanceTimersByTime(300);
-            });
-            await flushEffects();
-
-            expect(mocked.fetchTaskCodeOptions).toHaveBeenCalledTimes(1);
-
-            const adCodeInput = container.querySelector('input[placeholder*="Cari ADCode"]');
-            expect(adCodeInput).toBeTruthy();
-            expect(adCodeInput.value).toBe('');
+            expect(container.textContent || '').toContain('PREMI RAKING');
+            expect(container.textContent || '').not.toContain('PREMI PRUNING');
+            expect(mocked.fetchManualAdjustmentPresets).not.toHaveBeenCalled();
         } finally {
             await act(async () => {
                 root.unmount();
             });
             container.remove();
-            vi.useRealTimers();
         }
     });
 

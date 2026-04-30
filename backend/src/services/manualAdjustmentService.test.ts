@@ -105,10 +105,44 @@ describe("manual adjustment ADCode rules", () => {
                 emp_code: "A0001",
                 gang_code: "G1H",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI MANUAL",
+                adjustment_name: "PREMI PRUNING",
                 amount: 0,
                 remarks: "INIT_COLUMN - Kolom ditambahkan tanpa nilai"
             })).rejects.toThrow("ADCode wajib diisi");
+            expect(queryCalled).toBe(false);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("rejects PREMI names that are not present in premium definitions before querying", async () => {
+        const originalGetInstance = Database.getInstance;
+        let queryCalled = false;
+        const mockDb = {
+            queryOne: async () => {
+                queryCalled = true;
+                return null;
+            },
+            query: async () => {
+                queryCalled = true;
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            await expect(manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RAWAT BEBAS",
+                amount: 1000,
+                ad_code: "AL001",
+                task_desc: "(AL) PREMI MANUAL"
+            })).rejects.toThrow("tidak ditemukan dalam definisi premium");
             expect(queryCalled).toBe(false);
         } finally {
             (Database as any).getInstance = originalGetInstance;
@@ -138,7 +172,7 @@ describe("manual adjustment ADCode rules", () => {
                 emp_code: "A0001",
                 gang_code: "G1H",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI EXISTING",
+                adjustment_name: "PREMI CUCI MOBIL",
                 amount: 1000,
                 remarks: "Edited via UI"
             });
@@ -173,9 +207,9 @@ describe("manual adjustment ADCode rules", () => {
                 emp_code: "A0001",
                 gang_code: "G1H",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI EXISTING",
+                adjustment_name: "PREMI CUCI MOBIL",
                 amount: 1000,
-                remarks: "PREMI EXISTING | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
+                remarks: "PREMI CUCI MOBIL | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
             });
 
             expect(id).toBe(90);
@@ -319,9 +353,9 @@ describe("manual adjustment ADCode rules", () => {
                 gang_code: "G1H",
                 division_code: "PG2A",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI PANEN",
+                adjustment_name: "PREMI PRUNING",
                 amount: 1000,
-                remarks: "PREMI PANEN | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
+                remarks: "PREMI PRUNING | MANUAL EDIT | 1000 | sync:MANUAL | match:MANUAL"
             });
 
             expect(id).toBe(91);
@@ -362,7 +396,7 @@ describe("manual adjustment ADCode rules", () => {
                 gang_code: "P1A",
                 division_code: "P1A",
                 adjustment_type: "PREMI",
-                adjustment_name: "PREMI EXISTING",
+                adjustment_name: "PREMI JARAK",
                 amount: 1000,
                 remarks: "Edited via UI",
                 emp_name: "BUDI TEST"
@@ -411,6 +445,43 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("normalizes division_code to 3-character format when saving adjustment rows", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 101 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "A1H",
+                division_code: "PG1A",
+                adjustment_type: "AUTO_BUFFER",
+                adjustment_name: "AUTO SPSI",
+                amount: 4000
+            });
+
+            expect(id).toBe(101);
+            const insertCall = calls.find((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
+            expect(insertCall?.params).toContain("P1A");
+            expect(insertCall?.params).not.toContain("PG1A");
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("fetches manual adjustments using both 3-code and 4-code division formats", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -434,6 +505,38 @@ describe("manual adjustment ADCode rules", () => {
             expect(calls[1].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
             expect(calls[2].sql).toContain("division_code IN");
             expect(calls[2].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("normalizes division_code when deleting a manual adjustment column", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT id FROM dbo.payroll_manual_adjustments")) {
+                    return [{ id: 1 }, { id: 2 }];
+                }
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const deleted = await manualAdjustmentService.deleteAdjustmentColumn({
+                period_month: 4,
+                period_year: 2026,
+                division_code: "PG1A",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING"
+            });
+
+            expect(deleted).toBe(2);
+            expect(calls[0].params).toEqual([4, 2026, "PREMI", "PREMI PRUNING", "P1A"]);
+            expect(calls[1].params).toEqual([4, 2026, "PREMI", "PREMI PRUNING", "P1A"]);
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }

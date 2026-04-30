@@ -23,6 +23,7 @@ import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
+import { buildPremiumDetailEdit } from '../utils/payrollPremiumDetailEdits';
 import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
 import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -275,7 +276,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
     // Premium detail popup state
-    const emptyPremiumPopup = { isOpen: false, editKey: null, inputType: null, definitionName: null, initialData: null };
+    const emptyPremiumPopup = {
+        isOpen: false,
+        editKey: null,
+        inputType: null,
+        definitionName: null,
+        initialData: null,
+        storedAmount: 0,
+        mismatch: null,
+        editBase: null
+    };
     const [premiumPopup, setPremiumPopup] = useState(emptyPremiumPopup);
     const [premiumDefinitions, setPremiumDefinitions] = useState([]);
 
@@ -1157,6 +1167,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return null;
     };
 
+    const parsePremiumMetadataValue = (value) => {
+        if (!value) return null;
+        try {
+            return typeof value === 'string' ? JSON.parse(value) : value;
+        } catch {
+            return null;
+        }
+    };
+
     const resolvePremiumPopupInitialData = ({ edit, amount, inputType, row, field, adjustmentName }) => {
         if (edit?.metadata_json) return edit.metadata_json;
         const storedMetadata = row?.manual_adjustment_metadata?.[field];
@@ -1167,19 +1186,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return derived ? JSON.stringify(derived) : null;
     };
 
-    const handlePremiumPopupSave = (metadataJson, totalAmount) => {
-        const { editKey } = premiumPopup;
+    const handlePremiumPopupSave = (metadataJson, amountToSave) => {
+        const { editKey, editBase } = premiumPopup;
         if (!editKey) return;
         setEditedCells(prev => {
-            const existing = prev[editKey];
-            if (!existing) return prev;
+            const nextEdit = buildPremiumDetailEdit({
+                existingEdit: prev[editKey],
+                editBase,
+                metadataJson,
+                amountToSave
+            });
+            if (!nextEdit) return prev;
             return {
                 ...prev,
-                [editKey]: {
-                    ...existing,
-                    value: totalAmount,
-                    metadata_json: metadataJson ? JSON.stringify(metadataJson) : undefined
-                }
+                [editKey]: nextEdit
             };
         });
         setPremiumPopup(emptyPremiumPopup);
@@ -2605,7 +2625,28 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 const inputType = premiumDef?.input_type || 'amount';
                                 const popupInitialData = resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: resolvedAdjustmentName });
                                 const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
-                                const hasMetadata = !!edit?.metadata_json || !!popupInitialData;
+                                const popupMetadata = parsePremiumMetadataValue(popupInitialData);
+                                const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                                const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
+                                const hasFallbackMetadata = !!popupMetadata?.legacy_source;
+                                const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
+                                const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'PREMI');
+                                const editBase = {
+                                    emp_code: empCode,
+                                    nik: row.nik,
+                                    emp_name: row.nama || row.emp_name || null,
+                                    field,
+                                    value: popupStoredAmount,
+                                    originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
+                                    gang_code: row.gang_code,
+                                    type: 'PREMI',
+                                    name: resolvedAdjustmentName,
+                                    ad_code: edit?.ad_code || addedColumn?.ad_code || premiumDef?.ad_code,
+                                    task_code: edit?.task_code || addedColumn?.task_code || premiumDef?.ad_code,
+                                    base_task_code: edit?.base_task_code || addedColumn?.base_task_code || premiumDef?.ad_code,
+                                    task_desc: edit?.task_desc || addedColumn?.task_desc || premiumDef?.task_desc,
+                                    remarks: edit?.remarks || addedColumn?.remarks
+                                };
 
                                 if (inputType !== 'amount' && premiumDef) {
                                     return (
@@ -2634,21 +2675,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                                     editKey,
                                                     inputType,
                                                     definitionName: premiumDef.adjustment_name,
-                                                    initialData: popupInitialData
+                                                    initialData: popupInitialData,
+                                                    storedAmount: popupStoredAmount,
+                                                    mismatch,
+                                                    editBase
                                                 })}
                                                 style={{
                                                     border: '1px solid #cbd5e1',
-                                                    background: hasMetadata ? '#dcfce7' : '#f8fafc',
+                                                    background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
                                                     borderRadius: 6,
                                                     padding: '2px 6px',
                                                     cursor: 'pointer',
                                                     fontSize: 12,
-                                                    color: hasMetadata ? '#16a34a' : '#64748b',
+                                                    color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#64748b',
                                                     fontWeight: 700,
                                                     lineHeight: 1
                                                 }}
                                             >
-                                                {hasMetadata ? '✓' : '⋯'}
+                                                {mismatch ? '!' : hasDbMetadata ? '✓' : '⋯'}
                                             </button>
                                         </div>
                                     );
@@ -4347,6 +4391,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 inputType={premiumPopup.inputType}
                 definitionName={premiumPopup.definitionName}
                 initialData={premiumPopup.initialData}
+                storedAmount={premiumPopup.storedAmount}
+                mismatch={premiumPopup.mismatch}
             />
             {payrollToast && (
                 <div className={`payroll-toast payroll-toast--${payrollToast.type}`} role="status">

@@ -126,6 +126,18 @@ function validateAdjustmentName(adjustmentType, docDesc) {
     return '';
 }
 
+function normalizePremiumName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function findPremiumDefinition(definitions, adjustmentName) {
+    const target = normalizePremiumName(adjustmentName);
+    if (!target) return null;
+    return (definitions || []).find((def) =>
+        def?.is_active !== false && normalizePremiumName(def.adjustment_name) === target
+    ) || null;
+}
+
 export default function ManualAdjustmentColumnModal({
     isOpen,
     onClose,
@@ -151,6 +163,7 @@ export default function ManualAdjustmentColumnModal({
     // --- Premium Definitions (format baku) ---
     const [premiumDefinitions, setPremiumDefinitions] = useState([]);
     const [selectedPremiumDef, setSelectedPremiumDef] = useState(null);
+    const [premiumDefinitionSearch, setPremiumDefinitionSearch] = useState('');
     const [loadingDefs, setLoadingDefs] = useState(false);
 
     const selectedCategory = useMemo(
@@ -171,8 +184,24 @@ export default function ManualAdjustmentColumnModal({
         return options;
     }, [adjustmentType, options]);
 
+    const activePremiumDefinitions = useMemo(
+        () => (premiumDefinitions || []).filter((def) => def?.is_active !== false),
+        [premiumDefinitions]
+    );
+    const filteredPremiumDefinitions = useMemo(() => {
+        const query = premiumDefinitionSearch.trim().toUpperCase();
+        if (!query) return activePremiumDefinitions;
+        return activePremiumDefinitions.filter((def) => {
+            const text = `${def.adjustment_name || ''} ${def.ad_code || ''} ${def.task_desc || ''} ${def.input_type || ''}`.toUpperCase();
+            return text.includes(query);
+        });
+    }, [activePremiumDefinitions, premiumDefinitionSearch]);
+
     const nameError = validateAdjustmentName(adjustmentType, docDesc);
     const resolvedAdjustmentName = buildAdjustmentName(adjustmentType, docDesc);
+    const premiumSelectionError = adjustmentType === 'PREMI' && !selectedPremiumDef
+        ? 'Pilih premi dari daftar definisi format baku.'
+        : '';
 
     useEffect(() => {
         if (!isOpen) return;
@@ -187,6 +216,7 @@ export default function ManualAdjustmentColumnModal({
         setPresetRemarks('');
         setPresetSaving(false);
         setSelectedPremiumDef(null);
+        setPremiumDefinitionSearch('');
     }, [isOpen, initialAdjustmentType]);
 
     useEffect(() => {
@@ -210,6 +240,10 @@ export default function ManualAdjustmentColumnModal({
             setLoadingOptions(true);
             setError('');
             try {
+                if (adjustmentType === 'PREMI') {
+                    if (!cancelled) setOptions([]);
+                    return;
+                }
                 const result = await fetchTaskCodeOptions(token, {
                     search: adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_DEFAULT_AD_CODE : search,
                     divisionCode: division,
@@ -242,6 +276,12 @@ export default function ManualAdjustmentColumnModal({
 
     const loadPresets = async () => {
         if (!isOpen || !token) return;
+        if (adjustmentType === 'PREMI') {
+            setPresets([]);
+            setPresetError('');
+            setLoadingPresets(false);
+            return;
+        }
         setLoadingPresets(true);
         setPresetError('');
         try {
@@ -257,7 +297,7 @@ export default function ManualAdjustmentColumnModal({
 
     useEffect(() => {
         loadPresets();
-    }, [isOpen, token, division]);
+    }, [isOpen, token, division, adjustmentType]);
 
     // Load premium definitions (format baku) when modal opens
     useEffect(() => {
@@ -281,6 +321,7 @@ export default function ManualAdjustmentColumnModal({
     const canSave = Boolean(
         resolvedAdjustmentName
         && !nameError
+        && !premiumSelectionError
         && selectedTaskCode
         && !saving
     );
@@ -311,7 +352,21 @@ export default function ManualAdjustmentColumnModal({
     const handlePresetSelect = (preset) => {
         const presetOption = presetToTaskCodeOption(preset);
         const matchingOption = options.find((option) => resolveAdCode(option) === resolveAdCode(presetOption)) || presetOption;
-        setAdjustmentType(preset.adjustment_type || adjustmentType);
+        const nextAdjustmentType = preset.adjustment_type || adjustmentType;
+        if (nextAdjustmentType === 'PREMI') {
+            const premiumDef = findPremiumDefinition(activePremiumDefinitions, preset.adjustment_name);
+            if (!premiumDef) {
+                setError(`Premi "${preset.adjustment_name || '-'}" tidak ada di premium_definitions.json.`);
+                return;
+            }
+            setAdjustmentType('PREMI');
+            handlePremiumDefSelect(premiumDef);
+            setSearch('');
+            setError('');
+            return;
+        }
+        setAdjustmentType(nextAdjustmentType);
+        setSelectedPremiumDef(null);
         setDocDesc(preset.adjustment_name || '');
         setSearch(resolveAdCode(presetOption));
         setSelectedTaskCode(matchingOption);
@@ -345,6 +400,10 @@ export default function ManualAdjustmentColumnModal({
         event.preventDefault();
         if (nameError) {
             setError(nameError);
+            return;
+        }
+        if (premiumSelectionError) {
+            setError(premiumSelectionError);
             return;
         }
         if (!canSave) return;
@@ -420,6 +479,7 @@ export default function ManualAdjustmentColumnModal({
                 <form onSubmit={handleSubmit} style={{ maxHeight: 'calc(90vh - 86px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ padding: 22, overflowY: 'auto', minHeight: 0 }}>
                     <div style={{ display: 'grid', gap: 14 }}>
+                        {adjustmentType !== 'PREMI' && (
                         <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 8 }}>
                                 <div>
@@ -474,6 +534,7 @@ export default function ManualAdjustmentColumnModal({
                                 <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>{presetError}</div>
                             )}
                         </div>
+                        )}
 
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
@@ -499,9 +560,17 @@ export default function ManualAdjustmentColumnModal({
                                 <div>
                                     <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
                                         <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
-                                            {loadingDefs ? 'Memuat definisi premi...' : `${premiumDefinitions.length} definisi premi aktif`}
+                                            {loadingDefs ? 'Memuat definisi premi...' : `${filteredPremiumDefinitions.length} dari ${activePremiumDefinitions.length} definisi premi aktif`}
                                         </div>
-                                        {premiumDefinitions.map((def) => {
+                                        <div style={{ padding: 10, borderTop: '1px solid #f1f5f9', background: '#ffffff' }}>
+                                            <input
+                                                value={premiumDefinitionSearch}
+                                                onChange={(e) => setPremiumDefinitionSearch(e.target.value)}
+                                                placeholder="Cari definisi premi..."
+                                                style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                                            />
+                                        </div>
+                                        {filteredPremiumDefinitions.map((def) => {
                                             const active = selectedPremiumDef?.adjustment_name === def.adjustment_name;
                                             const typeLabel = {
                                                 'amount': 'Nominal',
@@ -545,9 +614,9 @@ export default function ManualAdjustmentColumnModal({
                                                 </button>
                                             );
                                         })}
-                                        {!loadingDefs && premiumDefinitions.length === 0 && (
+                                        {!loadingDefs && filteredPremiumDefinitions.length === 0 && (
                                             <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                                                Tidak ada definisi premi aktif.
+                                                Tidak ada definisi premi yang cocok.
                                             </div>
                                         )}
                                     </div>
@@ -580,6 +649,7 @@ export default function ManualAdjustmentColumnModal({
                                         onClick={() => {
                                             setAdjustmentType(option.value);
                                             setSelectedTaskCode(null);
+                                            setSelectedPremiumDef(null);
                                             if (option.value === 'POTONGAN_KOTOR') {
                                                 setDocDesc((current) => buildAdjustmentName('POTONGAN_KOTOR', current || KOREKSI_PREFIX));
                                                 setSearch(KOREKSI_DEFAULT_AD_CODE);
@@ -608,6 +678,24 @@ export default function ManualAdjustmentColumnModal({
                             </div>
                         </div>
 
+                        {adjustmentType === 'PREMI' && (
+                            <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' }}>
+                                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Konfigurasi Premi</div>
+                                {selectedPremiumDef ? (
+                                    <>
+                                        <div style={{ fontSize: 13 }}>ADCode: <strong>{selectedPremiumDef.ad_code || '-'}</strong></div>
+                                        <div style={{ fontSize: 13, marginTop: 4 }}>TaskDesc: {selectedPremiumDef.task_desc || '-'}</div>
+                                        <div style={{ fontSize: 13, marginTop: 4 }}>Input detail: {selectedPremiumDef.input_type || 'amount'}</div>
+                                    </>
+                                ) : (
+                                    <div style={{ fontSize: 13, color: '#64748b' }}>
+                                        Pilih salah satu definisi premi di atas. Nama, ADCode, dan tipe input mengikuti premium_definitions.json.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {adjustmentType !== 'PREMI' && (
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
                                 ADCode Wajib ({division || 'ALL'})
@@ -661,6 +749,7 @@ export default function ManualAdjustmentColumnModal({
                                 )}
                             </div>
                         </div>
+                        )}
 
                         {selectedTaskCode && (
                             <div style={{ padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#14532d' }}>

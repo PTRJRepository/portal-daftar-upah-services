@@ -3,6 +3,7 @@ import { Config } from "../config";
 import { dataExtractorService } from "./dataExtractorService";
 import { payrollAutoBufferService } from "./payroll/payrollAutoBufferService";
 import { buildAutoBufferSeedRemark } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
+import { normalizeManualAdjustmentDivisionCode } from "./payroll/manualAdjustments/manualAdjustmentNaming";
 import { payrollProfileSeedService } from "./payrollProfileSeedService";
 import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 
@@ -76,7 +77,7 @@ export function buildAutoBufferSeedEntries(
     periodYear: number,
     divisionCode: string
 ): AutoBufferManualAdjustmentSeedEntry[] {
-    const normalizedDivision = normalizeString(divisionCode).toUpperCase();
+    const normalizedDivision = normalizeManualAdjustmentDivisionCode(divisionCode) || normalizeString(divisionCode).toUpperCase();
     const entries: AutoBufferManualAdjustmentSeedEntry[] = [];
 
     for (const row of rows || []) {
@@ -219,7 +220,7 @@ export class AutoBufferManualAdjustmentSeederService {
     public async seedPeriod(input: AutoBufferManualAdjustmentSeedInput) {
         const periodMonth = Math.floor(toNumber(input.period_month));
         const periodYear = Math.floor(toNumber(input.period_year));
-        const divisionCode = normalizeString(input.division_code).toUpperCase();
+        const divisionCode = normalizeManualAdjustmentDivisionCode(input.division_code) || normalizeString(input.division_code).toUpperCase();
         const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase() || "ALL";
         const useHistoryDb = input.use_history_db === true;
         const snapshotVersion = input.snapshot_version == null ? null : Math.floor(toNumber(input.snapshot_version));
@@ -341,7 +342,7 @@ export class AutoBufferManualAdjustmentSeederService {
     public async validatePeriod(input: AutoBufferManualAdjustmentSeedInput) {
         const periodMonth = Math.floor(toNumber(input.period_month));
         const periodYear = Math.floor(toNumber(input.period_year));
-        const divisionCode = normalizeString(input.division_code).toUpperCase();
+        const divisionCode = normalizeManualAdjustmentDivisionCode(input.division_code) || normalizeString(input.division_code).toUpperCase();
         const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase();
         const updatedBy = normalizeString(input.created_by) || "system";
 

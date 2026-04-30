@@ -3,7 +3,9 @@ import { employeeIdentityResolverService } from "./employeeIdentityResolverServi
 import { Config } from "../config";
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { taskCodeOptionService, type TaskCodeOption } from "./taskCodeOptionService";
+import { premiumDefinitionService } from "./premiumDefinitionService";
 import {
+    normalizeManualAdjustmentDivisionCode,
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
@@ -119,7 +121,7 @@ function resolveAdtransLocCode(divisionCode: string): string {
 }
 
 function getManualAdjustmentDivisionCodeVariants(divisionCode: string): string[] {
-    const normalized = normalizeText(divisionCode).toUpperCase();
+    const normalized = normalizeManualAdjustmentDivisionCode(divisionCode) || normalizeText(divisionCode).toUpperCase();
     if (!normalized) return [];
 
     const codeGroups = [
@@ -196,6 +198,11 @@ function validateManualAdjustmentAdCode(data: ManualAdjustment): void {
     if (resolveManualAdjustmentAdCode(data)) return;
 
     throw new Error('ADCode wajib diisi untuk kolom manual adjustment selain auto buffer');
+}
+
+function validatePremiumAdjustmentDefinition(data: ManualAdjustment, normalizedAdjustmentName: string): void {
+    if (String(data.adjustment_type || '').trim().toUpperCase() !== 'PREMI') return;
+    premiumDefinitionService.validatePremiumName(normalizedAdjustmentName);
 }
 
 function expectedTaskDescPrefix(adjustmentType: string): "(AL)" | "(DE)" | null {
@@ -419,6 +426,7 @@ export class ManualAdjustmentService {
     private async saveOtherIncome(db: Database, data: ManualAdjustment, parsedAmount: number, user?: string): Promise<number> {
         const incomeType = data.adjustment_name; // e.g. 'KONTAN'
         const incomeName = normalizeStoredAdjustmentName(data.adjustment_name); // e.g. 'KONTAN'
+        const normalizedDivisionCode = normalizeManualAdjustmentDivisionCode(data.division_code);
         // Use real NIK for nik field, emp_code for emp_code field
         const realNik = (data.nik || '').trim().toUpperCase() || (data.emp_code || '').trim().toUpperCase();
         const empCodeVal = (data.emp_code || '').trim().toUpperCase();
@@ -472,7 +480,7 @@ export class ManualAdjustmentService {
                 realNik,            // nik = real NIK (KTP) - primary lookup key
                 empCodeVal,         // emp_code = emp_code - secondary lookup key
                 null,               // emp_name - null, enriched by data extractor
-                data.division_code || null,
+                normalizedDivisionCode,
                 data.gang_code,
                 data.period_year,
                 data.period_month,
@@ -503,6 +511,8 @@ export class ManualAdjustmentService {
         const parsedAmount = parseFloat(data.amount.toString()) || 0;
         const normalizedAdjustmentName = normalizeStoredAdjustmentName(data.adjustment_name);
         const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
+        const normalizedDivisionCode = normalizeManualAdjustmentDivisionCode(data.division_code);
+        validatePremiumAdjustmentDefinition(data, normalizedAdjustmentName);
         validateManualAdjustmentAdCode(data);
         const remarks = buildManualAdjustmentRemarks(data);
         const identity = await employeeIdentityResolverService.resolve(data.nik || data.emp_code);
@@ -565,7 +575,7 @@ export class ManualAdjustmentService {
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             `, [
-                data.period_month, data.period_year, data.emp_code, empName, data.gang_code, data.division_code || null,
+                data.period_month, data.period_year, data.emp_code, empName, data.gang_code, normalizedDivisionCode,
                 data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, insertMetadataJsonStr, user || 'system'
             ]);
 
@@ -628,7 +638,7 @@ export class ManualAdjustmentService {
 
         if (input.division_code) {
             divisionFilter = ' AND division_code = ?';
-            params.push(input.division_code);
+            params.push(normalizeManualAdjustmentDivisionCode(input.division_code) || input.division_code);
         }
 
         const existing = await db.query<{ id: number }>(`

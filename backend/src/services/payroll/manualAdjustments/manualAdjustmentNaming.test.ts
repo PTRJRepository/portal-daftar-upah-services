@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+    normalizeManualAdjustmentDivisionCode,
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment,
     toManualAdjustmentFieldName
@@ -24,5 +25,18 @@ describe('manualAdjustmentNaming', () => {
         expect(shouldDeleteStoredAdjustment(0, 'INIT_COLUMN ...')).toBe(false);
         expect(shouldDeleteStoredAdjustment(0, 'KOREKSI DENDA | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH')).toBe(false);
         expect(shouldDeleteStoredAdjustment(0, 'Edited via UI')).toBe(true);
+    });
+
+    it('normalizes stored division codes to the 3-character payroll format', () => {
+        expect(normalizeManualAdjustmentDivisionCode('PG1A')).toBe('P1A');
+        expect(normalizeManualAdjustmentDivisionCode('PG1B')).toBe('P1B');
+        expect(normalizeManualAdjustmentDivisionCode('PG2A')).toBe('P2A');
+        expect(normalizeManualAdjustmentDivisionCode('PG2B')).toBe('P2B');
+        expect(normalizeManualAdjustmentDivisionCode('ARB1')).toBe('AB1');
+        expect(normalizeManualAdjustmentDivisionCode('ARB2')).toBe('AB2');
+        expect(normalizeManualAdjustmentDivisionCode('INFRA')).toBe('INF');
+        expect(normalizeManualAdjustmentDivisionCode('AREC')).toBe('ARC');
+        expect(normalizeManualAdjustmentDivisionCode('WKS_AR')).toBe('WKS_AR');
+        expect(normalizeManualAdjustmentDivisionCode('WKS_PG')).toBe('WKS_PG');
     });
 });
