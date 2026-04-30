@@ -15,3 +15,5 @@ worktrees/
 backend/logs/
 logs/
 backend/tsconfig.tsbuildinfo
+_dev_utils/
+backend/_dev_utils/
