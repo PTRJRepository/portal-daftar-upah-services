@@ -1,0 +1,259 @@
+/**
+ * PremiumDefinitionService
+ *
+ * Manages premium definitions stored as a JSON file at backend/data/premium_definitions.json.
+ * These definitions control:
+ * - Which premium column names are allowed (format baku)
+ * - What ADCode each premium maps to
+ * - What input_type determines the metadata popup behavior
+ *
+ * Input types:
+ * - "amount"     : plain numeric input only
+ * - "blok"       : multi-row subblok + gang_code + jumlah
+ * - "exp"        : single expense_code + jumlah
+ * - "kendaraan"  : multi-row nomor_kendaraan + expense_code + jumlah
+ * - "blok,exp"   : combo blok items + single expense
+ */
+
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
+
+export type PremiumInputType = 'amount' | 'blok' | 'exp' | 'kendaraan' | 'blok,exp';
+
+export interface PremiumDefinition {
+    adjustment_name: string;    // e.g. "PREMI PRUNING"
+    ad_code: string;            // e.g. "AL3PM0601P1A"
+    task_desc: string;          // e.g. "(AL) TUNJANGAN PREMI ((PM) PRUNING)"
+    input_type: PremiumInputType;
+    is_active: boolean;
+}
+
+// --- Metadata JSON structures per input_type ---
+
+export interface BlokItem {
+    subblok: string;
+    gang_code: string;
+    jumlah: number;
+}
+
+export interface KendaraanItem {
+    nomor_kendaraan: string;
+    expense_code: string;
+    jumlah: number;
+}
+
+export interface ExpenseDetail {
+    expense_code: string;
+    jumlah: number;
+}
+
+export interface MetadataBlok {
+    input_type: 'blok';
+    items: BlokItem[];
+    total_amount: number;
+}
+
+export interface MetadataExp {
+    input_type: 'exp';
+    expense_code: string;
+    jumlah: number;
+    total_amount: number;
+}
+
+export interface MetadataKendaraan {
+    input_type: 'kendaraan';
+    items: KendaraanItem[];
+    total_amount: number;
+}
+
+export interface MetadataBlokExp {
+    input_type: 'blok,exp';
+    blok_items: BlokItem[];
+    expense: ExpenseDetail;
+    total_amount: number;
+}
+
+export type PremiumMetadata = MetadataBlok | MetadataExp | MetadataKendaraan | MetadataBlokExp;
+
+// Path to the JSON definitions file
+const DEFINITIONS_FILE = join(import.meta.dir, "../../data/premium_definitions.json");
+
+class PremiumDefinitionService {
+    private static instance: PremiumDefinitionService;
+    private definitions: PremiumDefinition[] | null = null;
+
+    private constructor() {}
+
+    public static getInstance(): PremiumDefinitionService {
+        if (!PremiumDefinitionService.instance) {
+            PremiumDefinitionService.instance = new PremiumDefinitionService();
+        }
+        return PremiumDefinitionService.instance;
+    }
+
+    /**
+     * Load definitions from JSON file (cached in memory, re-reads on first call or after invalidation)
+     */
+    private loadDefinitions(): PremiumDefinition[] {
+        if (this.definitions !== null) {
+            return this.definitions;
+        }
+
+        if (!existsSync(DEFINITIONS_FILE)) {
+            console.warn(`[PremiumDefinitionService] File not found: ${DEFINITIONS_FILE}`);
+            this.definitions = [];
+            return this.definitions;
+        }
+
+        try {
+            const raw = readFileSync(DEFINITIONS_FILE, "utf-8");
+            this.definitions = JSON.parse(raw) as PremiumDefinition[];
+            console.log(`[PremiumDefinitionService] Loaded ${this.definitions.length} premium definitions`);
+            return this.definitions;
+        } catch (err) {
+            console.error(`[PremiumDefinitionService] Failed to parse definitions file:`, err);
+            this.definitions = [];
+            return this.definitions;
+        }
+    }
+
+    /**
+     * Invalidate cache so next read re-loads from file
+     */
+    public invalidateCache(): void {
+        this.definitions = null;
+    }
+
+    /**
+     * Get all definitions (including inactive)
+     */
+    public getAllDefinitions(): PremiumDefinition[] {
+        return this.loadDefinitions();
+    }
+
+    /**
+     * Get only active definitions
+     */
+    public getActiveDefinitions(): PremiumDefinition[] {
+        return this.loadDefinitions().filter(d => d.is_active);
+    }
+
+    /**
+     * Find definition by name (case-insensitive, trimmed)
+     */
+    public getDefinitionByName(name: string): PremiumDefinition | null {
+        const normalized = name.trim().toUpperCase();
+        return this.loadDefinitions().find(
+            d => d.adjustment_name.trim().toUpperCase() === normalized
+        ) || null;
+    }
+
+    /**
+     * Add or update a definition, then persist to JSON file
+     */
+    public addOrUpdateDefinition(data: PremiumDefinition): void {
+        const defs = this.loadDefinitions();
+        const normalizedName = data.adjustment_name.trim().toUpperCase();
+        const idx = defs.findIndex(
+            d => d.adjustment_name.trim().toUpperCase() === normalizedName
+        );
+
+        const entry: PremiumDefinition = {
+            adjustment_name: data.adjustment_name.trim().toUpperCase(),
+            ad_code: data.ad_code.trim(),
+            task_desc: data.task_desc.trim(),
+            input_type: data.input_type,
+            is_active: data.is_active ?? true
+        };
+
+        if (idx >= 0) {
+            defs[idx] = entry;
+        } else {
+            defs.push(entry);
+        }
+
+        this.persistDefinitions(defs);
+        this.definitions = defs;
+    }
+
+    /**
+     * Write definitions array back to JSON file
+     */
+    private persistDefinitions(defs: PremiumDefinition[]): void {
+        try {
+            writeFileSync(DEFINITIONS_FILE, JSON.stringify(defs, null, 2), "utf-8");
+            console.log(`[PremiumDefinitionService] Saved ${defs.length} definitions to file`);
+        } catch (err) {
+            console.error(`[PremiumDefinitionService] Failed to write definitions file:`, err);
+            throw new Error("Failed to save premium definitions");
+        }
+    }
+
+    /**
+     * Validate that a given adjustment_name is in the active definitions list.
+     * Returns the definition if found, throws if not.
+     */
+    public validatePremiumName(name: string): PremiumDefinition {
+        const def = this.getDefinitionByName(name);
+        if (!def) {
+            throw new Error(`Nama premi "${name}" tidak ditemukan dalam definisi premium. Gunakan nama dari daftar format baku.`);
+        }
+        if (!def.is_active) {
+            throw new Error(`Definisi premi "${name}" sudah tidak aktif.`);
+        }
+        return def;
+    }
+
+    /**
+     * Parse and validate a metadata_json string.
+     * Returns parsed object or null if empty/null input.
+     */
+    public parseMetadata(metadataJson: string | null | undefined): PremiumMetadata | null {
+        if (!metadataJson) return null;
+
+        try {
+            const parsed = JSON.parse(metadataJson);
+            if (!parsed || !parsed.input_type) return null;
+            return parsed as PremiumMetadata;
+        } catch {
+            console.warn(`[PremiumDefinitionService] Invalid metadata_json:`, metadataJson);
+            return null;
+        }
+    }
+
+    /**
+     * Calculate total_amount from metadata items.
+     * Used to validate/sync the amount field.
+     */
+    public calculateMetadataTotal(metadata: PremiumMetadata): number {
+        switch (metadata.input_type) {
+            case 'blok':
+                return (metadata.items || []).reduce((sum, item) => sum + (item.jumlah || 0), 0);
+
+            case 'exp':
+                return metadata.jumlah || 0;
+
+            case 'kendaraan':
+                return (metadata.items || []).reduce((sum, item) => sum + (item.jumlah || 0), 0);
+
+            case 'blok,exp': {
+                const blokTotal = (metadata.blok_items || []).reduce((sum, item) => sum + (item.jumlah || 0), 0);
+                const expTotal = metadata.expense?.jumlah || 0;
+                return blokTotal + expTotal;
+            }
+
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Build a properly structured metadata_json string with validated total_amount
+     */
+    public buildMetadataJson(metadata: PremiumMetadata): string {
+        const total = this.calculateMetadataTotal(metadata);
+        return JSON.stringify({ ...metadata, total_amount: total });
+    }
+}
+
+export const premiumDefinitionService = PremiumDefinitionService.getInstance();

@@ -1,0 +1,65 @@
+[
+  {
+    "adjustment_name": "PREMI JAGA",
+    "ad_code": "(AL) TUNJANGAN JAGA GENSET",
+    "task_desc": "(AL) TUNJANGAN JAGA GENSET",
+    "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI JAGA TANGGUNG JAWAB",
+    "ad_code": "(AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT)",
+    "task_desc": "(AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT)",
+    "input_type": "exp",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI KINERJA",
+    "ad_code": "(AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA",
+    "task_desc": "(AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA",
+    "input_type": "blok,exp",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI TIKET",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "input_type": "amount",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI PRUNING",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
+    "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI RAKING",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) WEEDING - CIRCLE RAKING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) WEEDING - CIRCLE RAKING)",
+    "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI RITASE",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "input_type": "kendaraan",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI CUCI MOBIL",
+    "ad_code": "(AL) TUNJANGAN TRANSPORT",
+    "task_desc": "(AL) TUNJANGAN TRANSPORT",
+    "input_type": "amount",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI JARAK",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "input_type": "amount",
+    "is_active": true
+  }
+]
