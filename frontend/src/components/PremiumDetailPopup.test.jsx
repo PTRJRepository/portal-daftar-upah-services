@@ -115,4 +115,44 @@ describe('PremiumDetailPopup', () => {
             container.remove();
         }
     });
+
+    it('renders detail metadata as read-only when editing is disabled', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSave = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <PremiumDetailPopup
+                        isOpen
+                        readOnly
+                        onClose={() => {}}
+                        onSave={onSave}
+                        inputType="blok"
+                        definitionName="PREMI PRUNING"
+                        storedAmount={650000}
+                        initialData={{
+                            input_type: 'blok',
+                            items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 677650 }],
+                            total_amount: 677650
+                        }}
+                    />
+                );
+            });
+
+            expect(container.textContent || '').toContain('Mode lihat saja');
+            expect(findButton(container, 'Sync ke Total Detail')).toBeFalsy();
+            expect(findButton(container, 'Simpan Detail')).toBeFalsy();
+            expect(container.querySelector('input[type="checkbox"]')).toBeFalsy();
+            expect(Array.from(container.querySelectorAll('input')).every((input) => input.disabled)).toBe(true);
+            expect(onSave).not.toHaveBeenCalled();
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
 });

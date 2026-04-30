@@ -4793,3 +4793,932 @@
     ]
   }
 ]
+
+[
+  {
+    "Estate": "P2A",
+    "Gangs": [
+      {
+        "Gang": "C1H",
+        "Details": [
+          {
+            "Empcode": "C0050",
+            "Employee": "SUIP",
+            "SubBlok": "P07/01",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0050",
+            "Employee": "SUIP",
+            "SubBlok": "P13/01",
+            "Amount": 106000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0051",
+            "Employee": "ROBIN DINATA",
+            "SubBlok": "P07/01",
+            "Amount": 170500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0051",
+            "Employee": "ROBIN DINATA",
+            "SubBlok": "P13/01",
+            "Amount": 128500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0054",
+            "Employee": "SAPARUDIN",
+            "SubBlok": "P07/01",
+            "Amount": 172150,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0054",
+            "Employee": "SAPARUDIN",
+            "SubBlok": "P13/01",
+            "Amount": 106000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0374",
+            "Employee": "SONJA PRIYOGA",
+            "SubBlok": "P07/01",
+            "Amount": 162800,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0374",
+            "Employee": "SONJA PRIYOGA",
+            "SubBlok": "P13/01",
+            "Amount": 154000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0496",
+            "Employee": "AHAP",
+            "SubBlok": "P07/01",
+            "Amount": 178200,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0496",
+            "Employee": "AHAP",
+            "SubBlok": "P13/01",
+            "Amount": 162000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0603",
+            "Employee": "QISTAHAM",
+            "SubBlok": "P07/01",
+            "Amount": 178750,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0603",
+            "Employee": "QISTAHAM",
+            "SubBlok": "P13/01",
+            "Amount": 265000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0680",
+            "Employee": "SAMSUL HADI",
+            "SubBlok": "P07/01",
+            "Amount": 172150,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0680",
+            "Employee": "SAMSUL HADI",
+            "SubBlok": "P13/01",
+            "Amount": 434500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0718",
+            "Employee": "FAHRUDIN",
+            "SubBlok": "P07/01",
+            "Amount": 469700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0718",
+            "Employee": "FAHRUDIN",
+            "SubBlok": "P13/01",
+            "Amount": 285000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0319",
+            "Employee": "RIDUAN",
+            "SubBlok": "P07/01",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0319",
+            "Employee": "RIDUAN",
+            "SubBlok": "P13/01",
+            "Amount": 100000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0713",
+            "Employee": "FRANSISKO GAUTAMA",
+            "SubBlok": "P07/01",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0713",
+            "Employee": "FRANSISKO GAUTAMA",
+            "SubBlok": "P13/01",
+            "Amount": 72500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0738",
+            "Employee": "SUTRA PRAYOGI",
+            "SubBlok": "P07/01",
+            "Amount": 187000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0738",
+            "Employee": "SUTRA PRAYOGI",
+            "SubBlok": "P13/01",
+            "Amount": 150000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0744",
+            "Employee": "HAERUDIN",
+            "SubBlok": "P07/01",
+            "Amount": 177650,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0744",
+            "Employee": "HAERUDIN",
+            "SubBlok": "P13/01",
+            "Amount": 157500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0763",
+            "Employee": "INDAR JAYA",
+            "SubBlok": "P07/01",
+            "Amount": 174900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0763",
+            "Employee": "INDAR JAYA",
+            "SubBlok": "P13/01",
+            "Amount": 92000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0764",
+            "Employee": "RENDI ANGGARA",
+            "SubBlok": "P07/01",
+            "Amount": 176550,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0764",
+            "Employee": "RENDI ANGGARA",
+            "SubBlok": "P13/01",
+            "Amount": 140000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0766",
+            "Employee": "AHAMD RONI JOHARI",
+            "SubBlok": "P07/01",
+            "Amount": 173250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0766",
+            "Employee": "AHAMD RONI JOHARI",
+            "SubBlok": "P13/01",
+            "Amount": 140000,
+            "Jenis": "Pruning"
+          }
+        ]
+      },
+      {
+        "Gang": "C3H",
+        "Details": [
+          {
+            "Empcode": "C0199",
+            "Employee": "SUPARDI.A",
+            "SubBlok": "P97/19",
+            "Amount": 96200,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0199",
+            "Employee": "SUPARDI.A",
+            "SubBlok": "P97/20",
+            "Amount": 183300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0199",
+            "Employee": "SUPARDI.A",
+            "SubBlok": "P08/02",
+            "Amount": 162250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0303",
+            "Employee": "YANDI",
+            "SubBlok": "P97/19",
+            "Amount": 109200,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0303",
+            "Employee": "YANDI",
+            "SubBlok": "P97/20",
+            "Amount": 182650,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0303",
+            "Employee": "YANDI",
+            "SubBlok": "P08/02",
+            "Amount": 160600,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0304",
+            "Employee": "IWAN",
+            "SubBlok": "P97/19",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0304",
+            "Employee": "IWAN",
+            "SubBlok": "P97/20",
+            "Amount": 183300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0304",
+            "Employee": "IWAN",
+            "SubBlok": "P08/02",
+            "Amount": 162800,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0311",
+            "Employee": "SAHIRI",
+            "SubBlok": "P97/19",
+            "Amount": 109200,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0311",
+            "Employee": "SAHIRI",
+            "SubBlok": "P97/20",
+            "Amount": 180050,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0311",
+            "Employee": "SAHIRI",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0313",
+            "Employee": "MARDI",
+            "SubBlok": "P97/19",
+            "Amount": 109200,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0313",
+            "Employee": "MARDI",
+            "SubBlok": "P97/20",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0313",
+            "Employee": "MARDI",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0315",
+            "Employee": "RIDWAN",
+            "SubBlok": "P97/19",
+            "Amount": 530400,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0315",
+            "Employee": "RIDWAN",
+            "SubBlok": "P97/20",
+            "Amount": 544700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0315",
+            "Employee": "RIDWAN",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0610",
+            "Employee": "IRPAN",
+            "SubBlok": "P97/19",
+            "Amount": 97500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0610",
+            "Employee": "IRPAN",
+            "SubBlok": "P97/20",
+            "Amount": 181350,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0610",
+            "Employee": "IRPAN",
+            "SubBlok": "P08/02",
+            "Amount": 163350,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0126",
+            "Employee": "ROBIANSYAH",
+            "SubBlok": "P97/19",
+            "Amount": 179400,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0126",
+            "Employee": "ROBIANSYAH",
+            "SubBlok": "P97/20",
+            "Amount": 182000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0126",
+            "Employee": "ROBIANSYAH",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0663",
+            "Employee": "FERI",
+            "SubBlok": "P97/19",
+            "Amount": 108550,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0663",
+            "Employee": "FERI",
+            "SubBlok": "P97/20",
+            "Amount": 182000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0663",
+            "Employee": "FERI",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0705",
+            "Employee": "HARDI (PATIMAH)",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0705",
+            "Employee": "HARDI (PATIMAH)",
+            "SubBlok": "P97/20",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0705",
+            "Employee": "HARDI (PATIMAH)",
+            "SubBlok": "P08/02",
+            "Amount": 151250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0709",
+            "Employee": "JUNAIDI SOLEH",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0709",
+            "Employee": "JUNAIDI SOLEH",
+            "SubBlok": "P97/20",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0709",
+            "Employee": "JUNAIDI SOLEH",
+            "SubBlok": "P08/02",
+            "Amount": 148500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0712",
+            "Employee": "SUHADI",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0712",
+            "Employee": "SUHADI",
+            "SubBlok": "P97/20",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0712",
+            "Employee": "SUHADI",
+            "SubBlok": "P08/02",
+            "Amount": 152900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0719",
+            "Employee": "HAINI",
+            "SubBlok": "P97/19",
+            "Amount": 54600,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0719",
+            "Employee": "HAINI",
+            "SubBlok": "P97/20",
+            "Amount": 91650,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0719",
+            "Employee": "HAINI",
+            "SubBlok": "P08/02",
+            "Amount": 79750,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0697",
+            "Employee": "RUSLAN HADI",
+            "SubBlok": "P97/19",
+            "Amount": 186550,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0697",
+            "Employee": "RUSLAN HADI",
+            "SubBlok": "P97/20",
+            "Amount": 273000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0697",
+            "Employee": "RUSLAN HADI",
+            "SubBlok": "P08/02",
+            "Amount": 241450,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0702",
+            "Employee": "HENDRI PRATIKTO",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0702",
+            "Employee": "HENDRI PRATIKTO",
+            "SubBlok": "P97/20",
+            "Amount": 91000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0702",
+            "Employee": "HENDRI PRATIKTO",
+            "SubBlok": "P08/02",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0717",
+            "Employee": "MUH. HABIBI",
+            "SubBlok": "P97/19",
+            "Amount": 107250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0717",
+            "Employee": "MUH. HABIBI",
+            "SubBlok": "P97/20",
+            "Amount": 182000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0717",
+            "Employee": "MUH. HABIBI",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0053",
+            "Employee": "MUSNI",
+            "SubBlok": "P97/19",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0053",
+            "Employee": "MUSNI",
+            "SubBlok": "P97/20",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0053",
+            "Employee": "MUSNI",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0055",
+            "Employee": "ARPANDI",
+            "SubBlok": "P97/19",
+            "Amount": 105300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0055",
+            "Employee": "ARPANDI",
+            "SubBlok": "P97/20",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0055",
+            "Employee": "ARPANDI",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0071",
+            "Employee": "MASRI",
+            "SubBlok": "P97/19",
+            "Amount": 180700,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0071",
+            "Employee": "MASRI",
+            "SubBlok": "P97/20",
+            "Amount": 183300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0071",
+            "Employee": "MASRI",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0309",
+            "Employee": "HARDIANSYAH",
+            "SubBlok": "P97/19",
+            "Amount": 177450,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0309",
+            "Employee": "HARDIANSYAH",
+            "SubBlok": "P97/20",
+            "Amount": 182000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0309",
+            "Employee": "HARDIANSYAH",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0587",
+            "Employee": "SALEH",
+            "SubBlok": "P97/19",
+            "Amount": 97500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0587",
+            "Employee": "SALEH",
+            "SubBlok": "P97/20",
+            "Amount": 183300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0587",
+            "Employee": "SALEH",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0735",
+            "Employee": "RINDI PRIANTO",
+            "SubBlok": "P97/19",
+            "Amount": 179400,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0735",
+            "Employee": "RINDI PRIANTO",
+            "SubBlok": "P97/20",
+            "Amount": 182000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0735",
+            "Employee": "RINDI PRIANTO",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0737",
+            "Employee": "PUTRA ROMADHAN",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0737",
+            "Employee": "PUTRA ROMADHAN",
+            "SubBlok": "P97/20",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0737",
+            "Employee": "PUTRA ROMADHAN",
+            "SubBlok": "P08/02",
+            "Amount": 148500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0733",
+            "Employee": "YULIANDA PRATAMA",
+            "SubBlok": "P97/19",
+            "Amount": 54600,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0733",
+            "Employee": "YULIANDA PRATAMA",
+            "SubBlok": "P97/20",
+            "Amount": 91650,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0733",
+            "Employee": "YULIANDA PRATAMA",
+            "SubBlok": "P08/02",
+            "Amount": 79750,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0739",
+            "Employee": "MARSEZBELKAN",
+            "SubBlok": "P97/19",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0739",
+            "Employee": "MARSEZBELKAN",
+            "SubBlok": "P97/20",
+            "Amount": 91000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0739",
+            "Employee": "MARSEZBELKAN",
+            "SubBlok": "P08/02",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0755",
+            "Employee": "DEAN KURNIAWAN",
+            "SubBlok": "P97/19",
+            "Amount": 97500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0755",
+            "Employee": "DEAN KURNIAWAN",
+            "SubBlok": "P97/20",
+            "Amount": 0,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0755",
+            "Employee": "DEAN KURNIAWAN",
+            "SubBlok": "P08/02",
+            "Amount": 163900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0756",
+            "Employee": "FERDY",
+            "SubBlok": "P97/19",
+            "Amount": 107250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0756",
+            "Employee": "FERDY",
+            "SubBlok": "P97/20",
+            "Amount": 183300,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0756",
+            "Employee": "FERDY",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0760",
+            "Employee": "ILHAM PEBRIAN",
+            "SubBlok": "P97/19",
+            "Amount": 537550,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0760",
+            "Employee": "ILHAM PEBRIAN",
+            "SubBlok": "P97/20",
+            "Amount": 549900,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0760",
+            "Employee": "ILHAM PEBRIAN",
+            "SubBlok": "P08/02",
+            "Amount": 159500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0768",
+            "Employee": "ADIN",
+            "SubBlok": "P97/19",
+            "Amount": 88400,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0768",
+            "Employee": "ADIN",
+            "SubBlok": "P97/20",
+            "Amount": 91650,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "C0768",
+            "Employee": "ADIN",
+            "SubBlok": "P08/02",
+            "Amount": 81950,
+            "Jenis": "Pruning"
+          }
+        ]
+      }
+    ]
+  }
+]
+
+
+[
+  {
+    "Estate": "P1B",
+    "Gangs": [
+      {
+        "Gang": "B3H",
+        "Details": [
+          {
+            "Empcode": "B0548",
+            "SubBlok": "P2206",
+            "Amount": 108000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0739",
+            "SubBlok": "P2206",
+            "Amount": 127125,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0729",
+            "SubBlok": "P2206",
+            "Amount": 134625,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0727",
+            "SubBlok": "P2206",
+            "Amount": 117375,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0728",
+            "SubBlok": "P2206",
+            "Amount": 245625,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0736",
+            "SubBlok": "P2206",
+            "Amount": 216375,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0722",
+            "SubBlok": "P2206",
+            "Amount": 254250,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0714",
+            "SubBlok": "P2206",
+            "Amount": 144375,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0742",
+            "SubBlok": "P2206",
+            "Amount": 156000,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0725",
+            "SubBlok": "P2206",
+            "Amount": 155625,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0731",
+            "SubBlok": "P2206",
+            "Amount": 154875,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0720",
+            "SubBlok": "P2206",
+            "Amount": 181500,
+            "Jenis": "Pruning"
+          },
+          {
+            "Empcode": "B0717",
+            "SubBlok": "P2206",
+            "Amount": 159000,
+            "Jenis": "Pruning"
+          }
+        ]
+      }
+    ]
+  }
+]

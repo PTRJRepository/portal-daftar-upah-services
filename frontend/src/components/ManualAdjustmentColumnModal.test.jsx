@@ -198,6 +198,64 @@ describe('ManualAdjustmentColumnModal', () => {
         }
     });
 
+    it('saves free-text koreksi with fixed prefix, ADCode, and blok input type', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSaved = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <ManualAdjustmentColumnModal
+                        isOpen
+                        onClose={() => {}}
+                        onSaved={onSaved}
+                        token="test-token"
+                        division="PG2A"
+                        initialAdjustmentType="POTONGAN_KOTOR"
+                    />
+                );
+            });
+            await flushEffects();
+
+            const nameInput = container.querySelector('input[placeholder="contoh: PANEN"]');
+            expect(nameInput).toBeTruthy();
+
+            await act(async () => {
+                changeInputValue(nameInput, 'PANEN');
+            });
+            await flushEffects();
+
+            expect(container.textContent || '').toContain('DE0004');
+            expect(container.textContent || '').toContain('(DE) POTONGAN PREMI');
+
+            const saveButton = findButton(container, 'Simpan Kolom');
+            expect(saveButton).toBeTruthy();
+            expect(saveButton.disabled).toBe(false);
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({
+                adjustment_type: 'POTONGAN_KOTOR',
+                adjustment_name: 'KOREKSI PANEN',
+                ad_code: 'DE0004',
+                task_desc: '(DE) POTONGAN PREMI',
+                input_type: 'blok',
+                remarks: 'KOREKSI PANEN | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH'
+            }));
+            expect(mocked.fetchTaskCodeOptions).not.toHaveBeenCalled();
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
     it('uses premium definitions as the only selectable PREMI category source', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);

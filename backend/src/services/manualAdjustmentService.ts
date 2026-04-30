@@ -151,9 +151,33 @@ function buildAdtransSqlCondition(columnName: string, filter: string): string {
 }
 
 const DEFAULT_ADTRANS_COMPARE_FILTERS = ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan'];
+const KOREKSI_PREFIX = "KOREKSI";
+const KOREKSI_DEFAULT_AD_CODE = "DE0004";
+const KOREKSI_DEFAULT_TASK_DESC = "(DE) POTONGAN PREMI";
 
 function normalizeText(value: unknown): string {
     return String(value || '').trim();
+}
+
+function removeLeadingWordPrefix(value: unknown, prefix: string): string {
+    return normalizeText(value).replace(new RegExp(`^${prefix}\\s*`, "i"), "").trim();
+}
+
+function normalizeManualAdjustmentForSave(data: ManualAdjustment): ManualAdjustment {
+    const type = normalizeText(data.adjustment_type).toUpperCase();
+    if (type !== "POTONGAN_KOTOR") return data;
+
+    const suffix = removeLeadingWordPrefix(data.adjustment_name, KOREKSI_PREFIX);
+    const adjustmentName = `${KOREKSI_PREFIX}${suffix ? ` ${suffix}` : ""}`.trim();
+
+    return {
+        ...data,
+        adjustment_name: adjustmentName,
+        ad_code: KOREKSI_DEFAULT_AD_CODE,
+        task_code: KOREKSI_DEFAULT_AD_CODE,
+        base_task_code: KOREKSI_DEFAULT_AD_CODE,
+        task_desc: KOREKSI_DEFAULT_TASK_DESC
+    };
 }
 
 function resolveManualAdjustmentAdCode(data: Pick<ManualAdjustment, 'ad_code' | 'base_task_code' | 'task_code'>): string {
@@ -226,6 +250,15 @@ function scoreTaskCodeOption(option: TaskCodeOption, searchWords: string[]): num
 }
 
 export async function resolveManualAdjustmentPresetMapping(data: ManualAdjustment, adjustmentName: string): Promise<Partial<ManualAdjustment>> {
+    if (normalizeText(data.adjustment_type).toUpperCase() === "POTONGAN_KOTOR") {
+        return {
+            ad_code: KOREKSI_DEFAULT_AD_CODE,
+            task_code: KOREKSI_DEFAULT_AD_CODE,
+            base_task_code: KOREKSI_DEFAULT_AD_CODE,
+            task_desc: KOREKSI_DEFAULT_TASK_DESC
+        };
+    }
+
     if (resolveManualAdjustmentAdCode(data)) return {};
 
     const prefix = expectedTaskDescPrefix(data.adjustment_type);
@@ -506,6 +539,7 @@ export class ManualAdjustmentService {
      */
     public async saveAdjustment(data: ManualAdjustment, user?: string): Promise<number> {
         const db = this.getDatabase();
+        data = normalizeManualAdjustmentForSave(data);
 
         // Ensure amount is a valid float
         const parsedAmount = parseFloat(data.amount.toString()) || 0;

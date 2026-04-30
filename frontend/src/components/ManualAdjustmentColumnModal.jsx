@@ -12,6 +12,8 @@ const CATEGORY_OPTIONS = [
 ];
 
 const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
+const KOREKSI_DEFAULT_TASK_DESC = '(DE) POTONGAN PREMI';
+const KOREKSI_INPUT_TYPE = 'blok';
 const KOREKSI_PREFIX = 'KOREKSI';
 const POTONGAN_PREFIX = 'POTONGAN';
 
@@ -90,6 +92,17 @@ function buildRemarks(taskCodeOption, adjustmentName, amount = 0) {
     const adCode = resolveAdCode(taskCodeOption);
     const taskDesc = taskCodeOption.task_desc || taskCodeOption.doc_desc || '';
     return `${adjustmentName} | ${adCode}${taskDesc ? ` - ${taskDesc}` : ''} | ${amount} | sync:MISS | match:MISMATCH`;
+}
+
+function buildKoreksiDefaultOption(division) {
+    return {
+        ad_code: KOREKSI_DEFAULT_AD_CODE,
+        task_code: KOREKSI_DEFAULT_AD_CODE,
+        base_task_code: KOREKSI_DEFAULT_AD_CODE,
+        task_desc: KOREKSI_DEFAULT_TASK_DESC,
+        doc_desc: KOREKSI_DEFAULT_TASK_DESC,
+        loc_code: division && division !== 'ALL' ? division : null
+    };
 }
 
 function removeLeadingPrefix(value, prefix) {
@@ -171,21 +184,25 @@ export default function ManualAdjustmentColumnModal({
         [adjustmentType]
     );
 
-    const koreksiDefaultOption = useMemo(
-        () => options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE && option.task_desc === '(DE) POTONGAN PREMI')
-            || options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE),
-        [options]
-    );
+    const koreksiDefaultOption = useMemo(() => {
+        if (adjustmentType !== 'POTONGAN_KOTOR') return null;
+        return options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE && option.task_desc === KOREKSI_DEFAULT_TASK_DESC)
+            || options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE)
+            || buildKoreksiDefaultOption(division);
+    }, [adjustmentType, division, options]);
 
     const filteredOptions = useMemo(() => {
+        if (adjustmentType === 'POTONGAN_KOTOR') {
+            return koreksiDefaultOption ? [koreksiDefaultOption] : [];
+        }
         if (adjustmentType === 'POTONGAN_BERSIH') {
             return options.filter((option) => String(option.task_desc || option.doc_desc || '').trim().startsWith('(DE)'));
         }
         return options;
-    }, [adjustmentType, options]);
+    }, [adjustmentType, koreksiDefaultOption, options]);
 
     const activePremiumDefinitions = useMemo(
-        () => (premiumDefinitions || []).filter((def) => def?.is_active !== false),
+        () => (premiumDefinitions || []).filter((def) => def?.is_active !== false && (!def?.adjustment_type || def.adjustment_type === 'PREMI')),
         [premiumDefinitions]
     );
     const filteredPremiumDefinitions = useMemo(() => {
@@ -244,8 +261,12 @@ export default function ManualAdjustmentColumnModal({
                     if (!cancelled) setOptions([]);
                     return;
                 }
+                if (adjustmentType === 'POTONGAN_KOTOR') {
+                    if (!cancelled) setOptions([]);
+                    return;
+                }
                 const result = await fetchTaskCodeOptions(token, {
-                    search: adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_DEFAULT_AD_CODE : search,
+                    search,
                     divisionCode: division,
                     limit: 50
                 });
@@ -424,7 +445,9 @@ export default function ManualAdjustmentColumnModal({
                 remarks: presetRemarks || (fallbackTaskCode
                     ? buildRemarks(fallbackTaskCode, resolvedAdjustmentName, 0)
                     : `${resolvedAdjustmentName} | MANUAL EDIT | 0 | sync:MISS | match:MISMATCH`),
-                input_type: selectedPremiumDef?.input_type || undefined
+                input_type: adjustmentType === 'POTONGAN_KOTOR'
+                    ? KOREKSI_INPUT_TYPE
+                    : selectedPremiumDef?.input_type || undefined
             });
             onClose?.();
         } catch (e) {
@@ -552,7 +575,7 @@ export default function ManualAdjustmentColumnModal({
                                             setDocDesc(`${prefix} ${e.target.value}`.trimEnd());
                                             setPresetRemarks('');
                                         }}
-                                        placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: DENDA PANEN' : 'contoh: SPSI'}
+                                        placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: PANEN' : 'contoh: SPSI'}
                                         style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
                                     />
                                 </div>
@@ -701,7 +724,7 @@ export default function ManualAdjustmentColumnModal({
                                 ADCode Wajib ({division || 'ALL'})
                             </label>
                             <input
-                                value={search}
+                                value={adjustmentType === 'POTONGAN_KOTOR' ? `${KOREKSI_DEFAULT_AD_CODE} - ${KOREKSI_DEFAULT_TASK_DESC}` : search}
                                 onChange={(e) => {
                                     if (adjustmentType === 'POTONGAN_KOTOR') return;
                                     setSearch(e.target.value);

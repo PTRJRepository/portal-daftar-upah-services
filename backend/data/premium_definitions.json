@@ -1,21 +1,21 @@
 [
   {
     "adjustment_name": "PREMI JAGA",
-    "ad_code": "(AL) TUNJANGAN JAGA GENSET",
+    "ad_code": "(AL0018P1A) (AL) TUNJANGAN JAGA GENSET",
     "task_desc": "(AL) TUNJANGAN JAGA GENSET",
     "input_type": "blok",
     "is_active": true
   },
   {
     "adjustment_name": "PREMI JAGA TANGGUNG JAWAB",
-    "ad_code": "(AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT)",
+    "ad_code": "(AL3GA9050P1A) (AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT)",
     "task_desc": "(AL) TUNJANGAN PREMI (WORKSHOP CONTROL ACCOUNT)",
     "input_type": "exp",
     "is_active": true
   },
   {
     "adjustment_name": "PREMI KINERJA",
-    "ad_code": "(AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA",
+    "ad_code": "(AL3PM2207P2A) (AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA",
     "task_desc": "(AL) TUNJANGAN PREMI - TUNJANGAN PREMI KINERJA",
     "input_type": "blok,exp",
     "is_active": true
@@ -29,7 +29,7 @@
   },
   {
     "adjustment_name": "PREMI PRUNING",
-    "ad_code": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
+    "ad_code": "(AL3PM0601P1A) (AL) TUNJANGAN PREMI ((PM) PRUNING)",
     "task_desc": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
     "input_type": "blok",
     "is_active": true
@@ -43,8 +43,43 @@
   },
   {
     "adjustment_name": "PREMI RITASE",
-    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "ad_code": "(AL3PT2305P1A) (AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
     "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "input_type": "kendaraan",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI TBS",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI INSENTIF PANEN",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "input_type": "blok",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI ANGKUT PUPUK",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
+    "input_type": "kendaraan",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI ANGKUT PC",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
+    "input_type": "kendaraan",
+    "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI ANGKUT BIBIT",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT BIBIT)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT BIBIT)",
     "input_type": "kendaraan",
     "is_active": true
   },
@@ -52,14 +87,15 @@
     "adjustment_name": "PREMI CUCI MOBIL",
     "ad_code": "(AL) TUNJANGAN TRANSPORT",
     "task_desc": "(AL) TUNJANGAN TRANSPORT",
-    "input_type": "amount",
+    "input_type": "kendaraan",
     "is_active": true
   },
   {
-    "adjustment_name": "PREMI JARAK",
-    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
-    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
-    "input_type": "amount",
+    "adjustment_type": "POTONGAN_KOTOR",
+    "adjustment_name": "KOREKSI",
+    "ad_code": "DE0004",
+    "task_desc": "(DE) POTONGAN PREMI",
+    "input_type": "blok",
     "is_active": true
   }
 ]

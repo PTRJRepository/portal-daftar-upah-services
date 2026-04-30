@@ -113,6 +113,11 @@ const numberInputStyle = {
     textAlign: 'right'
 };
 
+const readOnlyInputStyle = {
+    background: '#f8fafc',
+    color: '#334155'
+};
+
 const removeButtonStyle = {
     border: 0,
     background: '#fee2e2',
@@ -180,15 +185,20 @@ const summaryCellStyle = {
     padding: '9px 10px'
 };
 
-function BlokEditor({ items, onChange }) {
+function BlokEditor({ items, onChange, readOnly = false }) {
     const handleChange = (index, field, value) => {
+        if (readOnly) return;
         const updated = [...items];
         updated[index] = { ...updated[index], [field]: field === 'jumlah' ? (Number(value) || 0) : value };
         onChange(updated);
     };
 
-    const handleAdd = () => onChange([...items, { ...EMPTY_BLOK_ROW }]);
-    const handleRemove = (index) => onChange(items.filter((_, i) => i !== index));
+    const handleAdd = () => {
+        if (!readOnly) onChange([...items, { ...EMPTY_BLOK_ROW }]);
+    };
+    const handleRemove = (index) => {
+        if (!readOnly) onChange(items.filter((_, i) => i !== index));
+    };
 
     return (
         <div>
@@ -206,50 +216,60 @@ function BlokEditor({ items, onChange }) {
                         <tr key={i}>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={cellInputStyle}
+                                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     value={item.subblok || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'subblok', e.target.value.toUpperCase())}
                                     placeholder="P0921"
                                 />
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={cellInputStyle}
+                                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     value={item.gang_code || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'gang_code', e.target.value.toUpperCase())}
                                     placeholder="B1H"
                                 />
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={numberInputStyle}
+                                    style={{ ...numberInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     type="number"
                                     value={item.jumlah || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'jumlah', e.target.value)}
                                     placeholder="0"
                                 />
                             </td>
                             <td style={{ padding: 4, textAlign: 'center' }}>
-                                <button type="button" style={removeButtonStyle} onClick={() => handleRemove(i)}>X</button>
+                                {!readOnly && (
+                                    <button type="button" style={removeButtonStyle} onClick={() => handleRemove(i)}>X</button>
+                                )}
                             </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <button type="button" style={addButtonStyle} onClick={handleAdd}>+ Tambah Baris</button>
+            {!readOnly && <button type="button" style={addButtonStyle} onClick={handleAdd}>+ Tambah Baris</button>}
         </div>
     );
 }
 
-function KendaraanEditor({ items, onChange }) {
+function KendaraanEditor({ items, onChange, readOnly = false }) {
     const handleChange = (index, field, value) => {
+        if (readOnly) return;
         const updated = [...items];
         updated[index] = { ...updated[index], [field]: field === 'jumlah' ? (Number(value) || 0) : value };
         onChange(updated);
     };
 
-    const handleAdd = () => onChange([...items, { ...EMPTY_KENDARAAN_ROW }]);
-    const handleRemove = (index) => onChange(items.filter((_, i) => i !== index));
+    const handleAdd = () => {
+        if (!readOnly) onChange([...items, { ...EMPTY_KENDARAAN_ROW }]);
+    };
+    const handleRemove = (index) => {
+        if (!readOnly) onChange(items.filter((_, i) => i !== index));
+    };
 
     return (
         <div>
@@ -267,60 +287,71 @@ function KendaraanEditor({ items, onChange }) {
                         <tr key={i}>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={cellInputStyle}
+                                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     value={item.nomor_kendaraan || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'nomor_kendaraan', e.target.value.toUpperCase())}
                                     placeholder="B1234AB"
                                 />
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={cellInputStyle}
+                                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     value={item.expense_code || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'expense_code', e.target.value.toUpperCase())}
                                     placeholder="TRANSPORT"
                                 />
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={numberInputStyle}
+                                    style={{ ...numberInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     type="number"
                                     value={item.jumlah || ''}
+                                    disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'jumlah', e.target.value)}
                                     placeholder="0"
                                 />
                             </td>
                             <td style={{ padding: 4, textAlign: 'center' }}>
-                                <button type="button" style={removeButtonStyle} onClick={() => handleRemove(i)}>X</button>
+                                {!readOnly && (
+                                    <button type="button" style={removeButtonStyle} onClick={() => handleRemove(i)}>X</button>
+                                )}
                             </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <button type="button" style={addButtonStyle} onClick={handleAdd}>+ Tambah Baris</button>
+            {!readOnly && <button type="button" style={addButtonStyle} onClick={handleAdd}>+ Tambah Baris</button>}
         </div>
     );
 }
 
-function ExpenseEditor({ expense, onChange }) {
+function ExpenseEditor({ expense, onChange, readOnly = false }) {
     return (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Expense Code</label>
                 <input
-                    style={cellInputStyle}
+                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                     value={expense.expense_code || ''}
-                    onChange={(e) => onChange({ ...expense, expense_code: e.target.value.toUpperCase() })}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                        if (!readOnly) onChange({ ...expense, expense_code: e.target.value.toUpperCase() });
+                    }}
                     placeholder="LABOUR"
                 />
             </div>
             <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Jumlah</label>
                 <input
-                    style={numberInputStyle}
+                    style={{ ...numberInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                     type="number"
                     value={expense.jumlah || ''}
-                    onChange={(e) => onChange({ ...expense, jumlah: Number(e.target.value) || 0 })}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                        if (!readOnly) onChange({ ...expense, jumlah: Number(e.target.value) || 0 });
+                    }}
                     placeholder="0"
                 />
             </div>
@@ -335,7 +366,8 @@ export default function PremiumDetailPopup({
     inputType,
     definitionName,
     initialData,
-    storedAmount
+    storedAmount,
+    readOnly = false
 }) {
     const initialEditorState = useMemo(
         () => buildEditorState(initialData, inputType),
@@ -390,13 +422,20 @@ export default function PremiumDetailPopup({
     const detailDiffersFromStored = hasAmountDifference(totalAmount, storedAmountNumber);
     const detailDiffersFromDraft = hasAmountDifference(totalAmount, amountToSave);
     const isLegacyFallback = !!initialEditorState.parsed?.legacy_source;
+    const canEdit = !readOnly;
 
     const handleSyncAmount = useCallback(() => {
+        if (!canEdit) return;
         setAmountDraft(totalAmount);
         setIsAmountEditable(true);
-    }, [totalAmount]);
+    }, [canEdit, totalAmount]);
 
     const handleSave = useCallback(() => {
+        if (!canEdit) {
+            onClose?.();
+            return;
+        }
+
         let metadataJson;
 
         switch (inputType) {
@@ -439,7 +478,7 @@ export default function PremiumDetailPopup({
             amountSyncedToDetail: !detailDiffersFromDraft
         });
         onClose?.();
-    }, [inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, onSave, onClose]);
+    }, [canEdit, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, onSave, onClose]);
 
     if (!isOpen || inputType === 'amount') return null;
 
@@ -502,11 +541,13 @@ export default function PremiumDetailPopup({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
                         {isLegacyFallback ? (
                             <div style={warningPanelStyle}>
-                                <strong>Detail belum tersedia di database.</strong> Popup ini membuat fallback dari amount awal supaya data lama tetap bisa dibuka. Isi uraian subblok/metadata yang benar lalu simpan agar detail tersimpan di payroll_manual_adjustments.
+                                <strong>Detail belum tersedia di database.</strong> Popup ini membuat fallback dari amount awal supaya data lama tetap bisa dibuka. {canEdit ? 'Isi uraian subblok/metadata yang benar lalu simpan agar detail tersimpan di payroll_manual_adjustments.' : 'Mode lihat saja hanya menampilkan fallback; masuk mode edit untuk mengubah dan menyimpan detail.'}
                             </div>
                         ) : (
                             <div style={infoPanelStyle}>
-                                Detail dibaca dari database payroll_manual_adjustments metadata_json. Bagian verifikasi di bawah membandingkan amount tersimpan dengan total uraian detail.
+                                {canEdit
+                                    ? 'Detail dibaca dari database payroll_manual_adjustments metadata_json. Bagian verifikasi di bawah membandingkan amount tersimpan dengan total uraian detail.'
+                                    : 'Mode lihat saja. Detail dibaca dari database payroll_manual_adjustments metadata_json, dan perubahan hanya bisa dilakukan dari mode edit.'}
                             </div>
                         )}
 
@@ -531,70 +572,72 @@ export default function PremiumDetailPopup({
 
                         {detailDiffersFromStored && (
                             <div style={warningPanelStyle}>
-                                Amount tersimpan berbeda dengan total detail metadata sebesar {formatAmount(Math.abs(diffFromStored))}. Gunakan tombol Sync ke Total Detail jika amount awal ingin disamakan dengan uraian detail.
+                                Amount tersimpan berbeda dengan total detail metadata sebesar {formatAmount(Math.abs(diffFromStored))}. {canEdit ? 'Gunakan tombol Sync ke Total Detail jika amount awal ingin disamakan dengan uraian detail.' : 'Masuk mode edit untuk sync amount awal dengan uraian detail.'}
                             </div>
                         )}
 
-                        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={isAmountEditable}
-                                    onChange={(event) => setIsAmountEditable(event.target.checked)}
-                                />
-                                Edit amount awal/tersimpan
-                            </label>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                                <input
-                                    style={{ ...numberInputStyle, maxWidth: 180, background: isAmountEditable ? '#ffffff' : '#e2e8f0' }}
-                                    type="number"
-                                    value={amountDraft}
-                                    disabled={!isAmountEditable}
-                                    onChange={(event) => setAmountDraft(Number(event.target.value) || 0)}
-                                />
-                                {detailDiffersFromDraft && (
-                                    <button
-                                        type="button"
-                                        onClick={handleSyncAmount}
-                                        style={{
-                                            border: '1px solid #16a34a',
-                                            background: '#dcfce7',
-                                            color: '#166534',
-                                            borderRadius: 8,
-                                            padding: '7px 10px',
-                                            cursor: 'pointer',
-                                            fontSize: 12,
-                                            fontWeight: 800
-                                        }}
-                                    >
-                                        Sync ke Total Detail
-                                    </button>
-                                )}
+                        {canEdit && (
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isAmountEditable}
+                                        onChange={(event) => setIsAmountEditable(event.target.checked)}
+                                    />
+                                    Edit amount awal/tersimpan
+                                </label>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                                    <input
+                                        style={{ ...numberInputStyle, maxWidth: 180, background: isAmountEditable ? '#ffffff' : '#e2e8f0' }}
+                                        type="number"
+                                        value={amountDraft}
+                                        disabled={!isAmountEditable}
+                                        onChange={(event) => setAmountDraft(Number(event.target.value) || 0)}
+                                    />
+                                    {detailDiffersFromDraft && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSyncAmount}
+                                            style={{
+                                                border: '1px solid #16a34a',
+                                                background: '#dcfce7',
+                                                color: '#166534',
+                                                borderRadius: 8,
+                                                padding: '7px 10px',
+                                                cursor: 'pointer',
+                                                fontSize: 12,
+                                                fontWeight: 800
+                                            }}
+                                        >
+                                            Sync ke Total Detail
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     {inputType === 'blok' && (
-                        <BlokEditor items={blokItems} onChange={setBlokItems} />
+                        <BlokEditor items={blokItems} onChange={setBlokItems} readOnly={!canEdit} />
                     )}
 
                     {inputType === 'exp' && (
-                        <ExpenseEditor expense={expense} onChange={setExpense} />
+                        <ExpenseEditor expense={expense} onChange={setExpense} readOnly={!canEdit} />
                     )}
 
                     {inputType === 'kendaraan' && (
-                        <KendaraanEditor items={kendaraanItems} onChange={setKendaraanItems} />
+                        <KendaraanEditor items={kendaraanItems} onChange={setKendaraanItems} readOnly={!canEdit} />
                     )}
 
                     {inputType === 'blok,exp' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             <div>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Blok Items</div>
-                                <BlokEditor items={comboBlokItems} onChange={setComboBlokItems} />
+                                <BlokEditor items={comboBlokItems} onChange={setComboBlokItems} readOnly={!canEdit} />
                             </div>
                             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Expense</div>
-                                <ExpenseEditor expense={comboExpense} onChange={setComboExpense} />
+                                <ExpenseEditor expense={comboExpense} onChange={setComboExpense} readOnly={!canEdit} />
                             </div>
                         </div>
                     )}
@@ -614,7 +657,7 @@ export default function PremiumDetailPopup({
                     <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
                         Detail: <span style={{ color: '#16a34a' }}>{formatAmount(totalAmount)}</span>
                         <span style={{ color: '#64748b', marginLeft: 10 }}>
-                            Amount simpan: {formatAmount(amountToSave)}
+                            {canEdit ? 'Amount simpan' : 'Amount tersimpan'}: {formatAmount(amountToSave)}
                         </span>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -623,24 +666,26 @@ export default function PremiumDetailPopup({
                             onClick={onClose}
                             style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontSize: 13 }}
                         >
-                            Batal
+                            {canEdit ? 'Batal' : 'Tutup'}
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleSave}
-                            style={{
-                                padding: '8px 14px',
-                                borderRadius: 8,
-                                border: 0,
-                                background: '#16a34a',
-                                color: '#fff',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                fontSize: 13
-                            }}
-                        >
-                            Simpan Detail
-                        </button>
+                        {canEdit && (
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                style={{
+                                    padding: '8px 14px',
+                                    borderRadius: 8,
+                                    border: 0,
+                                    background: '#16a34a',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    fontSize: 13
+                                }}
+                            >
+                                Simpan Detail
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

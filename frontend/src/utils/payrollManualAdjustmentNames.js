@@ -78,7 +78,9 @@ function findDefinitionByName(definitions, targetName) {
 }
 
 export function resolvePremiumDefinitionForAdjustment({ label, canonicalName, definitions, remarks } = {}) {
-  const activeDefinitions = (definitions || []).filter((definition) => definition?.is_active !== false);
+  const activeDefinitions = (definitions || []).filter((definition) =>
+    definition?.is_active !== false && (!definition?.adjustment_type || definition.adjustment_type === 'PREMI')
+  );
   const candidates = [
     canonicalName,
     buildCanonicalManualAdjustmentName('PREMI', label),

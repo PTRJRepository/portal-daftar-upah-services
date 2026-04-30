@@ -2623,7 +2623,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .get("/premium-definitions", async ({ set }) => {
         try {
             const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
-            const definitions = premiumDefinitionService.getActiveDefinitions();
+            const definitions = premiumDefinitionService.getActivePremiumDefinitions();
             return { success: true, count: definitions.length, data: definitions };
         } catch (e: any) {
             console.error("[PayrollRoutes] premium-definitions GET error:", e);
@@ -2636,6 +2636,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
             const data = body as any;
             premiumDefinitionService.addOrUpdateDefinition({
+                adjustment_type: data.adjustment_type,
                 adjustment_name: data.adjustment_name,
                 ad_code: data.ad_code,
                 task_desc: data.task_desc,
@@ -2654,6 +2655,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             ad_code: t.String(),
             task_desc: t.String(),
             input_type: t.String(),
+            adjustment_type: t.Optional(t.String()),
             is_active: t.Optional(t.Boolean())
         })
     })

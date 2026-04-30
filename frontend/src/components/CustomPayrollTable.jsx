@@ -155,6 +155,11 @@ const formatSourceCompareValue = (value) => {
 
 const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_');
 
+const isDynamicGrossDeductionFieldKey = (value) => {
+    const normalized = normalizeFieldKey(value);
+    return normalized === 'koreksi' || normalized.startsWith('koreksi_');
+};
+
 const isGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
     return normalized.startsWith('koreksi') || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
@@ -163,6 +168,19 @@ const isGrossDeductionFieldKey = (value) => {
 const isPotonganFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
     return !isGrossDeductionFieldKey(normalized) && normalized.startsWith('potongan_');
+};
+
+const isDynamicPotonganFieldKey = (value) => isPotonganFieldKey(value) || isDynamicGrossDeductionFieldKey(value);
+
+const formatFallbackPremiLabel = (field) => {
+    const normalized = normalizeFieldKey(field);
+    if (!normalized) return String(field || '').trim().toUpperCase();
+
+    if (normalized.startsWith('premi_')) {
+        return `PREMI ${normalized.slice('premi_'.length).replace(/_/g, ' ').trim()}`.trim().toUpperCase();
+    }
+
+    return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
 };
 
 const formatFallbackPotonganLabel = (field) => {
@@ -182,6 +200,16 @@ const formatFallbackPotonganLabel = (field) => {
     }
 
     return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
+};
+
+const parseMetadataObjectValue = (value) => {
+    if (!value) return null;
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
 };
 
 const resolveInitialValuePriorityMode = () => {
@@ -212,6 +240,10 @@ const ADJUSTMENT_TYPE_BY_GROUP_LABEL = {
     [POTONGAN_UPAH_KOTOR]: 'POTONGAN_KOTOR',
     [POTONGAN_UPAH_BERSIH]: 'POTONGAN_BERSIH'
 };
+
+const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
+const KOREKSI_DEFAULT_TASK_DESC = '(DE) POTONGAN PREMI';
+const KOREKSI_DEFAULT_INPUT_TYPE = 'blok';
 
 const CustomPayrollTable = memo(function CustomPayrollTable({
     token, month, year, division, gangCode, onViewEmployeeDetail, onOpenHrProfile, fontSize = 100,
@@ -284,7 +316,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         initialData: null,
         storedAmount: 0,
         mismatch: null,
-        editBase: null
+        editBase: null,
+        readOnly: false
     };
     const [premiumPopup, setPremiumPopup] = useState(emptyPremiumPopup);
     const [premiumDefinitions, setPremiumDefinitions] = useState([]);
@@ -579,14 +612,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const employeeRows = streamRows.filter(r => r.type === 'employee');
         if (employeeRows.length === 0) return defaults;
 
-        // Also extract from employee data to catch any fields backend missed
+        // Also extract from employee data and metadata to catch any fields backend missed.
         const allFieldKeys = new Set();
+        const addDynamicFieldKey = (key) => {
+            const normalizedKey = normalizeFieldKey(key);
+            if (!normalizedKey) return;
+            if (isPremiFieldKey(normalizedKey) || isDynamicPotonganFieldKey(normalizedKey)) {
+                allFieldKeys.add(normalizedKey);
+            }
+        };
+
         employeeRows.forEach(row => {
             Object.keys(row).forEach(key => {
-                if (isPremiFieldKey(key) || isPotonganFieldKey(key)) {
-                    allFieldKeys.add(key);
-                }
+                addDynamicFieldKey(key);
             });
+
+            Object.keys(row?.manual_adjustment_metadata || {}).forEach(addDynamicFieldKey);
         });
 
         // Merge both sources - prefer meta headers, add any extras from data
@@ -597,7 +638,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         const activePot = [...new Set([
             ...dynPot,
-            ...Array.from(allFieldKeys).filter((key) => isPotonganFieldKey(key))
+            ...Array.from(allFieldKeys).filter((key) => isDynamicPotonganFieldKey(key))
         ])];
 
         const excludedPendapatan = ['pendapatan_tidak_tetap', 'pendapatan_lainnya'];
@@ -616,6 +657,91 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             activePendapatan: Array.from(allPendapatanKeys).sort()
         };
     }, [streamRows, stream.meta, stream.isComplete]);
+
+    const metadataDynamicHeaders = useMemo(() => {
+        const result = { premi: {}, potongan: {} };
+        const registeredByType = {
+            premi: new Set(),
+            potongan: new Set()
+        };
+        const register = (type, label, field) => {
+            const normalizedField = normalizeFieldKey(field);
+            if (!normalizedField || registeredByType[type].has(normalizedField)) return;
+            registeredByType[type].add(normalizedField);
+            result[type][label] = normalizedField;
+        };
+
+        streamRows
+            .filter(row => row?.type === 'employee')
+            .forEach(row => {
+                const metadataByField = row?.manual_adjustment_metadata || {};
+                for (const [field, rawMetadata] of Object.entries(metadataByField)) {
+                    const normalizedField = normalizeFieldKey(field);
+                    if (!normalizedField) continue;
+
+                    const parsedMetadata = parseMetadataObjectValue(rawMetadata);
+                    if (isPremiFieldKey(normalizedField)) {
+                        register(
+                            'premi',
+                            String(parsedMetadata?.adjustment_name || formatFallbackPremiLabel(normalizedField)).trim().toUpperCase(),
+                            normalizedField
+                        );
+                        continue;
+                    }
+
+                    if (isDynamicPotonganFieldKey(normalizedField)) {
+                        register(
+                            'potongan',
+                            String(parsedMetadata?.adjustment_name || formatFallbackPotonganLabel(normalizedField)).trim().toUpperCase(),
+                            normalizedField
+                        );
+                    }
+                }
+            });
+
+        return result;
+    }, [streamRows]);
+
+    const effectiveDynamicHeaders = useMemo(() => {
+        const buildTitleMap = (fields = [], titleMap = {}) => {
+            const result = {};
+            fields.forEach((field) => {
+                result[titleMap[field] || field] = field;
+            });
+            return result;
+        };
+        const mergeHeaderMap = (target, source = {}) => {
+            const registeredFields = new Set(Object.values(target).map((field) => normalizeFieldKey(field)));
+            for (const [label, field] of Object.entries(source || {})) {
+                const normalizedField = normalizeFieldKey(field);
+                if (!normalizedField || registeredFields.has(normalizedField)) continue;
+                registeredFields.add(normalizedField);
+                target[label] = normalizedField;
+            }
+        };
+
+        const result = { premi: {}, potongan: {} };
+        mergeHeaderMap(result.premi, buildTitleMap(stream.meta?.dynamic_premi_headers || [], stream.meta?.premi_title_map || {}));
+        mergeHeaderMap(result.potongan, buildTitleMap(stream.meta?.dynamic_potongan_headers || [], stream.meta?.potongan_title_map || {}));
+        mergeHeaderMap(result.premi, dynamicHeaders.premi);
+        mergeHeaderMap(result.potongan, dynamicHeaders.potongan);
+        mergeHeaderMap(result.premi, metadataDynamicHeaders.premi);
+        mergeHeaderMap(result.potongan, metadataDynamicHeaders.potongan);
+
+        for (const field of streamActiveFields.activePremi || []) {
+            mergeHeaderMap(result.premi, { [formatFallbackPremiLabel(field)]: field });
+        }
+
+        for (const field of streamActiveFields.activePot || []) {
+            mergeHeaderMap(result.potongan, { [formatFallbackPotonganLabel(field)]: field });
+        }
+
+        return result;
+    }, [dynamicHeaders, metadataDynamicHeaders, stream.meta, streamActiveFields]);
+
+    const effectiveActivePremiFields = activePremiFields.length > 0 ? activePremiFields : streamActiveFields.activePremi;
+    const effectiveActivePotFields = activePotFields.length > 0 ? activePotFields : streamActiveFields.activePot;
+    const effectiveActivePendapatanFields = activePendapatanFields.length > 0 ? activePendapatanFields : streamActiveFields.activePendapatan;
 
     // Update active field states when stream data changes
     useEffect(() => {
@@ -992,6 +1118,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             base_task_code: columnDefinition.base_task_code,
             task_desc: columnDefinition.task_desc,
             loc_code: columnDefinition.loc_code,
+            input_type: columnDefinition.input_type,
             remarks: columnDefinition.remarks,
             placeholder_saved: false
         };
@@ -1168,12 +1295,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     };
 
     const parsePremiumMetadataValue = (value) => {
-        if (!value) return null;
-        try {
-            return typeof value === 'string' ? JSON.parse(value) : value;
-        } catch {
-            return null;
-        }
+        return parseMetadataObjectValue(value);
     };
 
     const resolvePremiumPopupInitialData = ({ edit, amount, inputType, row, field, adjustmentName }) => {
@@ -2264,7 +2386,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 },
                 { field: 'kategori_ter', headers: [PAJAK, null, 'TER'], w: 55, className: 'text-center' },
                 // PENDAPATAN LAINNYA TAXABLE (Dynamic) - THR, Bonus, Custom, etc that are taxable (included in penghasilan_bruto)
-                ...getOtherIncomeDetailFields(activePendapatanFields).map(field => {
+                ...getOtherIncomeDetailFields(effectiveActivePendapatanFields).map(field => {
                     const baseType = field.replace('pendapatan_', '');
                     const taxField = `taxable_pendapatan_${baseType}`;
                     const displayName = formatOtherIncomeColumnLabel(field);
@@ -2598,8 +2720,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         if (showPremiDetails) {
             cols.push({ field: 'premi_brondol', headers: [PREMI, null, 'BRONDOL'], w: 80, className: 'text-right' });
 
-            Object.entries(dynamicHeaders.premi)
-                .filter(([label, field]) => field !== 'brondol' && (activePremiFields.includes(field) || isEditMode))
+            Object.entries(effectiveDynamicHeaders.premi)
+                .filter(([label, field]) => field !== 'brondol' && (effectiveActivePremiFields.includes(field) || isEditMode))
                 .forEach(([label, field]) => {
                     const displayName = label.replace('PREMI ', '');
                     const canonicalName = buildCanonicalManualAdjustmentName('PREMI', label);
@@ -2610,6 +2732,78 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const empCode = row.emp_code || row.nik;
                             const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
+                            const edit = editedCells[editKey];
+                            const displayVal = isEditMode ? (edit?.value ?? val) : val;
+                            const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                            const resolvedPremium = resolvePremiumDefinitionForAdjustment({
+                                label,
+                                canonicalName,
+                                definitions: premiumDefinitions,
+                                remarks: edit?.remarks || row?.manual_adjustment_remarks || row?.remarks
+                            });
+                            const premiumDef = resolvedPremium.definition;
+                            const resolvedAdjustmentName = resolvedPremium.adjustmentName || canonicalName;
+                            const inputType = premiumDef?.input_type || storedMetadata?.input_type || 'amount';
+                            const popupInitialData = row.type === 'employee' && inputType !== 'amount'
+                                ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: resolvedAdjustmentName })
+                                : null;
+                            const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                            const popupMetadata = parsePremiumMetadataValue(popupInitialData);
+                            const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
+                            const hasFallbackMetadata = !!popupMetadata?.legacy_source;
+                            const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
+                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'PREMI');
+                            const hasStructuredDetail = row.type === 'employee' && inputType !== 'amount' && (premiumDef || popupMetadata);
+                            const editBase = isEditMode ? {
+                                emp_code: empCode,
+                                nik: row.nik,
+                                emp_name: row.nama || row.emp_name || null,
+                                field,
+                                value: popupStoredAmount,
+                                originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
+                                gang_code: row.gang_code,
+                                type: 'PREMI',
+                                name: resolvedAdjustmentName,
+                                ad_code: edit?.ad_code || addedColumn?.ad_code || premiumDef?.ad_code,
+                                task_code: edit?.task_code || addedColumn?.task_code || premiumDef?.ad_code,
+                                base_task_code: edit?.base_task_code || addedColumn?.base_task_code || premiumDef?.ad_code,
+                                task_desc: edit?.task_desc || addedColumn?.task_desc || premiumDef?.task_desc,
+                                remarks: edit?.remarks || addedColumn?.remarks
+                            } : null;
+                            const detailButton = hasStructuredDetail ? (
+                                <button
+                                    type="button"
+                                    title={isEditMode ? (mismatch ? `Detail beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail') : 'Lihat detail pekerjaan'}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        setPremiumPopup({
+                                            isOpen: true,
+                                            editKey: isEditMode ? editKey : null,
+                                            inputType,
+                                            definitionName: premiumDef?.adjustment_name || resolvedAdjustmentName,
+                                            initialData: popupInitialData,
+                                            storedAmount: popupStoredAmount,
+                                            mismatch,
+                                            editBase,
+                                            readOnly: !isEditMode
+                                        });
+                                    }}
+                                    style={{
+                                        border: '1px solid #cbd5e1',
+                                        background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
+                                        borderRadius: 6,
+                                        padding: '2px 5px',
+                                        cursor: 'pointer',
+                                        fontSize: 10,
+                                        color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#64748b',
+                                        fontWeight: 800,
+                                        lineHeight: 1.1,
+                                        minWidth: 38
+                                    }}
+                                >
+                                    Detail
+                                </button>
+                            ) : null;
 
                             if (isEditMode && row.type === 'employee') {
                                 const edit = editedCells[editKey];
@@ -2709,6 +2903,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 );
                             }
 
+                            if (detailButton) {
+                                return (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                        <span>{val === 0 ? '-' : formatNumber(val)}</span>
+                                        {mismatch && (
+                                            <span
+                                                title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                                style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                            >
+                                                !
+                                            </span>
+                                        )}
+                                        {detailButton}
+                                    </div>
+                                );
+                            }
+
                             if (val === 0) return '-';
                             return formatNumber(val);
                         }
@@ -2718,8 +2929,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         cols.push({ field: 'total_premi', headers: [PREMI, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-soft' });
 
         // PENDAPATAN LAINNYA
-        const activePendapatan = getOtherIncomeDetailFields(activePendapatanFields);
-        const deductionOtherIncomeFields = getOtherIncomeDetailFields(activePendapatanFields, { includeKontan: true });
+        const activePendapatan = getOtherIncomeDetailFields(effectiveActivePendapatanFields);
+        const deductionOtherIncomeFields = getOtherIncomeDetailFields(effectiveActivePendapatanFields, { includeKontan: true });
         const showOtherIncomeDetails = true;
         if (showOtherIncomeDetails) {
             for (const field of activePendapatan) {
@@ -2826,7 +3037,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         const dynamicPotonganEntriesMap = new Map();
-        const activePotFieldSet = new Set((activePotFields || []).map((field) => normalizeFieldKey(field)));
+        const activePotFieldSet = new Set((effectiveActivePotFields || []).map((field) => normalizeFieldKey(field)));
         const addedPotonganTypeByField = new Map();
 
         for (const addedColumn of addedColumns || []) {
@@ -2841,11 +3052,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             dynamicPotonganEntriesMap.set(normalizedField, [label, field]);
         };
 
-        for (const [label, field] of Object.entries(dynamicHeaders.potongan || {})) {
+        for (const [label, field] of Object.entries(effectiveDynamicHeaders.potongan || {})) {
             registerDynamicPotonganEntry(label, field);
         }
 
-        for (const field of activePotFields || []) {
+        for (const field of effectiveActivePotFields || []) {
             const normalizedField = normalizeFieldKey(field);
             if (!normalizedField || dynamicPotonganEntriesMap.has(normalizedField)) continue;
             registerDynamicPotonganEntry(formatFallbackPotonganLabel(field), field);
@@ -2886,19 +3097,110 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     field, headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', `${displayLabel} (-)`], w: 96, className: 'text-right cell-koreksi-gross',
                     render: (row) => {
                         const val = row[field] || 0;
+                        const empCode = row.emp_code || row.nik;
+                        const editKey = `${empCode}-${field}`;
+                        const edit = editedCells[editKey];
+                        const displayVal = isEditMode ? (edit?.value ?? val) : val;
+                        const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_KOTOR');
+                        const inputType = addedColumn?.input_type || KOREKSI_DEFAULT_INPUT_TYPE;
+                        const popupInitialData = row.type === 'employee'
+                            ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: canonicalName })
+                            : null;
+                        const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                        const popupMetadata = parsePremiumMetadataValue(popupInitialData);
+                        const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                        const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
+                        const hasFallbackMetadata = !!popupMetadata?.legacy_source;
+                        const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
+                        const editBase = isEditMode ? {
+                            emp_code: empCode,
+                            nik: row.nik,
+                            emp_name: row.nama || row.emp_name || null,
+                            field,
+                            value: popupStoredAmount,
+                            originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
+                            gang_code: row.gang_code,
+                            type: 'POTONGAN_KOTOR',
+                            name: canonicalName,
+                            ad_code: addedColumn?.ad_code || KOREKSI_DEFAULT_AD_CODE,
+                            task_code: addedColumn?.task_code || KOREKSI_DEFAULT_AD_CODE,
+                            base_task_code: addedColumn?.base_task_code || KOREKSI_DEFAULT_AD_CODE,
+                            task_desc: addedColumn?.task_desc || KOREKSI_DEFAULT_TASK_DESC,
+                            remarks: addedColumn?.remarks
+                        } : null;
+                        const detailButton = row.type === 'employee' ? (
+                            <button
+                                type="button"
+                                title={isEditMode ? (mismatch ? `Detail koreksi beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail koreksi') : 'Lihat detail koreksi'}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPremiumPopup({
+                                        isOpen: true,
+                                        editKey: isEditMode ? editKey : null,
+                                        inputType,
+                                        definitionName: canonicalName,
+                                        initialData: popupInitialData,
+                                        storedAmount: popupStoredAmount,
+                                        mismatch,
+                                        editBase,
+                                        readOnly: !isEditMode
+                                    });
+                                }}
+                                style={{
+                                    border: '1px solid #fed7aa',
+                                    background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#fff7ed',
+                                    borderRadius: 6,
+                                    padding: '2px 5px',
+                                    cursor: 'pointer',
+                                    fontSize: 10,
+                                    color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#c2410c',
+                                    fontWeight: 800,
+                                    lineHeight: 1.1,
+                                    minWidth: 38
+                                }}
+                            >
+                                Detail
+                            </button>
+                        ) : null;
+
                         if (isEditMode && row.type === 'employee') {
-                            const empCode = row.emp_code || row.nik;
-                            const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
-                            const displayVal = editedCells[editKey]?.value ?? val;
                             return (
-                                <DeferredPayrollNumberInput
-                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={displayVal}
-                                    emptyWhenZero
-                                    onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_KOTOR', canonicalName)}
-                                    placeholder="0"
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <DeferredPayrollNumberInput
+                                        className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                        value={displayVal}
+                                        emptyWhenZero
+                                        onCommit={(nextValue) => handleCellEdit(row, field, nextValue, val, 'POTONGAN_KOTOR', canonicalName)}
+                                        placeholder="0"
+                                        style={{ flex: 1 }}
+                                    />
+                                    {mismatch && (
+                                        <span
+                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                        >
+                                            !
+                                        </span>
+                                    )}
+                                    {detailButton}
+                                </div>
+                            );
+                        }
+                        if (detailButton) {
+                            return (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                    <span>{val === 0 ? '-' : formatNumber(val)}</span>
+                                    {mismatch && (
+                                        <span
+                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
+                                        >
+                                            !
+                                        </span>
+                                    )}
+                                    {detailButton}
+                                </div>
                             );
                         }
                         return val === 0 ? '-' : formatNumber(val);
@@ -3097,7 +3399,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [dynamicHeaders, activePremiFields, activePotFields, activePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, isEditMode, editedKontanCells, addedColumns, displayMode]);
+    }, [effectiveDynamicHeaders, effectiveActivePremiFields, effectiveActivePotFields, effectiveActivePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, isEditMode, editedCells, editedKontanCells, addedColumns, premiumDefinitions, displayMode]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const stickyPaneWidth = useMemo(() => (
@@ -4393,6 +4695,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 initialData={premiumPopup.initialData}
                 storedAmount={premiumPopup.storedAmount}
                 mismatch={premiumPopup.mismatch}
+                readOnly={premiumPopup.readOnly}
             />
             {payrollToast && (
                 <div className={`payroll-toast payroll-toast--${payrollToast.type}`} role="status">

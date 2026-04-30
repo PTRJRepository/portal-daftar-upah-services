@@ -21,6 +21,7 @@ import { join } from "path";
 export type PremiumInputType = 'amount' | 'blok' | 'exp' | 'kendaraan' | 'blok,exp';
 
 export interface PremiumDefinition {
+    adjustment_type?: 'PREMI' | 'POTONGAN_KOTOR';
     adjustment_name: string;    // e.g. "PREMI PRUNING"
     ad_code: string;            // e.g. "AL3PM0601P1A"
     task_desc: string;          // e.g. "(AL) TUNJANGAN PREMI ((PM) PRUNING)"
@@ -139,6 +140,14 @@ class PremiumDefinitionService {
     }
 
     /**
+     * Get only active premium definitions.
+     * Entries without adjustment_type are treated as legacy PREMIUM definitions.
+     */
+    public getActivePremiumDefinitions(): PremiumDefinition[] {
+        return this.getActiveDefinitions().filter(d => !d.adjustment_type || d.adjustment_type === 'PREMI');
+    }
+
+    /**
      * Find definition by name (case-insensitive, trimmed)
      */
     public getDefinitionByName(name: string): PremiumDefinition | null {
@@ -159,6 +168,7 @@ class PremiumDefinitionService {
         );
 
         const entry: PremiumDefinition = {
+            adjustment_type: data.adjustment_type || 'PREMI',
             adjustment_name: data.adjustment_name.trim().toUpperCase(),
             ad_code: data.ad_code.trim(),
             task_desc: data.task_desc.trim(),
@@ -195,7 +205,7 @@ class PremiumDefinitionService {
      */
     public validatePremiumName(name: string): PremiumDefinition {
         const def = this.getDefinitionByName(name);
-        if (!def) {
+        if (!def || (def.adjustment_type && def.adjustment_type !== 'PREMI')) {
             throw new Error(`Nama premi "${name}" tidak ditemukan dalam definisi premium. Gunakan nama dari daftar format baku.`);
         }
         if (!def.is_active) {

@@ -149,6 +149,45 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("normalizes free-text koreksi to fixed prefix and DE potongan premi mapping", async () => {
+        const originalGetInstance = Database.getInstance;
+        const originalUpsertPreset = manualAdjustmentPresetService.upsertPreset;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [{ id: 92 }];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+        (manualAdjustmentPresetService as any).upsertPreset = mock(async () => 92);
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                gang_code: "G1H",
+                adjustment_type: "POTONGAN_KOTOR",
+                adjustment_name: "panen",
+                amount: 1000
+            });
+
+            const insertCall = calls.find((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
+            expect(id).toBe(92);
+            expect(insertCall?.params).toContain("KOREKSI PANEN");
+            expect(insertCall?.params).toContain("AD CODE: DE0004 - (DE) POTONGAN PREMI");
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+            (manualAdjustmentPresetService as any).upsertPreset = originalUpsertPreset;
+        }
+    });
+
     it("allows legacy inline manual edits without ADCode", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];

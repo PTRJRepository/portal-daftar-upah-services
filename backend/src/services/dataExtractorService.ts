@@ -75,20 +75,32 @@ function parseManualAdjustmentMetadata(value: any): any | null {
     }
 }
 
-function attachManualAdjustmentMetadata(
+type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
+
+function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetadataType | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'PREMI' || normalized === 'POTONGAN_KOTOR' || normalized === 'POTONGAN_BERSIH') {
+        return normalized as ManualAdjustmentMetadataType;
+    }
+    return null;
+}
+
+export function attachManualAdjustmentMetadata(
     target: { manual_adjustment_metadata?: Record<string, any>; manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number }> },
     adjustments: any[]
 ): void {
     for (const adjustment of adjustments || []) {
-        if (String(adjustment.adjustment_type || '').trim().toUpperCase() !== 'PREMI') continue;
+        const adjustmentType = resolveManualAdjustmentMetadataType(adjustment.adjustment_type);
+        if (!adjustmentType) continue;
         const metadata = parseManualAdjustmentMetadata(adjustment.metadata_json);
         if (!metadata) continue;
 
-        const fieldName = toManualAdjustmentFieldName('PREMI', String(adjustment.adjustment_name || ''));
+        const fieldName = toManualAdjustmentFieldName(adjustmentType, String(adjustment.adjustment_name || ''));
         const amount = Number(adjustment.amount || 0);
         const detailTotal = Number(metadata.total_amount ?? amount) || 0;
         const enrichedMetadata = {
             ...metadata,
+            adjustment_type: adjustmentType,
             adjustment_name: adjustment.adjustment_name,
             amount,
             detail_total: detailTotal,
@@ -108,6 +120,39 @@ function attachManualAdjustmentMetadata(
                 detail_total: detailTotal,
                 diff: detailTotal - amount
             };
+        }
+    }
+}
+
+export function registerManualAdjustmentMetadataDynamicHeaders(
+    adjustments: any[],
+    dynamicPremiSet: Set<string>,
+    dynamicPotonganSet: Set<string>,
+    premiTitleMap: Record<string, string>,
+    potonganTitleMap: Record<string, string>
+): void {
+    for (const adjustment of adjustments || []) {
+        const adjustmentType = resolveManualAdjustmentMetadataType(adjustment.adjustment_type);
+        if (!adjustmentType) continue;
+
+        const metadata = parseManualAdjustmentMetadata(adjustment.metadata_json);
+        if (!metadata) continue;
+
+        const adjustmentName = String(adjustment.adjustment_name || '').trim();
+        const fieldName = toManualAdjustmentFieldName(adjustmentType, adjustmentName);
+        if (!fieldName) continue;
+
+        if (adjustmentType === 'PREMI') {
+            dynamicPremiSet.add(fieldName);
+            if (adjustmentName && !premiTitleMap[fieldName]) {
+                premiTitleMap[fieldName] = adjustmentName;
+            }
+            continue;
+        }
+
+        dynamicPotonganSet.add(fieldName);
+        if (adjustmentName && !potonganTitleMap[fieldName]) {
+            potonganTitleMap[fieldName] = adjustmentName;
         }
     }
 }
@@ -1227,6 +1272,13 @@ export class DataExtractorService {
             const empAdjustments = manualAdjustments
                 ? manualAdjustments.filter(a => String(a.emp_code).trim() === String(emp.emp_code).trim())
                 : [];
+            registerManualAdjustmentMetadataDynamicHeaders(
+                empAdjustments,
+                dynamicPremiSet,
+                dynamicPotonganSet,
+                premiTitleMap,
+                potonganTitleMap
+            );
             const premiKeysBefore = new Set(Object.keys(empPremi));
             const potonganKeysBefore = new Set(Object.keys(empPotongan));
             const manualApplied = allowManualAdjustments && empAdjustments.length > 0
@@ -4273,6 +4325,13 @@ export class DataExtractorService {
             const empAdjustments = fetchManualAdjustmentRows
                 ? (manualAdjustmentsByEmpCode.get(empCodeKey) || [])
                 : [];
+            registerManualAdjustmentMetadataDynamicHeaders(
+                empAdjustments,
+                dynamicPremiSet,
+                dynamicPotonganSet,
+                globalPremiResult.titleMap,
+                globalPotonganResult.titleMap
+            );
             if (allowManualAdjustments && empAdjustments.length > 0) {
                 const premiKeysBefore = new Set(Object.keys(empPremi));
                 const potonganKeysBefore = new Set(Object.keys(empPotongan));

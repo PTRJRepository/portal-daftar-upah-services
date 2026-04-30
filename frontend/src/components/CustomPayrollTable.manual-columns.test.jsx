@@ -113,7 +113,7 @@ describe('CustomPayrollTable manual dynamic columns', () => {
             });
             await flushEffects();
 
-            const nameInput = container.querySelector('input[placeholder="contoh: DENDA PANEN"]');
+            const nameInput = container.querySelector('input[placeholder="contoh: PANEN"]');
             expect(nameInput).toBeTruthy();
 
             await act(async () => {
