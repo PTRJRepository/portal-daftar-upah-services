@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { validatePremiumDetailMetadata } from '../utils/payrollPremiumDetailEdits';
+import {
+    normalizeManualAdjustmentCalculationAmount,
+    shouldNormalizeManualAdjustmentAmount,
+    validatePremiumDetailMetadata
+} from '../utils/payrollPremiumDetailEdits';
 
 /**
  * PremiumDetailPopup
@@ -18,6 +22,14 @@ const EMPTY_KENDARAAN_ROW = { nomor_kendaraan: '', expense_code: '', jumlah: 0 }
 const EMPTY_EXPENSE = { expense_code: '', jumlah: 0 };
 const DETAIL_TOTAL_SYNC_DEFINITION_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
 
+function normalizeGangCode(value) {
+    return String(value || '').trim().toUpperCase();
+}
+
+function createEmptyBlokRow(defaultGangCode = '') {
+    return { ...EMPTY_BLOK_ROW, gang_code: normalizeGangCode(defaultGangCode) };
+}
+
 function normalizeDefinitionName(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
 }
@@ -26,21 +38,32 @@ function parseInitialData(initialData, inputType) {
     if (!initialData) return null;
     try {
         const parsed = typeof initialData === 'string' ? JSON.parse(initialData) : initialData;
-        if (parsed?.input_type) return parsed;
-        return null;
+        if (!parsed?.input_type) return null;
+        if (parsed.input_type === inputType) return parsed;
+        if (inputType === 'blok' && parsed.input_type === 'blok,exp') {
+            return {
+                input_type: 'blok',
+                items: parsed.blok_items || parsed.items || [],
+                total_amount: sumItems(parsed.blok_items || parsed.items || [])
+            };
+        }
+        return parsed;
     } catch {
         return null;
     }
 }
 
-function sumItems(items, field = 'jumlah') {
-    return (items || []).reduce((sum, item) => sum + (Number(item[field]) || 0), 0);
+function sumItems(items, field = 'jumlah', adjustmentType) {
+    return (items || []).reduce(
+        (sum, item) => sum + normalizeManualAdjustmentCalculationAmount(item[field], adjustmentType),
+        0
+    );
 }
 
-function normalizeBlokItem(item = {}) {
+function normalizeBlokItem(item = {}, defaultGangCode = '') {
     return {
         subblok: item.subblok || '',
-        gang_code: item.gang_code || '',
+        gang_code: normalizeGangCode(item.gang_code) || normalizeGangCode(defaultGangCode),
         jumlah: Number(item.jumlah) || 0
     };
 }
@@ -60,13 +83,19 @@ function normalizeExpense(item = {}) {
     };
 }
 
-function buildEditorState(initialData, inputType) {
+function buildEditorState(initialData, inputType, defaultGangCode = '') {
     const parsed = parseInitialData(initialData, inputType);
+    const sourceBlokItems = parsed?.input_type === 'blok'
+        ? parsed.items
+        : parsed?.input_type === 'blok,exp'
+            ? parsed.blok_items
+            : null;
+
     return {
         parsed,
-        blokItems: parsed?.input_type === 'blok' && parsed.items?.length
-            ? parsed.items.map(normalizeBlokItem)
-            : [{ ...EMPTY_BLOK_ROW }],
+        blokItems: sourceBlokItems?.length
+            ? sourceBlokItems.map((item) => normalizeBlokItem(item, defaultGangCode))
+            : [createEmptyBlokRow(defaultGangCode)],
         kendaraanItems: parsed?.input_type === 'kendaraan' && parsed.items?.length
             ? parsed.items.map(normalizeKendaraanItem)
             : [{ ...EMPTY_KENDARAAN_ROW }],
@@ -74,8 +103,8 @@ function buildEditorState(initialData, inputType) {
             ? normalizeExpense(parsed)
             : { ...EMPTY_EXPENSE },
         comboBlokItems: parsed?.input_type === 'blok,exp' && parsed.blok_items?.length
-            ? parsed.blok_items.map(normalizeBlokItem)
-            : [{ ...EMPTY_BLOK_ROW }],
+            ? parsed.blok_items.map((item) => normalizeBlokItem(item, defaultGangCode))
+            : [createEmptyBlokRow(defaultGangCode)],
         comboExpense: parsed?.input_type === 'blok,exp'
             ? normalizeExpense(parsed.expense)
             : { ...EMPTY_EXPENSE }
@@ -212,11 +241,12 @@ function isBlank(value) {
     return String(value || '').trim() === '';
 }
 
-function isInvalidAmount(value) {
-    return Number(value || 0) <= 0;
+function isInvalidAmount(value, adjustmentType) {
+    const amount = Number(value || 0);
+    return amount < 0 && !shouldNormalizeManualAdjustmentAmount(adjustmentType);
 }
 
-function BlokEditor({ items, onChange, readOnly = false, showValidation = false }) {
+function BlokEditor({ items, onChange, adjustmentType, defaultGangCode = '', readOnly = false, showValidation = false }) {
     const handleChange = (index, field, value) => {
         if (readOnly) return;
         const updated = [...items];
@@ -225,7 +255,7 @@ function BlokEditor({ items, onChange, readOnly = false, showValidation = false 
     };
 
     const handleAdd = () => {
-        if (!readOnly) onChange([...items, { ...EMPTY_BLOK_ROW }]);
+        if (!readOnly) onChange([...items, createEmptyBlokRow(defaultGangCode)]);
     };
     const handleRemove = (index) => {
         if (!readOnly) onChange(items.filter((_, i) => i !== index));
@@ -265,7 +295,7 @@ function BlokEditor({ items, onChange, readOnly = false, showValidation = false 
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(item.jumlah) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
+                                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(item.jumlah, adjustmentType) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
                                     type="number"
                                     value={item.jumlah || ''}
                                     disabled={readOnly}
@@ -287,7 +317,7 @@ function BlokEditor({ items, onChange, readOnly = false, showValidation = false 
     );
 }
 
-function KendaraanEditor({ items, onChange, readOnly = false, showValidation = false }) {
+function KendaraanEditor({ items, onChange, adjustmentType, readOnly = false, showValidation = false }) {
     const handleChange = (index, field, value) => {
         if (readOnly) return;
         const updated = [...items];
@@ -327,7 +357,8 @@ function KendaraanEditor({ items, onChange, readOnly = false, showValidation = f
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={{ ...cellInputStyle, ...(showValidation && isBlank(item.expense_code) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
+                                    name="expense_code"
+                                    style={{ ...cellInputStyle, ...(readOnly ? readOnlyInputStyle : {}) }}
                                     value={item.expense_code || ''}
                                     disabled={readOnly}
                                     onChange={(e) => handleChange(i, 'expense_code', e.target.value.toUpperCase())}
@@ -336,7 +367,7 @@ function KendaraanEditor({ items, onChange, readOnly = false, showValidation = f
                             </td>
                             <td style={{ padding: 4 }}>
                                 <input
-                                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(item.jumlah) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
+                                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(item.jumlah, adjustmentType) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
                                     type="number"
                                     value={item.jumlah || ''}
                                     disabled={readOnly}
@@ -358,7 +389,7 @@ function KendaraanEditor({ items, onChange, readOnly = false, showValidation = f
     );
 }
 
-function ExpenseEditor({ expense, onChange, readOnly = false, showValidation = false }) {
+function ExpenseEditor({ expense, onChange, adjustmentType, readOnly = false, showValidation = false }) {
     return (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
@@ -376,7 +407,7 @@ function ExpenseEditor({ expense, onChange, readOnly = false, showValidation = f
             <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Jumlah</label>
                 <input
-                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(expense.jumlah) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
+                    style={{ ...numberInputStyle, ...(showValidation && isInvalidAmount(expense.jumlah, adjustmentType) ? invalidInputStyle : {}), ...(readOnly ? readOnlyInputStyle : {}) }}
                     type="number"
                     value={expense.jumlah || ''}
                     disabled={readOnly}
@@ -396,14 +427,16 @@ export default function PremiumDetailPopup({
     onSave,
     inputType,
     definitionName,
+    adjustmentType,
+    defaultGangCode,
     initialData,
     storedAmount,
     mismatch,
     readOnly = false
 }) {
     const initialEditorState = useMemo(
-        () => buildEditorState(initialData, inputType),
-        [initialData, inputType]
+        () => buildEditorState(initialData, inputType, defaultGangCode),
+        [initialData, inputType, defaultGangCode]
     );
 
     // State for blok items
@@ -421,7 +454,7 @@ export default function PremiumDetailPopup({
     // Initialize from existing data
     useEffect(() => {
         if (!isOpen) return;
-        const nextState = buildEditorState(initialData, inputType);
+        const nextState = buildEditorState(initialData, inputType, defaultGangCode);
         setBlokItems(nextState.blokItems);
         setKendaraanItems(nextState.kendaraanItems);
         setExpense(nextState.expense);
@@ -429,25 +462,39 @@ export default function PremiumDetailPopup({
         setComboExpense(nextState.comboExpense);
         setAmountDraft(resolveInitialStoredAmount(nextState.parsed, storedAmount));
         setIsAmountEditable(false);
-    }, [isOpen, initialData, inputType, storedAmount]);
+    }, [isOpen, initialData, inputType, defaultGangCode, storedAmount]);
 
     // Calculate total based on input type
     const totalAmount = useMemo(() => {
         switch (inputType) {
             case 'amount':
-                return Number(amountDraft) || 0;
+                return normalizeManualAdjustmentCalculationAmount(amountDraft, adjustmentType);
             case 'blok':
-                return sumItems(blokItems);
+                return sumItems(blokItems, 'jumlah', adjustmentType);
             case 'exp':
-                return Number(expense.jumlah) || 0;
+                return normalizeManualAdjustmentCalculationAmount(expense.jumlah, adjustmentType);
             case 'kendaraan':
-                return sumItems(kendaraanItems);
+                return sumItems(kendaraanItems, 'jumlah', adjustmentType);
             case 'blok,exp':
-                return sumItems(comboBlokItems) + (Number(comboExpense.jumlah) || 0);
+                return sumItems(comboBlokItems, 'jumlah', adjustmentType)
+                    + normalizeManualAdjustmentCalculationAmount(comboExpense.jumlah, adjustmentType);
             default:
                 return 0;
         }
-    }, [inputType, amountDraft, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense]);
+    }, [inputType, amountDraft, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, adjustmentType]);
+
+    const normalizeDetailAmount = useCallback(
+        (value) => normalizeManualAdjustmentCalculationAmount(value, adjustmentType),
+        [adjustmentType]
+    );
+    const normalizeDetailItems = useCallback(
+        (items) => (items || []).map((item) => ({ ...item, jumlah: normalizeDetailAmount(item.jumlah) })),
+        [normalizeDetailAmount]
+    );
+    const normalizeDetailExpense = useCallback(
+        (item) => ({ ...(item || {}), jumlah: normalizeDetailAmount(item?.jumlah) }),
+        [normalizeDetailAmount]
+    );
 
     const metadataForValidation = useMemo(() => {
         switch (inputType) {
@@ -465,18 +512,21 @@ export default function PremiumDetailPopup({
     }, [inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount]);
 
     const detailValidation = useMemo(
-        () => validatePremiumDetailMetadata(metadataForValidation, inputType),
-        [metadataForValidation, inputType]
+        () => validatePremiumDetailMetadata(metadataForValidation, inputType, adjustmentType),
+        [metadataForValidation, inputType, adjustmentType]
     );
     const showDetailValidation = inputType !== 'amount' && !detailValidation.isComplete;
 
-    const storedAmountNumber = resolveInitialStoredAmount(initialEditorState.parsed, storedAmount);
+    const storedAmountNumber = normalizeManualAdjustmentCalculationAmount(
+        resolveInitialStoredAmount(initialEditorState.parsed, storedAmount),
+        adjustmentType
+    );
     const shouldAutoSyncDetailAmount = inputType !== 'amount' && DETAIL_TOTAL_SYNC_DEFINITION_NAMES.has(normalizeDefinitionName(definitionName));
     const amountToSave = inputType === 'amount'
         ? totalAmount
         : shouldAutoSyncDetailAmount
             ? totalAmount
-            : (isAmountEditable ? (Number(amountDraft) || 0) : storedAmountNumber);
+            : (isAmountEditable ? normalizeDetailAmount(amountDraft) : storedAmountNumber);
     const diffFromStored = totalAmount - storedAmountNumber;
     const diffFromDraft = totalAmount - amountToSave;
     const detailDiffersFromStored = hasAmountDifference(totalAmount, storedAmountNumber);
@@ -517,7 +567,7 @@ export default function PremiumDetailPopup({
             case 'blok':
                 metadataJson = {
                     input_type: 'blok',
-                    items: blokItems.filter(item => item.subblok || item.jumlah),
+                    items: normalizeDetailItems(blokItems.filter(item => item.subblok || item.gang_code || item.jumlah)),
                     total_amount: totalAmount
                 };
                 break;
@@ -525,22 +575,22 @@ export default function PremiumDetailPopup({
                 metadataJson = {
                     input_type: 'exp',
                     expense_code: expense.expense_code,
-                    jumlah: expense.jumlah,
+                    jumlah: normalizeDetailAmount(expense.jumlah),
                     total_amount: totalAmount
                 };
                 break;
             case 'kendaraan':
                 metadataJson = {
                     input_type: 'kendaraan',
-                    items: kendaraanItems.filter(item => item.nomor_kendaraan || item.jumlah),
+                    items: normalizeDetailItems(kendaraanItems.filter(item => item.nomor_kendaraan || item.expense_code || item.jumlah)),
                     total_amount: totalAmount
                 };
                 break;
             case 'blok,exp':
                 metadataJson = {
                     input_type: 'blok,exp',
-                    blok_items: comboBlokItems.filter(item => item.subblok || item.jumlah),
-                    expense: comboExpense,
+                    blok_items: normalizeDetailItems(comboBlokItems.filter(item => item.subblok || item.gang_code || item.jumlah)),
+                    expense: normalizeDetailExpense(comboExpense),
                     total_amount: totalAmount
                 };
                 break;
@@ -553,7 +603,7 @@ export default function PremiumDetailPopup({
             amountSyncedToDetail: !detailDiffersFromDraft
         });
         onClose?.();
-    }, [canEdit, showDetailValidation, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, onSave, onClose]);
+    }, [canEdit, showDetailValidation, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, normalizeDetailAmount, normalizeDetailItems, normalizeDetailExpense, onSave, onClose]);
 
     if (!isOpen) return null;
 
@@ -740,26 +790,26 @@ export default function PremiumDetailPopup({
                     )}
 
                     {inputType === 'blok' && (
-                        <BlokEditor items={blokItems} onChange={setBlokItems} readOnly={!canEdit} showValidation={showDetailValidation} />
+                        <BlokEditor items={blokItems} onChange={setBlokItems} adjustmentType={adjustmentType} defaultGangCode={defaultGangCode} readOnly={!canEdit} showValidation={showDetailValidation} />
                     )}
 
                     {inputType === 'exp' && (
-                        <ExpenseEditor expense={expense} onChange={setExpense} readOnly={!canEdit} showValidation={showDetailValidation} />
+                        <ExpenseEditor expense={expense} onChange={setExpense} adjustmentType={adjustmentType} readOnly={!canEdit} showValidation={showDetailValidation} />
                     )}
 
                     {inputType === 'kendaraan' && (
-                        <KendaraanEditor items={kendaraanItems} onChange={setKendaraanItems} readOnly={!canEdit} showValidation={showDetailValidation} />
+                        <KendaraanEditor items={kendaraanItems} onChange={setKendaraanItems} adjustmentType={adjustmentType} readOnly={!canEdit} showValidation={showDetailValidation} />
                     )}
 
                     {inputType === 'blok,exp' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             <div>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Blok Items</div>
-                                <BlokEditor items={comboBlokItems} onChange={setComboBlokItems} readOnly={!canEdit} showValidation={showDetailValidation} />
+                                <BlokEditor items={comboBlokItems} onChange={setComboBlokItems} adjustmentType={adjustmentType} defaultGangCode={defaultGangCode} readOnly={!canEdit} showValidation={showDetailValidation} />
                             </div>
                             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Expense</div>
-                                <ExpenseEditor expense={comboExpense} onChange={setComboExpense} readOnly={!canEdit} showValidation={showDetailValidation} />
+                                <ExpenseEditor expense={comboExpense} onChange={setComboExpense} adjustmentType={adjustmentType} readOnly={!canEdit} showValidation={showDetailValidation} />
                             </div>
                         </div>
                     )}

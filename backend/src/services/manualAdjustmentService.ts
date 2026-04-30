@@ -878,7 +878,7 @@ export class ManualAdjustmentService {
         ]);
 
         if (existing) {
-            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks)) {
+            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks, !!metadataJsonStr)) {
                 // If amount is 0, delete it from the table
                 await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [existing.id]);
                 return existing.id;
@@ -902,7 +902,7 @@ export class ManualAdjustmentService {
                 return existing.id;
             }
         } else {
-            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks)) return 0; // Don't insert zero
+            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks, !!metadataJsonStr)) return 0; // Don't insert zero
 
             // Insert
             const result = await db.query(`

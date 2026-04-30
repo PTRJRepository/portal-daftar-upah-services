@@ -105,6 +105,18 @@ const formatDecimal = (value) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
 };
 
+const NEGATIVE_TOTAL_DISPLAY_FIELDS = new Set([
+    'potongan_upah_kotor_total',
+    'total_potongan',
+    'total_potongan_bersih'
+]);
+
+const formatNegativeTotalNumber = (value) => {
+    const n = Number(value) || 0;
+    if (n === 0) return '-';
+    return `-${formatNumber(Math.abs(n))}`;
+};
+
 const toFiniteNumber = toFinitePayrollNumber;
 
 const formatBytes = (bytes) => {
@@ -216,15 +228,15 @@ const normalizeManualDetailInputType = (value) => {
 };
 
 const resolveManualDetailInputType = ({ edit, storedMetadata, addedColumn, definition, defaultInputType = 'amount' } = {}) => (
-    normalizeManualDetailInputType(parseMetadataObjectValue(edit?.metadata_json)?.input_type)
-    || normalizeManualDetailInputType(storedMetadata?.input_type)
-    || normalizeManualDetailInputType(addedColumn?.input_type)
+    normalizeManualDetailInputType(addedColumn?.input_type)
     || normalizeManualDetailInputType(definition?.input_type)
+    || normalizeManualDetailInputType(parseMetadataObjectValue(edit?.metadata_json)?.input_type)
+    || normalizeManualDetailInputType(storedMetadata?.input_type)
     || normalizeManualDetailInputType(defaultInputType)
     || 'amount'
 );
 
-const getManualDetailValidation = ({ metadata, inputType, amount }) => {
+const getManualDetailValidation = ({ metadata, inputType, amount, adjustmentType }) => {
     const normalizedInputType = normalizeManualDetailInputType(inputType);
     if (!normalizedInputType || normalizedInputType === 'amount') return null;
     if (!metadata) {
@@ -233,9 +245,16 @@ const getManualDetailValidation = ({ metadata, inputType, amount }) => {
             : null;
     }
 
-    const validation = validatePremiumDetailMetadata(metadata, normalizedInputType);
+    const validation = validatePremiumDetailMetadata(metadata, normalizedInputType, adjustmentType);
     return validation.isComplete ? null : validation;
 };
+
+const MANUAL_CELL_DELETE_MARKER = 'DELETE_CELL';
+
+const buildManualCellDeleteRemarks = (name) => `${name || 'MANUAL ADJUSTMENT'} | ${MANUAL_CELL_DELETE_MARKER} | 0`;
+
+const isManualCellDeleteEdit = (edit) => Boolean(edit?.delete_cell)
+    || (Number(edit?.value || 0) === 0 && String(edit?.remarks || '').toUpperCase().includes(MANUAL_CELL_DELETE_MARKER));
 
 const isDynamicGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
@@ -395,6 +414,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         editKey: null,
         inputType: null,
         definitionName: null,
+        defaultGangCode: '',
         initialData: null,
         storedAmount: 0,
         mismatch: null,
@@ -458,7 +478,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     });
     const [tableContainerWidth, setTableContainerWidth] = useState(getInitialViewportWidth);
     const pendingSaveSummary = useMemo(() => {
-        const manualCount = Object.keys(editedCells).length;
+        const manualValues = Object.values(editedCells);
+        const manualCount = manualValues.length;
+        const manualDeleteCount = manualValues.filter(isManualCellDeleteEdit).length;
         const kontanValues = Object.values(editedKontanCells);
         const kontanCount = kontanValues.length;
         const kontanDeleteCount = kontanValues.filter((item) => item.value === 0).length;
@@ -467,7 +489,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return {
             manualCount,
             kontanCount,
-            deleteCount: kontanDeleteCount + deletedColumnCount,
+            deleteCount: manualDeleteCount + kontanDeleteCount + deletedColumnCount,
+            manualDeleteCount,
             addedColumnCount,
             deletedColumnCount,
             totalCount: manualCount + kontanCount + addedColumnCount + deletedColumnCount
@@ -1401,39 +1424,117 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return Number(displayAmount || 0) !== 0;
     };
 
-    const getManualCellTriggerStyle = ({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete }) => {
-        const hasDetailIssue = mismatch || incomplete || (detailValidation && !detailValidation.isComplete);
+    const getManualCellTriggerStyle = ({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete, pendingDelete, disabled }) => {
+        const hasDetailIssue = pendingDelete || mismatch || incomplete || (detailValidation && !detailValidation.isComplete);
         return ({
-        border: hasDetailIssue ? '1px solid #ef4444' : '1px solid #cbd5e1',
-        background: hasDetailIssue ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
-        borderRadius: 6,
-        padding: '3px 7px',
-        cursor: 'pointer',
-        fontSize: 11,
-        color: hasDetailIssue ? '#b91c1c' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#475569',
-        fontWeight: 800,
-        lineHeight: 1.1,
-        minWidth: hasData ? 58 : 46,
-        textAlign: 'center'
+            border: hasDetailIssue ? '1px solid #ef4444' : '1px solid #cbd5e1',
+            background: hasDetailIssue ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
+            borderRadius: 6,
+            padding: '3px 7px',
+            cursor: disabled ? 'default' : 'pointer',
+            fontSize: 11,
+            color: hasDetailIssue ? '#b91c1c' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#475569',
+            fontWeight: 800,
+            lineHeight: 1.1,
+            minWidth: hasData ? 58 : 46,
+            textAlign: 'center',
+            opacity: disabled ? 0.9 : 1
         });
     };
 
-    const renderManualCellTrigger = ({ label, hasData, displayAmount, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete, onClick }) => (
+    const renderManualCellTrigger = ({ label, hasData, displayAmount, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete, pendingDelete, disabled, onClick }) => (
         <button
             type="button"
-            title={buildManualDetailIssueReason({
-                mismatch,
-                validation: detailValidation || (incomplete ? { isComplete: false, reasons: ['Isi field wajib sesuai input type.'] } : null)
-            }) || (hasData ? 'Edit input manual adjustment' : 'Input manual adjustment')}
+            disabled={disabled}
+            title={pendingDelete
+                ? 'Nilai cell akan dihapus saat Simpan Perubahan.'
+                : buildManualDetailIssueReason({
+                    mismatch,
+                    validation: detailValidation || (incomplete ? { isComplete: false, reasons: ['Isi field wajib sesuai input type.'] } : null)
+                }) || (hasData ? 'Edit input manual adjustment' : 'Input manual adjustment')}
             onClick={(event) => {
                 event.stopPropagation();
+                if (disabled) return;
                 onClick?.();
             }}
-            style={getManualCellTriggerStyle({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete })}
+            style={getManualCellTriggerStyle({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete, pendingDelete, disabled })}
         >
             {label || (hasData ? formatNumber(displayAmount) : 'Input')}
         </button>
     );
+
+    const renderManualCellDeleteAction = ({ hasData, pendingDelete, onDelete, onCancelDelete }) => {
+        if (!hasData && !pendingDelete) return null;
+        return (
+            <button
+                type="button"
+                title={pendingDelete ? 'Batalkan hapus nilai cell' : 'Hapus nilai cell manual adjustment'}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    if (pendingDelete) {
+                        onCancelDelete?.();
+                    } else {
+                        onDelete?.();
+                    }
+                }}
+                style={{
+                    border: pendingDelete ? '1px solid #fca5a5' : '1px solid #fecaca',
+                    background: pendingDelete ? '#fee2e2' : '#fff',
+                    color: '#b91c1c',
+                    borderRadius: 6,
+                    padding: '3px 6px',
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    lineHeight: 1.1
+                }}
+            >
+                {pendingDelete ? 'Batal' : 'Hapus'}
+            </button>
+        );
+    };
+
+    const markManualCellForDelete = ({ editKey, edit, editBase, displayAmount, name }) => {
+        const source = edit || editBase;
+        if (!editKey || !source) return;
+
+        setEditedCells(prev => {
+            const existingEdit = prev[editKey] || edit;
+            const baseEdit = existingEdit || source;
+            const backupEdit = existingEdit && !isManualCellDeleteEdit(existingEdit)
+                ? existingEdit
+                : baseEdit.delete_backup_edit;
+            return {
+                ...prev,
+                [editKey]: {
+                    ...baseEdit,
+                    value: 0,
+                    originalValue: resolvePersistentOriginalNumber(baseEdit.originalValue, displayAmount),
+                    metadata_json: undefined,
+                    delete_cell: true,
+                    delete_backup_edit: backupEdit,
+                    remarks: buildManualCellDeleteRemarks(baseEdit.name || name)
+                }
+            };
+        });
+        showPayrollToast('info', 'Nilai cell masuk daftar hapus', `${name || 'Manual adjustment'} akan dihapus saat Simpan Perubahan ditekan.`);
+    };
+
+    const cancelManualCellDelete = ({ editKey, name }) => {
+        if (!editKey) return;
+        setEditedCells(prev => {
+            const current = prev[editKey];
+            if (!isManualCellDeleteEdit(current)) return prev;
+            const next = { ...prev };
+            if (current.delete_backup_edit) {
+                next[editKey] = current.delete_backup_edit;
+            } else {
+                delete next[editKey];
+            }
+            return next;
+        });
+        showPayrollToast('info', 'Hapus cell dibatalkan', `${name || 'Manual adjustment'} dikembalikan ke nilai sebelumnya.`);
+    };
 
     const resolvePremiumPopupInitialData = ({ edit, amount, inputType, row, field, adjustmentName }) => {
         if (edit?.metadata_json) return edit.metadata_json;
@@ -1547,6 +1648,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         let successCount = 0;
+        let deleteCount = 0;
         const masterTaxEdits = editsArray.filter(e => e.type === 'MASTER_TAX');
         const jobTitleEdits = editsArray.filter(e => e.type === 'PROFILE' && e.field === 'jabatan_estate');
         const normalEdits = editsArray.filter(e => e.type !== 'MASTER_TAX' && !(e.type === 'PROFILE' && e.field === 'jabatan_estate'));
@@ -1646,8 +1748,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         for (const edit of legacyEdits) {
+            const isDeleteEdit = isManualCellDeleteEdit(edit);
             const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-            const shouldUseStoredRemarks = edit.value === 0 && edit.remarks;
+            const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
             const payload = {
                 period_month: month,
                 period_year: year,
@@ -1658,15 +1761,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 division_code: division,
                 adjustment_type: edit.type,
                 adjustment_name: edit.name,
-                amount: edit.value,
-                remarks: shouldUseStoredRemarks ? edit.remarks : (editAdCode
+                amount: isDeleteEdit ? 0 : edit.value,
+                remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode
                     ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
                     : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
                 ad_code: edit.ad_code,
                 task_code: edit.task_code,
                 base_task_code: edit.base_task_code,
                 task_desc: edit.task_desc,
-                metadata_json: edit.metadata_json || undefined
+                metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
             };
 
             let resOk = false;
@@ -1694,7 +1797,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 }
             }
 
-            if (resOk && resJson?.success) successCount++;
+            if (resOk && resJson?.success) {
+                successCount++;
+                if (isDeleteEdit) deleteCount++;
+            }
         }
 
         if (successCount !== editsArray.length) {
@@ -1703,7 +1809,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         setEditedCells({});
         setAddedColumns([]);
-        return { changedCount: successCount };
+        return { changedCount: successCount, deleteCount };
     };
 
     const saveDeletedManualColumns = async () => {
@@ -1826,6 +1932,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (Object.keys(editedCells).length > 0 || addedColumns.length > 0) {
                 const result = await saveEditedCellsAndColumns();
                 savedCount += result.changedCount;
+                deleteCount += result.deleteCount || 0;
             }
 
             if (pendingDeletedColumns.length > 0) {
@@ -1867,11 +1974,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
+        const manualDeleteRows = Object.values(editedCells).filter(isManualCellDeleteEdit);
         const deleteRows = Object.values(editedKontanCells).filter(k => k.value === 0);
-        if (deleteRows.length > 0 || pendingDeletedColumns.length > 0) {
+        if (manualDeleteRows.length > 0 || deleteRows.length > 0 || pendingDeletedColumns.length > 0) {
+            const manualNames = manualDeleteRows.map(item => `${item.name || item.field} (${item.emp_code || item.nik})`).join(', ');
             const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
             const columnNames = pendingDeletedColumns.map(item => item.name || item.field).join(', ');
             const messages = [];
+            if (manualDeleteRows.length > 0) messages.push(`${manualDeleteRows.length} nilai manual adjustment akan dihapus: ${manualNames}.`);
             if (deleteRows.length > 0) messages.push(`${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}.`);
             if (pendingDeletedColumns.length > 0) messages.push(`${pendingDeletedColumns.length} kolom manual adjustment akan dihapus: ${columnNames}.`);
             openPayrollConfirm({
@@ -2929,6 +3039,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             editKey: isEditMode ? editKey : null,
                                             inputType,
                                             definitionName: premiumDef?.adjustment_name || resolvedAdjustmentName,
+                                            defaultGangCode: row.gang_code,
                                             initialData: popupInitialData,
                                             storedAmount: popupStoredAmount,
                                             mismatch,
@@ -2956,13 +3067,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             if (isEditMode && row.type === 'employee') {
                                 const triggerAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
                                 const triggerHasData = hasManualCellData({ row, field, edit, displayAmount: triggerAmount });
+                                const triggerPendingDelete = isManualCellDeleteEdit(edit);
                                 const triggerInitialData = inputType !== 'amount'
                                     ? resolvePremiumPopupInitialData({ edit, amount: triggerAmount, inputType, row, field, adjustmentName: resolvedAdjustmentName })
                                     : null;
                                 const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
                                 const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
                                 const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
-                                const triggerValidation = getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount });
+                                const triggerValidation = triggerPendingDelete ? null : getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount, adjustmentType: 'PREMI' });
                                 const triggerEditBase = {
                                     ...editBase,
                                     value: triggerStoredAmount,
@@ -2971,7 +3083,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
                                 return (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                        {mismatch && (
+                                        {mismatch && !triggerPendingDelete && (
                                             <span
                                                 title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                                 style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
@@ -2986,16 +3098,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             hasFallbackMetadata: triggerHasFallbackMetadata,
                                             mismatch,
                                             detailValidation: triggerValidation,
+                                            pendingDelete: triggerPendingDelete,
+                                            disabled: triggerPendingDelete,
+                                            label: triggerPendingDelete ? 'Hapus' : undefined,
                                             onClick: () => setPremiumPopup({
                                                 isOpen: true,
                                                 editKey,
                                                 inputType,
                                                 definitionName: premiumDef?.adjustment_name || resolvedAdjustmentName,
+                                                defaultGangCode: row.gang_code,
                                                 initialData: triggerInitialData,
                                                 storedAmount: triggerStoredAmount,
                                                 mismatch,
                                                 editBase: triggerEditBase
                                             })
+                                        })}
+                                        {renderManualCellDeleteAction({
+                                            hasData: triggerHasData,
+                                            pendingDelete: triggerPendingDelete,
+                                            onDelete: () => markManualCellForDelete({
+                                                editKey,
+                                                edit,
+                                                editBase: triggerEditBase,
+                                                displayAmount: triggerAmount,
+                                                name: resolvedAdjustmentName
+                                            }),
+                                            onCancelDelete: () => cancelManualCellDelete({ editKey, name: resolvedAdjustmentName })
                                         })}
                                     </div>
                                 );
@@ -3246,6 +3374,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         editKey: isEditMode ? editKey : null,
                                         inputType,
                                         definitionName: canonicalName,
+                                        defaultGangCode: row.gang_code,
                                         initialData: popupInitialData,
                                         storedAmount: popupStoredAmount,
                                         mismatch,
@@ -3273,13 +3402,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         if (isEditMode && row.type === 'employee') {
                             const triggerAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
                             const triggerHasData = hasManualCellData({ row, field, edit, displayAmount: triggerAmount });
+                            const triggerPendingDelete = isManualCellDeleteEdit(edit);
                             const triggerInitialData = inputType !== 'amount'
                                 ? resolvePremiumPopupInitialData({ edit, amount: triggerAmount, inputType, row, field, adjustmentName: canonicalName })
                                 : null;
                             const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
                             const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
                             const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
-                            const triggerValidation = getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount });
+                            const triggerValidation = triggerPendingDelete ? null : getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount, adjustmentType: 'POTONGAN_KOTOR' });
                             const triggerEditBase = {
                                 ...editBase,
                                 value: triggerStoredAmount,
@@ -3287,7 +3417,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             };
                             return (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                    {mismatch && (
+                                    {mismatch && !triggerPendingDelete && (
                                         <span
                                             title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                             style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
@@ -3302,16 +3432,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         hasFallbackMetadata: triggerHasFallbackMetadata,
                                         mismatch,
                                         detailValidation: triggerValidation,
+                                        pendingDelete: triggerPendingDelete,
+                                        disabled: triggerPendingDelete,
+                                        label: triggerPendingDelete ? 'Hapus' : undefined,
                                         onClick: () => setPremiumPopup({
                                             isOpen: true,
                                             editKey,
                                             inputType,
                                             definitionName: canonicalName,
+                                            defaultGangCode: row.gang_code,
                                             initialData: triggerInitialData,
                                             storedAmount: triggerStoredAmount,
                                             mismatch,
                                             editBase: triggerEditBase
                                         })
+                                    })}
+                                    {renderManualCellDeleteAction({
+                                        hasData: triggerHasData,
+                                        pendingDelete: triggerPendingDelete,
+                                        onDelete: () => markManualCellForDelete({
+                                            editKey,
+                                            edit,
+                                            editBase: triggerEditBase,
+                                            displayAmount: triggerAmount,
+                                            name: canonicalName
+                                        }),
+                                        onCancelDelete: () => cancelManualCellDelete({ editKey, name: canonicalName })
                                     })}
                                 </div>
                             );
@@ -3337,7 +3483,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 });
             }
         }
-        cols.push({ field: 'potongan_upah_kotor_total', headers: [POTONGAN_UPAH_KOTOR, 'TOTAL KOREKSI', 'TOTAL (-)'], w: 98, className: 'text-right font-bold cell-total-soft cell-koreksi-gross' });
+        cols.push({
+            field: 'potongan_upah_kotor_total',
+            headers: [POTONGAN_UPAH_KOTOR, 'TOTAL KOREKSI', 'TOTAL (-)'],
+            w: 98,
+            className: 'text-right font-bold cell-total-soft cell-koreksi-gross',
+            render: (row) => formatNegativeTotalNumber(row.potongan_upah_kotor_total)
+        });
 
         // UPAH KOTOR
         cols.push({
@@ -3475,6 +3627,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const edit = editedCells[editKey];
                             const displayAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
                             const hasData = hasManualCellData({ row, field, edit, displayAmount });
+                            const pendingDelete = isManualCellDeleteEdit(edit);
                             const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
                             const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_BERSIH');
                             const mismatch = getVisibleManualDetailMismatch({
@@ -3489,7 +3642,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 : null;
                             const popupMetadata = parsePremiumMetadataValue(initialData);
                             const storedAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayAmount) || 0;
-                            const detailValidation = getManualDetailValidation({ metadata: popupMetadata, inputType, amount: displayAmount });
+                            const detailValidation = pendingDelete ? null : getManualDetailValidation({ metadata: popupMetadata, inputType, amount: displayAmount, adjustmentType: 'POTONGAN_BERSIH' });
                             const editBase = {
                                 emp_code: empCode,
                                 nik: row.nik,
@@ -3509,7 +3662,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             };
                             return (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                    {mismatch && (
+                                    {mismatch && !pendingDelete && (
                                         <span
                                             title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                             style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
@@ -3524,16 +3677,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         hasFallbackMetadata: !!popupMetadata?.legacy_source,
                                         mismatch,
                                         detailValidation,
+                                        pendingDelete,
+                                        disabled: pendingDelete,
+                                        label: pendingDelete ? 'Hapus' : undefined,
                                         onClick: () => setPremiumPopup({
                                             isOpen: true,
                                             editKey,
                                             inputType,
                                             definitionName: canonicalName,
+                                            defaultGangCode: row.gang_code,
                                             initialData,
                                             storedAmount,
                                             mismatch,
                                             editBase
                                         })
+                                    })}
+                                    {renderManualCellDeleteAction({
+                                        hasData,
+                                        pendingDelete,
+                                        onDelete: () => markManualCellForDelete({
+                                            editKey,
+                                            edit,
+                                            editBase,
+                                            displayAmount,
+                                            name: canonicalName
+                                        }),
+                                        onCancelDelete: () => cancelManualCellDelete({ editKey, name: canonicalName })
                                     })}
                                 </div>
                             );
@@ -3558,8 +3727,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 const originalKontan = toFiniteNumber(kontanEdit?.originalValue ?? row.pendapatan_kontan);
                 const currentKontan = toFiniteNumber(kontanEdit?.value ?? row.pendapatan_kontan);
                 const val = toFiniteNumber(row.total_potongan_bersih) - originalKontan + currentKontan;
-                if (val === 0) return '-';
-                return formatNumber(val);
+                return formatNegativeTotalNumber(val);
             }
         });
 
@@ -4748,7 +4916,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         }
                                     }
 
-                                    if (typeof displayVal === 'number') {
+                                    if (typeof displayVal === 'number' && NEGATIVE_TOTAL_DISPLAY_FIELDS.has(col.field)) {
+                                        displayVal = formatNegativeTotalNumber(displayVal);
+                                    } else if (typeof displayVal === 'number') {
                                         displayVal = col.field === 'lembur_jam' ? formatDecimal(displayVal) : formatNumber(displayVal);
                                     }
                                     const selected = isCellSelected(rIdx, cIdx);
@@ -4816,7 +4986,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         field: col.field,
                                         preferRows: hasPendingEdits
                                     });
-                                    val = formatNumber(numericValue);
+                                    val = NEGATIVE_TOTAL_DISPLAY_FIELDS.has(col.field)
+                                        ? formatNegativeTotalNumber(numericValue)
+                                        : formatNumber(numericValue);
                                 } else if (val !== undefined && val !== null && val !== '') {
                                     val = String(val);
                                 } else {
@@ -4875,6 +5047,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 onSave={handlePremiumPopupSave}
                 inputType={premiumPopup.inputType}
                 definitionName={premiumPopup.definitionName}
+                adjustmentType={premiumPopup.editBase?.type}
+                defaultGangCode={premiumPopup.defaultGangCode || premiumPopup.editBase?.gang_code}
                 initialData={premiumPopup.initialData}
                 storedAmount={premiumPopup.storedAmount}
                 mismatch={premiumPopup.mismatch}

@@ -405,6 +405,49 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('background:#fee2e2');
     });
 
+    it('shows a per-cell delete action for manual adjustment values in edit mode', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: ['premi_pruning'],
+            dynamic_potongan_headers: [],
+            premi_title_map: {
+                premi_pruning: 'PREMI PRUNING'
+            },
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            premi_pruning: 650000,
+            total_premi: 650000,
+            manual_adjustment_metadata: {
+                premi_pruning: {
+                    input_type: 'blok',
+                    adjustment_name: 'PREMI PRUNING',
+                    items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 650000 }],
+                    total_amount: 650000,
+                    amount: 650000
+                }
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+                isEditMode
+            />
+        );
+
+        expect(html).toContain('PRUNING');
+        expect(html).toContain('title="Hapus nilai cell manual adjustment"');
+        expect(html).not.toContain('Hapus kolom manual adjustment: PREMI PRUNING');
+    });
+
     it('shows koreksi detail action in view mode because koreksi is blok-based', () => {
         mocked.streamMeta = {
             dynamic_premi_headers: [],

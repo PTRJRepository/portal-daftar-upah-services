@@ -199,7 +199,45 @@ describe('PremiumDetailPopup', () => {
         }
     });
 
-    it('marks structured detail inputs as incomplete when required fields are missing', () => {
+    it('defaults blok detail gang code from the current gang and reuses it for new rows', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        try {
+            await act(async () => {
+                root.render(
+                    <PremiumDetailPopup
+                        isOpen
+                        onClose={() => {}}
+                        onSave={() => {}}
+                        inputType="blok"
+                        definitionName="PREMI PRUNING"
+                        defaultGangCode="D1H"
+                    />
+                );
+            });
+
+            const gangInputs = () => Array.from(container.querySelectorAll('input[placeholder="B1H"]'));
+            expect(gangInputs().map((input) => input.value)).toEqual(['D1H']);
+
+            const addButton = findButton(container, '+ Tambah Baris');
+            expect(addButton).toBeTruthy();
+
+            await act(async () => {
+                addButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+
+            expect(gangInputs().map((input) => input.value)).toEqual(['D1H', 'D1H']);
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
+    it('marks structured detail inputs as incomplete when required fields are still partial', () => {
         const html = renderToString(
             <PremiumDetailPopup
                 isOpen
@@ -220,6 +258,163 @@ describe('PremiumDetailPopup', () => {
         expect(html).toContain('nomor kendaraan wajib diisi');
         expect(html).toContain('border-color:#ef4444');
         expect(html).toContain('disabled=""');
+    });
+
+    it('keeps kendaraan expense as free text so users can enter the available code first', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSave = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <PremiumDetailPopup
+                        isOpen
+                        onClose={() => {}}
+                        onSave={onSave}
+                        inputType="kendaraan"
+                        definitionName="KOREKSI ANGKUT"
+                        storedAmount={150000}
+                        initialData={{
+                            input_type: 'kendaraan',
+                            items: [{ nomor_kendaraan: 'B1234AB', expense_code: 'ANGKUT', jumlah: 150000 }],
+                            total_amount: 150000
+                        }}
+                    />
+                );
+            });
+
+            const expenseInput = container.querySelector('input[name="expense_code"]');
+            expect(expenseInput).toBeTruthy();
+            expect(expenseInput.value).toBe('ANGKUT');
+            expect(container.querySelector('select[name="expense_code"]')).toBeFalsy();
+            expect(container.textContent || '').not.toContain('expense code harus HELPER atau DRIVER');
+
+            const saveButton = findButton(container, 'Simpan Detail');
+            expect(saveButton.disabled).toBe(false);
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+
+            expect(onSave).toHaveBeenCalledTimes(1);
+            expect(onSave.mock.calls[0][0]).toEqual(expect.objectContaining({
+                input_type: 'kendaraan',
+                items: [{ nomor_kendaraan: 'B1234AB', expense_code: 'ANGKUT', jumlah: 150000 }],
+                total_amount: 150000
+            }));
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
+    it('renders stale blok+expense metadata as blok-only when the configured input type is blok', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSave = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <PremiumDetailPopup
+                        isOpen
+                        onClose={() => {}}
+                        onSave={onSave}
+                        inputType="blok"
+                        definitionName="PREMI INSENTIF"
+                        storedAmount={100000}
+                        initialData={{
+                            input_type: 'blok,exp',
+                            blok_items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 80000 }],
+                            expense: { expense_code: 'ANGKUT', jumlah: 20000 },
+                            total_amount: 100000
+                        }}
+                    />
+                );
+            });
+
+            expect(container.textContent || '').toContain('Detail Blok');
+            expect(container.textContent || '').not.toContain('Expense');
+            expect(container.querySelector('input[value="P09/15"]')).toBeTruthy();
+
+            const saveButton = findButton(container, 'Simpan Detail');
+            expect(saveButton.disabled).toBe(false);
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+
+            expect(onSave).toHaveBeenCalledTimes(1);
+            expect(onSave.mock.calls[0][0]).toEqual({
+                input_type: 'blok',
+                items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 80000 }],
+                total_amount: 80000
+            });
+            expect(onSave.mock.calls[0][1]).toBe(100000);
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
+    it('accepts negative potongan detail values and saves the positive calculation total', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSave = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <PremiumDetailPopup
+                        isOpen
+                        onClose={() => {}}
+                        onSave={onSave}
+                        inputType="exp"
+                        definitionName="POTONGAN LAINNYA KASBON"
+                        adjustmentType="POTONGAN_BERSIH"
+                        storedAmount={-7000}
+                        initialData={{
+                            input_type: 'exp',
+                            expense_code: 'KASBON',
+                            jumlah: -7000,
+                            total_amount: -7000
+                        }}
+                    />
+                );
+            });
+
+            expect(container.textContent || '').not.toContain('Jumlah expense wajib lebih dari 0');
+            expect(container.textContent || '').toContain('7.000');
+
+            const saveButton = findButton(container, 'Simpan Detail');
+            expect(saveButton.disabled).toBe(false);
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+
+            expect(onSave).toHaveBeenCalledTimes(1);
+            expect(onSave.mock.calls[0][0]).toEqual(expect.objectContaining({
+                input_type: 'exp',
+                expense_code: 'KASBON',
+                jumlah: 7000,
+                total_amount: 7000
+            }));
+            expect(onSave.mock.calls[0][1]).toBe(7000);
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
     });
 
     it('renders detail metadata as read-only when editing is disabled', async () => {

@@ -53,4 +53,49 @@ describe('applyManualAdjustmentsToEmployee', () => {
         expect(result.fieldSyncMeta.find((x) => x.fieldName === 'premi_insentif')?.hadDbValue).toBe(true);
         expect(result.fieldSyncMeta.find((x) => x.fieldName === 'KOREKSI_DENDA_PANEN')?.previousAmount).toBe(7000);
     });
+
+    it('normalizes negative koreksi and potongan amounts to positive calculation values', () => {
+        const result = applyManualAdjustmentsToEmployee({
+            adjustments: [
+                { adjustment_type: 'POTONGAN_KOTOR', adjustment_name: 'KOREKSI DENDA PANEN', amount: -10000 },
+                { adjustment_type: 'POTONGAN_KOTOR', adjustment_name: 'KOREKSI DENDA PANEN', amount: -5000 },
+                {
+                    adjustment_type: 'POTONGAN_BERSIH',
+                    adjustment_name: 'POTONGAN LAINNYA KASBON',
+                    amount: 0,
+                    metadata_json: JSON.stringify({ input_type: 'exp', jumlah: -7000, total_amount: -7000 })
+                }
+            ],
+            empPremi: {},
+            empPotongan: {},
+            premiTitleMap: {},
+            potonganTitleMap: {}
+        });
+
+        expect(result.koreksiVariations.koreksi_denda_panen).toBe(15000);
+        expect(result.empPotongan.koreksi_denda_panen).toBe(15000);
+        expect(result.empPotongan.potongan_lainnya_kasbon).toBe(7000);
+        expect(result.potKoreksiDelta).toBe(15000);
+        expect(result.otherPotonganDelta).toBe(7000);
+    });
+
+    it('compares override potongan values by positive magnitude when db baseline is negative', () => {
+        const result = applyManualAdjustmentsToEmployee({
+            adjustments: [
+                { adjustment_type: 'POTONGAN_KOTOR', adjustment_name: 'KOREKSI DENDA PANEN', amount: -7000 },
+                { adjustment_type: 'POTONGAN_BERSIH', adjustment_name: 'POTONGAN LAINNYA KASBON', amount: -4000 }
+            ],
+            empPremi: {},
+            empPotongan: { koreksi_denda_panen: -7000, potongan_lainnya_kasbon: -3000 },
+            premiTitleMap: {},
+            potonganTitleMap: {},
+            mode: 'override'
+        });
+
+        expect(result.empPotongan.koreksi_denda_panen).toBe(7000);
+        expect(result.empPotongan.potongan_lainnya_kasbon).toBe(4000);
+        expect(result.potKoreksiDelta).toBe(0);
+        expect(result.otherPotonganDelta).toBe(1000);
+        expect(result.fieldSyncMeta.find((x) => x.fieldName === 'koreksi_denda_panen')?.previousAmount).toBe(7000);
+    });
 });

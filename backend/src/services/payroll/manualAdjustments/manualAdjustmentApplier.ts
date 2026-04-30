@@ -50,6 +50,15 @@ function toAmount(value: number): number {
     return Number(value) || 0;
 }
 
+function isDeductionAdjustmentType(value: ManualAdjustmentType): boolean {
+    return value === 'POTONGAN_KOTOR' || value === 'POTONGAN_BERSIH';
+}
+
+function toCalculationAmount(value: number, adjustmentType: ManualAdjustmentType): number {
+    const amount = toAmount(value);
+    return isDeductionAdjustmentType(adjustmentType) ? Math.abs(amount) : amount;
+}
+
 function normalizeFieldIdentity(value: string): string {
     return String(value || '')
         .toLowerCase()
@@ -108,7 +117,7 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
         } else {
             effectiveAmount = toAmount(adjustment.amount);
         }
-        const amount = effectiveAmount;
+        const amount = toCalculationAmount(effectiveAmount, adjustment.adjustment_type);
         const name = String(adjustment.adjustment_name || '');
         if (adjustment.adjustment_type === 'PENDAPATAN_LAINNYA') {
             continue;
@@ -159,7 +168,7 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
         if (adjustment.adjustmentType === 'POTONGAN_KOTOR') {
             const fieldName = resolveExistingFieldKey(input.empPotongan, adjustment.fieldName);
             const hadDbValue = hasOwn(input.empPotongan, fieldName);
-            const previousAmount = toAmount(input.empPotongan[fieldName]);
+            const previousAmount = toCalculationAmount(input.empPotongan[fieldName], adjustment.adjustmentType);
             const finalAmount = mode === 'override' ? amount : previousAmount + amount;
 
             input.empPotongan[fieldName] = finalAmount;
@@ -180,7 +189,7 @@ export function applyManualAdjustmentsToEmployee(input: ManualAdjustmentApplierI
         if (adjustment.adjustmentType === 'POTONGAN_BERSIH') {
             const fieldName = resolveExistingFieldKey(input.empPotongan, adjustment.fieldName);
             const hadDbValue = hasOwn(input.empPotongan, fieldName);
-            const previousAmount = toAmount(input.empPotongan[fieldName]);
+            const previousAmount = toCalculationAmount(input.empPotongan[fieldName], adjustment.adjustmentType);
             const finalAmount = mode === 'override' ? amount : previousAmount + amount;
 
             input.empPotongan[fieldName] = finalAmount;

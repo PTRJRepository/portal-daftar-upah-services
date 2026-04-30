@@ -65,7 +65,8 @@ export function toManualAdjustmentFieldName(
     return `${FIELD_PREFIX_BY_TYPE[adjustmentType]}_${suffix}`;
 }
 
-export function shouldDeleteStoredAdjustment(amount: number, remarks?: string | null): boolean {
+export function shouldDeleteStoredAdjustment(amount: number, remarks?: string | null, hasMetadataJson = false): boolean {
+    if (hasMetadataJson) return false;
     const text = String(remarks || '');
     return Number(amount || 0) === 0 && !text.includes('INIT_COLUMN') && !text.includes('sync:');
 }

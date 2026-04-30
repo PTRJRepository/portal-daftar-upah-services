@@ -59,6 +59,18 @@ const formatDecimal = (value) => {
     return n;
 };
 
+const NEGATIVE_TOTAL_EXPORT_FIELDS = new Set([
+    'potongan_upah_kotor_total',
+    'total_potongan',
+    'total_potongan_bersih'
+]);
+
+function formatPayrollExportNumber(field, value) {
+    const formatted = formatNumber(value);
+    if (formatted === '-') return formatted;
+    return NEGATIVE_TOTAL_EXPORT_FIELDS.has(field) ? -Math.abs(formatted) : formatted;
+}
+
 /**
  * Get column background color based on field name
  */
@@ -354,7 +366,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
                 if (col.field === 'lembur_jam') {
                     return formatDecimal(val);
                 } else if (typeof val === 'number') {
-                    return formatNumber(val);
+                    return formatPayrollExportNumber(col.field, val);
                 }
                 return val ?? '-';
             });
@@ -431,7 +443,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
                     rows,
                     field: col.field
                 });
-                return formatNumber(numericValue);
+                return formatPayrollExportNumber(col.field, numericValue);
             }
 
             if (val !== undefined && val !== null && val !== '') return val;
