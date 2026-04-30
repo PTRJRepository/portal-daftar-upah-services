@@ -13,6 +13,10 @@ import {
     normalizeSeedDivisionCode,
     type PruningSeedPayload
 } from "./pruning_seed_payloads";
+import {
+    ensureManualAdjustmentIdentitySchema,
+    resolveSeedPayloadIdentity
+} from "./manual_adjustment_seed_identity";
 
 const DEFAULT_TARGET_DIVISIONS = ["AB1", "P2A", "P2B"];
 const IMPORT_TAG = "SEED_IMPORT_RAKING";
@@ -76,13 +80,14 @@ async function fetchExistingRows(db: Database, payload: PruningSeedPayload): Pro
         FROM dbo.payroll_manual_adjustments
         WHERE period_month = ?
           AND period_year = ?
-          AND emp_code = ?
+          AND (emp_code = ? OR nik = ?)
           AND adjustment_type = 'PREMI'
           AND UPPER(LTRIM(RTRIM(adjustment_name))) = ?
     `, [
         payload.period_month,
         payload.period_year,
         payload.emp_code,
+        payload.nik,
         payload.adjustment_name
     ]);
 }
@@ -90,7 +95,8 @@ async function fetchExistingRows(db: Database, payload: PruningSeedPayload): Pro
 async function updateExistingRow(db: Database, id: number, payload: PruningSeedPayload): Promise<void> {
     await db.query(`
         UPDATE dbo.payroll_manual_adjustments
-        SET nik = ?,
+        SET emp_code = ?,
+            nik = ?,
             emp_name = ?,
             gang_code = ?,
             division_code = ?,
@@ -101,6 +107,7 @@ async function updateExistingRow(db: Database, id: number, payload: PruningSeedP
             updated_by = ?
         WHERE id = ?
     `, [
+        payload.emp_code,
         payload.nik,
         payload.emp_name,
         payload.gang_code,
@@ -169,11 +176,13 @@ async function seedRakingData() {
 
     const { Database } = await import("../../backend/src/db/client");
     const db = Database.getExtendedInstance();
+    await ensureManualAdjustmentIdentitySchema(db);
     let inserted = 0;
     let updated = 0;
     let multiMatched = 0;
 
-    for (const payload of payloads) {
+    for (const originalPayload of payloads) {
+        const payload = await resolveSeedPayloadIdentity(db, originalPayload);
         const existingRows = await fetchExistingRows(db, payload);
 
         if (existingRows.length === 0) {

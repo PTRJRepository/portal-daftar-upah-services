@@ -555,6 +555,114 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("resolves numeric emp_code by emp_name and gang when NIK is not found in HR", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("UPPER(RTRIM(e.EmpName))")) {
+                    return { nik: "1902042507000003", emp_code: "E0287", emp_name: "ANANDA DIKI PALINTONI ( ELSI )" };
+                }
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 89 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "1902042507000003",
+                gang_code: "E2H",
+                division_code: "DME",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 695750,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 695750 | sync:MANUAL | match:MANUAL",
+                emp_name: "ANANDA DIKI PALINTONI ( ELSI )"
+            });
+
+            const contextLookup = calls.find((call) => call.sql.includes("UPPER(RTRIM(e.EmpName))"));
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(89);
+            expect(contextLookup?.params).toEqual(["ANANDA DIKI PALINTONI ( ELSI )", "E2H"]);
+            expect(updateCall?.params).toEqual([
+                "E0287",
+                "1902042507000003",
+                695750,
+                "PREMI PRUNING | MANUAL EDIT | 695750 | sync:MANUAL | match:MANUAL",
+                "ANANDA DIKI PALINTONI ( ELSI )",
+                "system",
+                89
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("resolves numeric emp_code from payroll history when employee is not in current HR", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("history_hr_employee")) {
+                    return { nik: "1906032107840001", emp_code: "J0872", emp_name: "HARYANTO ( SINAWATI )" };
+                }
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 90 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "1906032107840001",
+                gang_code: "J3P",
+                division_code: "ARC",
+                adjustment_type: "AUTO_BUFFER",
+                adjustment_name: "AUTO SPSI",
+                amount: 0,
+                remarks: "AUTO SPSI | potongan spsi | 0 | sync:SYNC | match:MATCH",
+                emp_name: "HARYANTO ( SINAWATI )"
+            });
+
+            const historyLookup = calls.find((call) => call.sql.includes("history_hr_employee"));
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(90);
+            expect(historyLookup).toBeTruthy();
+            expect(updateCall?.params).toEqual([
+                "J0872",
+                "1906032107840001",
+                0,
+                "AUTO SPSI | potongan spsi | 0 | sync:SYNC | match:MATCH",
+                "HARYANTO ( SINAWATI )",
+                "system",
+                90
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("fills preset ADCode from task mapping for edit-mode saves", async () => {
         const originalGetInstance = Database.getInstance;
         const originalSearchOptions = taskCodeOptionService.searchOptions;

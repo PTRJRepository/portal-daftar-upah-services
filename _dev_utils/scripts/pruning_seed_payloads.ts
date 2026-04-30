@@ -74,6 +74,10 @@ function normalizeText(value: unknown): string {
     return String(value || "").trim().toUpperCase();
 }
 
+function isNumericNik(value: unknown): boolean {
+    return /^\d{10,}$/.test(normalizeText(value));
+}
+
 function parseJsonValueBlock(raw: string): { parsed: unknown; remaining: string } {
     let depth = 0;
     let inString = false;
@@ -249,7 +253,7 @@ function buildSubBlockPremiumSeedPayloads(
                 period_month: PERIOD_MONTH,
                 period_year: PERIOD_YEAR,
                 emp_code: employee.emp_code,
-                nik: employee.emp_code,
+                nik: isNumericNik(employee.emp_code) ? employee.emp_code : "",
                 emp_name: employee.emp_name,
                 gang_code: employee.gang_code,
                 division_code: employee.division_code,

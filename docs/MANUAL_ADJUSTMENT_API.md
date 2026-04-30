@@ -367,13 +367,24 @@ Alias yang didukung: `P1A/PG1A/1A`, `P1B/PG1B/1B`, `P2A/PG2A/2A`,
 | Field | Makna |
 |-------|-------|
 | `emp_code` | Kode/identifier karyawan yang tersimpan di manual adjustment. Bisa EmpCode PTRJ letter seperti `C0763` atau NIK numeric untuk row tertentu. |
-| `emp_name` | Nama karyawan jika tersedia. |
+| `emp_name` | Nama karyawan dari `HR_EMPLOYEE.EmpName` jika tersedia. Field ini bukan NIK. |
+| `nik` | NIK/KTP karyawan dari `HR_EMPLOYEE.NewICNo` jika tersedia. |
 | `gang_code` | Gang/asistensi asal row manual adjustment. Field ini wajib dipakai agent saat menampilkan atau mengelompokkan detail karyawan. |
 | `division_code` | Kode divisi yang tersimpan di row. Setelah normalisasi filter, response bisa berisi campuran 3-kode dan 4-kode, misalnya `P2A` dan `PG2A`. |
 | `adjustment_type` | Kategori row: `AUTO_BUFFER`, `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, atau `PENDAPATAN_LAINNYA`. |
 | `adjustment_name` | Nama adjustment/kolom. |
 | `amount` | Nominal adjustment. |
 | `remarks` | Catatan sinkronisasi/manual edit, termasuk ADCode jika ada. |
+
+**Terminologi identitas karyawan di codebase ini:**
+
+| Istilah | Sumber | Makna |
+|---------|--------|-------|
+| `emp_code` | `HR_EMPLOYEE.EmpCode` | Kode karyawan internal PTRJ/Plantware, biasanya huruf + angka seperti `A0001`, `B0745`, `C0763`. Field ini yang dipakai untuk query payroll PTRJ seperti `PR_ADTRANS.EmpCode`. |
+| `nik` | `HR_EMPLOYEE.NewICNo` | NIK/KTP numeric karyawan. Di beberapa flow lama nama field `nik` pernah dipakai untuk EmpCode internal, tetapi pada manual adjustment yang baru `nik` berarti NIK/KTP. |
+| `emp_name` | `HR_EMPLOYEE.EmpName` | Nama karyawan, misalnya `BUDI TEST`. Ini bukan identifier dan bukan NIK. |
+
+Catatan penting: saat menyimpan manual adjustment, backend me-resolve input `emp_code`/`nik` ke identitas HR lalu menyimpan `emp_code`, `nik`, dan `emp_name`. Namun kode `saveAdjustment()` masih memprioritaskan `emp_name` dari request sebelum nama hasil resolve HR. Jadi jika caller/agent mengirim NIK numeric di field `emp_name`, nilai itu bisa ikut tersimpan sebagai `emp_name`. Secara konsep data, itu salah isi payload; `emp_name` seharusnya nama dari `HR_EMPLOYEE.EmpName`, sementara NIK harus dikirim di field `nik`.
 
 Catatan: endpoint data manual adjustment (`/manual-adjustment/by-api-key` dan `/manual-adjustment`) selalu mengembalikan `gang_code` pada setiap row data karyawan. Endpoint master opsi seperti `taskcode-options`, `automation-options`, dan `manual-adjustment-presets` bukan data karyawan, sehingga tidak memiliki `gang_code`.
 
@@ -568,12 +579,15 @@ Simpan manual adjustment baru atau update yang sudah ada (upsert berdasarkan uni
 | `period_year` | number | ✅ | Tahun |
 | `nik` | string | ❌ | NIK (KTP) - untuk PENDAPATAN_LAINNYA |
 | `emp_code` | string | ✅ | Employee code |
+| `emp_name` | string | ❌ | Nama karyawan dari `HR_EMPLOYEE.EmpName`; jangan isi dengan NIK/EmpCode |
 | `gang_code` | string | ✅ | Gang code |
 | `division_code` | string | ❌ | Division code |
 | `adjustment_type` | string | ✅ | `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, `PENDAPATAN_LAINNYA`, `AUTO_BUFFER` |
 | `adjustment_name` | string | ✅ | Nama adjustment |
 | `amount` | number | ✅ | Jumlah nominal |
 | `remarks` | string | ❌ | Catatan |
+
+Rule identitas untuk save: `emp_code` harus berisi EmpCode PTRJ/Plantware, `nik` harus berisi NIK/KTP numeric, dan `emp_name` hanya untuk nama karyawan. Jika caller tidak yakin nama benar, jangan kirim `emp_name`; backend akan mencoba resolve dari `HR_EMPLOYEE`.
 
 **Adjustment Types:**
 

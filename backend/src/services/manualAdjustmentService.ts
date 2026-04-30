@@ -447,6 +447,132 @@ function isNumericNik(value: unknown): boolean {
     return /^\d{10,}$/.test(normalizeIdentityValue(value));
 }
 
+async function resolveManualAdjustmentIdentityByContext(data: ManualAdjustment): Promise<{ emp_code: string; nik: string; emp_name: string } | null> {
+    const empName = normalizeText(data.emp_name).toUpperCase();
+    const gangCode = normalizeText(data.gang_code).toUpperCase();
+    if (!empName || !gangCode) return null;
+
+    const db = Database.getInstance();
+    const row = await db.queryOne<any>(`
+        SELECT TOP 1
+            RTRIM(ISNULL(e.NewICNo, '')) as nik,
+            RTRIM(e.EmpCode) as emp_code,
+            RTRIM(e.EmpName) as emp_name
+        FROM HR_EMPLOYEE e
+        JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+        WHERE UPPER(RTRIM(e.EmpName)) = ?
+          AND UPPER(RTRIM(gl.GangCode)) = ?
+        ORDER BY e.EmpCode DESC
+    `, [empName, gangCode]);
+
+    if (!row) return null;
+    return {
+        nik: normalizeIdentityValue(row.nik),
+        emp_code: normalizeIdentityValue(row.emp_code),
+        emp_name: normalizeIdentityValue(row.emp_name)
+    };
+}
+
+async function resolveManualAdjustmentIdentityByHistory(data: ManualAdjustment): Promise<{ emp_code: string; nik: string; emp_name: string } | null> {
+    const inputEmpCode = normalizeIdentityValue(data.emp_code);
+    const inputNik = normalizeIdentityValue(data.nik);
+    const empName = normalizeText(data.emp_name).toUpperCase();
+    const gangCode = normalizeText(data.gang_code).toUpperCase();
+    if (!inputEmpCode && !inputNik && (!empName || !gangCode)) return null;
+
+    const db = Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE);
+    const row = await db.queryOne<any>(`
+        SELECT TOP 1
+            RTRIM(h.emp_code) as emp_code,
+            COALESCE(
+                NULLIF(RTRIM(ISNULL(h.nik, '')), ''),
+                NULLIF(RTRIM(ISNULL(h.new_nik, '')), ''),
+                ?
+            ) as nik,
+            RTRIM(ISNULL(h.emp_name, '')) as emp_name
+        FROM dbo.history_hr_employee h
+        WHERE h.period_month = ?
+          AND h.period_year = ?
+          AND NULLIF(RTRIM(ISNULL(h.emp_code, '')), '') IS NOT NULL
+          AND (
+              RTRIM(h.emp_code) = ?
+              OR NULLIF(RTRIM(ISNULL(h.nik, '')), '') = ?
+              OR NULLIF(RTRIM(ISNULL(h.new_nik, '')), '') = ?
+              OR NULLIF(RTRIM(ISNULL(h.nik, '')), '') = ?
+              OR NULLIF(RTRIM(ISNULL(h.new_nik, '')), '') = ?
+              OR (
+                  ? <> ''
+                  AND ? <> ''
+                  AND UPPER(RTRIM(h.emp_name)) = ?
+                  AND UPPER(RTRIM(h.gang_code)) = ?
+              )
+          )
+          AND (
+              SELECT COUNT(DISTINCT RTRIM(h2.emp_code))
+              FROM dbo.history_hr_employee h2
+              WHERE h2.period_month = h.period_month
+                AND h2.period_year = h.period_year
+                AND NULLIF(RTRIM(ISNULL(h2.emp_code, '')), '') IS NOT NULL
+                AND (
+                    RTRIM(h2.emp_code) = ?
+                    OR NULLIF(RTRIM(ISNULL(h2.nik, '')), '') = ?
+                    OR NULLIF(RTRIM(ISNULL(h2.new_nik, '')), '') = ?
+                    OR NULLIF(RTRIM(ISNULL(h2.nik, '')), '') = ?
+                    OR NULLIF(RTRIM(ISNULL(h2.new_nik, '')), '') = ?
+                    OR (
+                        ? <> ''
+                        AND ? <> ''
+                        AND UPPER(RTRIM(h2.emp_name)) = ?
+                        AND UPPER(RTRIM(h2.gang_code)) = ?
+                    )
+                )
+          ) = 1
+        ORDER BY
+            CASE
+                WHEN RTRIM(h.emp_code) = ? THEN 0
+                WHEN NULLIF(RTRIM(ISNULL(h.nik, '')), '') = ? OR NULLIF(RTRIM(ISNULL(h.new_nik, '')), '') = ? THEN 1
+                WHEN NULLIF(RTRIM(ISNULL(h.nik, '')), '') = ? OR NULLIF(RTRIM(ISNULL(h.new_nik, '')), '') = ? THEN 2
+                ELSE 3
+            END,
+            h.created_at DESC,
+            h.id DESC
+    `, [
+        isNumericNik(inputEmpCode) ? inputEmpCode : inputNik,
+        data.period_month,
+        data.period_year,
+        inputEmpCode,
+        inputEmpCode,
+        inputEmpCode,
+        inputNik,
+        inputNik,
+        empName,
+        gangCode,
+        empName,
+        gangCode,
+        inputEmpCode,
+        inputEmpCode,
+        inputEmpCode,
+        inputNik,
+        inputNik,
+        empName,
+        gangCode,
+        empName,
+        gangCode,
+        inputEmpCode,
+        inputEmpCode,
+        inputEmpCode,
+        inputNik,
+        inputNik
+    ]);
+
+    if (!row) return null;
+    return {
+        nik: normalizeIdentityValue(row.nik),
+        emp_code: normalizeIdentityValue(row.emp_code),
+        emp_name: normalizeIdentityValue(row.emp_name)
+    };
+}
+
 async function resolveManualAdjustmentIdentity(data: ManualAdjustment): Promise<ResolvedManualAdjustmentIdentity> {
     const inputEmpCode = normalizeIdentityValue(data.emp_code);
     const inputNik = normalizeIdentityValue(data.nik);
@@ -454,10 +580,13 @@ async function resolveManualAdjustmentIdentity(data: ManualAdjustment): Promise<
         ? inputEmpCode
         : inputNik || inputEmpCode;
     const fallbackIdentifier = inputNik && inputNik !== lookupIdentifier ? inputNik : inputEmpCode;
+    const needsHistoryLookup = isNumericNik(inputEmpCode) || isNumericNik(inputNik);
     const identity = await employeeIdentityResolverService.resolve(lookupIdentifier)
         || (fallbackIdentifier && fallbackIdentifier !== lookupIdentifier
             ? await employeeIdentityResolverService.resolve(fallbackIdentifier)
-            : null);
+            : null)
+        || await resolveManualAdjustmentIdentityByContext(data)
+        || (needsHistoryLookup ? await resolveManualAdjustmentIdentityByHistory(data) : null);
 
     const resolvedEmpCode = normalizeIdentityValue(identity?.emp_code)
         || (!isNumericNik(inputEmpCode) ? inputEmpCode : "");

@@ -53,6 +53,7 @@ describe("AB1 pruning seed payload builder", () => {
         expect(payloads.map((payload) => payload.emp_code)).toEqual(["G0030", "G0008"]);
         expect(payloads[0]).toMatchObject({
             emp_code: "G0030",
+            nik: "",
             emp_name: "AHMAD DARYONO",
             gang_code: "G1H",
             division_code: "AB1",
@@ -68,6 +69,28 @@ describe("AB1 pruning seed payload builder", () => {
             ],
             total_amount: 221100
         });
+    });
+
+    it("keeps numeric identifiers in nik but does not duplicate letter emp_code into nik", () => {
+        const estates = parseEstateJsonBlocks(JSON.stringify([
+            {
+                Estate: "AB1",
+                Gangs: [{
+                    Gang: "G1H",
+                    Details: [
+                        { Empcode: "G0030", Employee: "AHMAD DARYONO", SubBlok: "P08/06", Amount: 110000 },
+                        { Empcode: "1902042507000003", Employee: "ANANDA DIKI PALINTONI", SubBlok: "P08/07", Amount: 111100 }
+                    ]
+                }]
+            }
+        ]));
+
+        const payloads = buildAb1PruningSeedPayloads(estates);
+
+        expect(payloads.map((payload) => ({ emp_code: payload.emp_code, nik: payload.nik }))).toEqual([
+            { emp_code: "G0030", nik: "" },
+            { emp_code: "1902042507000003", nik: "1902042507000003" }
+        ]);
     });
 
     it("builds the expected AB1 summary from the real pruning JSON file", () => {

@@ -169,6 +169,16 @@ Dynamic deduction headers exclude broad `POT%`, SPSI, beras, jabatan, masa, lemb
 
 Payroll history/aggregation workflows should preserve historical records. Prefer appending new versions and reading the latest by `version_index` or timestamp instead of overwriting historical data, especially for employee identity data.
 
+### Manual adjustment identity fields
+
+Always keep employee identity fields distinct:
+
+- `emp_code` is `HR_EMPLOYEE.EmpCode`: PTRJ/Plantware internal employee code, usually letter + digits such as `A0001`, `B0745`, `C0763`. Use this for PTRJ payroll lookups such as `PR_ADTRANS.EmpCode`.
+- `nik` is `HR_EMPLOYEE.NewICNo`: numeric KTP/NIK.
+- `emp_name` is `HR_EMPLOYEE.EmpName`: employee name only. Never put NIK or EmpCode in `emp_name`.
+
+For manual adjustment saves, send NIK in `nik`, PTRJ code in `emp_code`, and name in `emp_name` only if the caller has the real name. If unsure, omit `emp_name` and let backend identity resolution read `HR_EMPLOYEE.EmpName`. Be aware that `saveAdjustment()` currently preserves request `emp_name` before resolved HR name, so a bad payload can store a NIK-looking value in `emp_name`.
+
 ## Development Notes
 
 - There is no root `package.json`; run backend commands from `backend/` and frontend commands from `frontend/`.
@@ -312,7 +322,7 @@ File: `backend/data/premium_definitions.json` (ALREADY CREATED)
 **Database:**
 - Table: `dbo.payroll_manual_adjustments` on `extend_db_ptrj` database (SERVER_PROFILE_1)
 - Access via: `Database.getInstance(Config.DB_EXTEND_DATABASE, Config.DB_EXTEND_PROFILE)` at `manualAdjustmentService.ts:338-339`
-- Current columns: id, period_month, period_year, emp_code, emp_name, gang_code, division_code, adjustment_type, adjustment_name, amount, remarks, created_by, created_at, updated_by, updated_at
+- Current columns: id, period_month, period_year, emp_code, nik, emp_name, gang_code, division_code, adjustment_type, adjustment_name, amount, remarks, created_by, created_at, updated_by, updated_at
 - **HAS: `metadata_json NVARCHAR(MAX) NULL`** — migration executed 2026-04-29
 
 ### Existing Data Normalization Needs
