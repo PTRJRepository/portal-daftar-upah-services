@@ -15,6 +15,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 const EMPTY_BLOK_ROW = { subblok: '', gang_code: '', jumlah: 0 };
 const EMPTY_KENDARAAN_ROW = { nomor_kendaraan: '', expense_code: '', jumlah: 0 };
 const EMPTY_EXPENSE = { expense_code: '', jumlah: 0 };
+const DETAIL_TOTAL_SYNC_DEFINITION_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
+
+function normalizeDefinitionName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
 
 function parseInitialData(initialData, inputType) {
     if (!initialData) return null;
@@ -418,7 +423,12 @@ export default function PremiumDetailPopup({
     }, [inputType, amountDraft, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense]);
 
     const storedAmountNumber = resolveInitialStoredAmount(initialEditorState.parsed, storedAmount);
-    const amountToSave = inputType === 'amount' ? totalAmount : (isAmountEditable ? (Number(amountDraft) || 0) : storedAmountNumber);
+    const shouldAutoSyncDetailAmount = inputType !== 'amount' && DETAIL_TOTAL_SYNC_DEFINITION_NAMES.has(normalizeDefinitionName(definitionName));
+    const amountToSave = inputType === 'amount'
+        ? totalAmount
+        : shouldAutoSyncDetailAmount
+            ? totalAmount
+            : (isAmountEditable ? (Number(amountDraft) || 0) : storedAmountNumber);
     const diffFromStored = totalAmount - storedAmountNumber;
     const diffFromDraft = totalAmount - amountToSave;
     const detailDiffersFromStored = hasAmountDifference(totalAmount, storedAmountNumber);
@@ -427,10 +437,10 @@ export default function PremiumDetailPopup({
     const canEdit = !readOnly;
 
     const handleSyncAmount = useCallback(() => {
-        if (!canEdit) return;
+        if (!canEdit || shouldAutoSyncDetailAmount) return;
         setAmountDraft(totalAmount);
         setIsAmountEditable(true);
-    }, [canEdit, totalAmount]);
+    }, [canEdit, shouldAutoSyncDetailAmount, totalAmount]);
 
     const handleSave = useCallback(() => {
         if (!canEdit) {
@@ -578,7 +588,9 @@ export default function PremiumDetailPopup({
 
                         {detailDiffersFromStored && (
                             <div style={warningPanelStyle}>
-                                Amount tersimpan berbeda dengan total detail metadata sebesar {formatAmount(Math.abs(diffFromStored))}. {canEdit ? 'Gunakan tombol Sync ke Total Detail jika amount awal ingin disamakan dengan uraian detail.' : 'Masuk mode edit untuk sync amount awal dengan uraian detail.'}
+                                Amount tersimpan berbeda dengan total detail metadata sebesar {formatAmount(Math.abs(diffFromStored))}. {canEdit
+                                    ? (shouldAutoSyncDetailAmount ? 'Saat disimpan, amount akan otomatis mengikuti total detail.' : 'Gunakan tombol Sync ke Total Detail jika amount awal ingin disamakan dengan uraian detail.')
+                                    : 'Masuk mode edit untuk sync amount awal dengan uraian detail.'}
                             </div>
                         )}
 
@@ -597,7 +609,7 @@ export default function PremiumDetailPopup({
                             </div>
                         )}
 
-                        {canEdit && inputType !== 'amount' && (
+                        {canEdit && inputType !== 'amount' && !shouldAutoSyncDetailAmount && (
                             <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
                                     <input

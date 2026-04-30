@@ -229,6 +229,54 @@ function validatePremiumAdjustmentDefinition(data: ManualAdjustment, normalizedA
     premiumDefinitionService.validatePremiumName(normalizedAdjustmentName);
 }
 
+const DETAIL_TOTAL_SYNC_PREMI_NAMES = new Set(["PREMI PRUNING", "PREMI RAKING"]);
+
+function serializeManualAdjustmentMetadata(metadataJson: unknown): string | null {
+    if (!metadataJson) return null;
+    return typeof metadataJson === "string" ? metadataJson : JSON.stringify(metadataJson);
+}
+
+function sumMetadataJumlah(items: any[] | undefined): number {
+    return (items || []).reduce((sum, item) => sum + (Number(item?.jumlah) || 0), 0);
+}
+
+function calculateManualAdjustmentMetadataTotal(metadata: any): number {
+    switch (metadata?.input_type) {
+        case "blok":
+            return sumMetadataJumlah(metadata.items);
+        case "exp":
+            return Number(metadata.jumlah) || 0;
+        case "kendaraan":
+            return sumMetadataJumlah(metadata.items);
+        case "blok,exp":
+            return sumMetadataJumlah(metadata.blok_items) + (Number(metadata.expense?.jumlah) || 0);
+        default:
+            return 0;
+    }
+}
+
+function resolveDetailTotalSync(data: ManualAdjustment, normalizedAdjustmentName: string, metadataJsonStr: string | null, fallbackAmount: number): { amount: number; metadataJsonStr: string | null } {
+    if (String(data.adjustment_type || "").trim().toUpperCase() !== "PREMI") return { amount: fallbackAmount, metadataJsonStr };
+    if (!DETAIL_TOTAL_SYNC_PREMI_NAMES.has(normalizedAdjustmentName)) return { amount: fallbackAmount, metadataJsonStr };
+
+    const metadata = premiumDefinitionService.parseMetadata(metadataJsonStr);
+    if (!metadata || metadata.input_type === "amount") return { amount: fallbackAmount, metadataJsonStr };
+
+    const calculatedTotal = calculateManualAdjustmentMetadataTotal(metadata);
+    let syncedAmount = fallbackAmount;
+    if (Number.isFinite(calculatedTotal) && Math.abs(calculatedTotal) > 0.01) {
+        syncedAmount = calculatedTotal;
+    } else {
+        const declaredTotal = Number((metadata as any).total_amount);
+        syncedAmount = Number.isFinite(declaredTotal) ? declaredTotal : fallbackAmount;
+    }
+
+    return {
+        amount: syncedAmount,
+        metadataJsonStr: JSON.stringify({ ...(metadata as any), total_amount: syncedAmount })
+    };
+}
+
 function expectedTaskDescPrefix(adjustmentType: string): "(AL)" | "(DE)" | null {
     const type = normalizeText(adjustmentType).toUpperCase();
     if (type === "PREMI") return "(AL)";
@@ -546,6 +594,11 @@ export class ManualAdjustmentService {
         const normalizedAdjustmentName = normalizeStoredAdjustmentName(data.adjustment_name);
         const normalizedAdjustmentNameSql = buildNormalizedSqlNameExpression('adjustment_name');
         const normalizedDivisionCode = normalizeManualAdjustmentDivisionCode(data.division_code);
+        const hasMetadataJsonInput = Object.prototype.hasOwnProperty.call(data, 'metadata_json');
+        let metadataJsonStr = serializeManualAdjustmentMetadata(data.metadata_json);
+        const detailTotalSync = resolveDetailTotalSync(data, normalizedAdjustmentName, metadataJsonStr, parsedAmount);
+        metadataJsonStr = detailTotalSync.metadataJsonStr;
+        const effectiveAmount = detailTotalSync.amount;
         validatePremiumAdjustmentDefinition(data, normalizedAdjustmentName);
         validateManualAdjustmentAdCode(data);
         const remarks = buildManualAdjustmentRemarks(data);
@@ -554,8 +607,8 @@ export class ManualAdjustmentService {
 
         // --- PENDAPATAN_LAINNYA: Save to employee_other_incomes ---
         if (data.adjustment_type === 'PENDAPATAN_LAINNYA') {
-            console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${normalizedAdjustmentName}, amount=${parsedAmount}`);
-            return await this.saveOtherIncome(db, { ...data, adjustment_name: normalizedAdjustmentName, remarks: remarks || undefined }, parsedAmount, user);
+            console.log(`[saveAdjustment] PENDAPATAN_LAINNYA: emp_code=${data.emp_code}, gang=${data.gang_code}, name=${normalizedAdjustmentName}, amount=${effectiveAmount}`);
+            return await this.saveOtherIncome(db, { ...data, adjustment_name: normalizedAdjustmentName, remarks: remarks || undefined }, effectiveAmount, user);
         }
 
         // --- Standard adjustments: Save to payroll_manual_adjustments ---
@@ -569,17 +622,13 @@ export class ManualAdjustmentService {
         `, [data.period_month, data.period_year, data.emp_code, data.adjustment_type, normalizedAdjustmentName]);
 
         if (existing) {
-            if (shouldDeleteStoredAdjustment(parsedAmount, data.remarks)) {
+            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks)) {
                 // If amount is 0, delete it from the table
                 await db.query(`DELETE FROM dbo.payroll_manual_adjustments WHERE id = ?`, [existing.id]);
                 return existing.id;
             } else {
                 // Update. Preserve existing detail metadata when a regular amount edit
                 // does not submit metadata_json, otherwise seeded sub-block detail is lost.
-                const hasMetadataJsonInput = Object.prototype.hasOwnProperty.call(data, 'metadata_json');
-                const metadataJsonStr = data.metadata_json
-                    ? (typeof data.metadata_json === 'string' ? data.metadata_json : JSON.stringify(data.metadata_json))
-                    : null;
                 await db.query(`
                     UPDATE dbo.payroll_manual_adjustments
                     SET amount = ?,
@@ -590,17 +639,14 @@ export class ManualAdjustmentService {
                         updated_by = ?
                     WHERE id = ?
                 `, hasMetadataJsonInput
-                    ? [parsedAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
-                    : [parsedAmount, remarks, empName, user || 'system', existing.id]);
+                    ? [effectiveAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
+                    : [effectiveAmount, remarks, empName, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {
-            if (shouldDeleteStoredAdjustment(parsedAmount, data.remarks)) return 0; // Don't insert zero
+            if (shouldDeleteStoredAdjustment(effectiveAmount, data.remarks)) return 0; // Don't insert zero
 
             // Insert
-            const insertMetadataJsonStr = data.metadata_json
-                ? (typeof data.metadata_json === 'string' ? data.metadata_json : JSON.stringify(data.metadata_json))
-                : null;
             const result = await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
                     period_month, period_year, emp_code, emp_name, gang_code, division_code,
@@ -610,7 +656,7 @@ export class ManualAdjustmentService {
                 )
             `, [
                 data.period_month, data.period_year, data.emp_code, empName, data.gang_code, normalizedDivisionCode,
-                data.adjustment_type, normalizedAdjustmentName, parsedAmount, remarks, insertMetadataJsonStr, user || 'system'
+                data.adjustment_type, normalizedAdjustmentName, effectiveAmount, remarks, metadataJsonStr, user || 'system'
             ]);
 
             // Auto-save as preset for recent/history (fire-and-forget)

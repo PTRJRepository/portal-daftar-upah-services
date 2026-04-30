@@ -454,11 +454,19 @@ describe("manual adjustment ADCode rules", () => {
             });
 
             const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            const expectedMetadata = JSON.stringify({
+                input_type: "blok",
+                items: [
+                    { subblok: "P0101", gang_code: "G1H", jumlah: 50000 },
+                    { subblok: "P0102", gang_code: "G1H", jumlah: 75000 }
+                ],
+                total_amount: 125000
+            });
             expect(id).toBe(58);
             expect(updateCall?.params).toEqual([
                 125000,
                 "PREMI RAKING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
-                metadata,
+                expectedMetadata,
                 null,
                 "system",
                 58
