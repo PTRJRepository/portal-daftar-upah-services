@@ -19,6 +19,7 @@ import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
+import { openEmployeeDetailPage } from '../utils/employeeDetailNavigation'
 import { checkReportAccess } from '../services/summaryReportService'
 import { buildSelectedEmployeeRowMap } from '../utils/payrollRowAccessors'
 import {
@@ -285,36 +286,16 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Handler for viewing employee detail (called from PayrollGrid context menu)
   const handleViewEmployeeDetail = (employeeData) => {
-    // Validate employeeData exists
-    if (!employeeData) {
-      console.error('[MainPage] Cannot view detail: employeeData is null/undefined')
-      return
-    }
-
-    // Prefer emp_code (Plantware code like B0075) over NIK (KTP number)
-    const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK
-    if (!empCode) {
-      console.error('[MainPage] Cannot view detail: emp_code is missing', employeeData)
-      return
-    }
-
-    // Open in new tab with params for EmployeeDetailRoute
-    const params = new URLSearchParams({
-      nik: empCode,
-      month: month,
-      year: year,
-      division: division || ''
+    const detailPath = openEmployeeDetailPage({
+      employeeData,
+      month,
+      year,
+      division: division || '',
+      useHistoryDb: isHistorical
     })
 
-    // Use buildAppPath to add base path (/upah) in proxy mode
-    const detailPath = buildAppPath(`/employee/detail?${params.toString()}`)
-
-    // Use a named window to prevent popup blockers from blocking subsequent opens
-    const newWindow = window.open(detailPath, '_blank', 'noopener,noreferrer')
-    if (!newWindow) {
-      console.error('[MainPage] Popup was blocked! Try allowing popups for this site.')
-      // Fallback: try direct location change
-      window.location.href = detailPath
+    if (!detailPath) {
+      console.error('[MainPage] Cannot view detail: emp_code is missing', employeeData)
     }
   }
 

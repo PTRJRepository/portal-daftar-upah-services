@@ -2623,7 +2623,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .get("/premium-definitions", async ({ set }) => {
         try {
             const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
-            const definitions = premiumDefinitionService.getActivePremiumDefinitions();
+            const definitions = premiumDefinitionService.getActiveDefinitions();
             return { success: true, count: definitions.length, data: definitions };
         } catch (e: any) {
             console.error("[PayrollRoutes] premium-definitions GET error:", e);

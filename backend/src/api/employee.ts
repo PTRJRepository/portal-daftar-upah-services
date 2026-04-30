@@ -11,6 +11,7 @@ import { User } from "../types/user";
 import { divisionDefinition } from "../services/divisionDefinition";
 import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
 import { resolveUserFromHeaders } from "../utils/authBypass";
+import { canAccessEmployeeDetailScope } from "../utils/employeeDetailAccess";
 
 const authService = AuthService.getInstance();
 
@@ -478,6 +479,7 @@ employeeRoutes
             let empCode = (params.emp_code || '').trim();
             const month = parseInt(query.month);
             const year = parseInt(query.year);
+            const requestedDivision = query.div;
             const useHistoryDb = parseBooleanQueryParam(query.use_history);
             const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version);
 
@@ -508,23 +510,37 @@ employeeRoutes
             if (currentUser?.role?.toLowerCase() === 'kerani' && currentUser?.divisions?.length > 0) {
                 // Get employee's loc_code (division) from their gang code
                 const db = (await import('../db/client')).Database.getInstance();
-                const empRows = await db.query<{ LocCode: string }>(
-                    `SELECT LocCode FROM HR_EMPLOYEE WHERE RTRIM(EmpCode) = ?`,
+                const empRows = await db.query<{
+                    LocCode: string;
+                    GangCode?: string;
+                    GangDescription?: string;
+                }>(
+                    `
+                    SELECT TOP 1
+                        e.LocCode,
+                        gl.GangCode,
+                        g.Description as GangDescription
+                    FROM HR_EMPLOYEE e
+                    LEFT JOIN HR_GANGLN gl ON RTRIM(gl.GangMember) = RTRIM(e.EmpCode)
+                    LEFT JOIN HR_GANG g ON RTRIM(g.GangCode) = RTRIM(gl.GangCode)
+                    WHERE RTRIM(e.EmpCode) = ?
+                    ORDER BY gl.GangCode
+                    `,
                     [empCode]
                 );
                 if (empRows.length > 0) {
                     const empLocCode = (empRows[0].LocCode || '').trim().toUpperCase();
-                    // Normalize using divisionDefinition.resolveDivisionCode
-                    const { divisionDefinition } = await import('../services/divisionDefinition');
                     const empDivision = divisionDefinition.resolveDivisionCode(empLocCode);
-
-                    const hasPermission = currentUser.divisions.some(d => {
-                        const userDiv = divisionDefinition.resolveDivisionCode(String(d).trim().toUpperCase());
-                        return userDiv === empDivision;
+                    const hasPermission = canAccessEmployeeDetailScope({
+                        userDivisions: currentUser.divisions,
+                        requestedDivision,
+                        employeeLocCode: empLocCode,
+                        employeeGangCode: empRows[0].GangCode,
+                        employeeGangDescription: empRows[0].GangDescription
                     });
 
                     if (!hasPermission) {
-                        console.warn(`[API] KERANI denied access to employee ${empCode}. Emp division: ${empDivision}, User divisions: ${JSON.stringify(currentUser.divisions)}`);
+                        console.warn(`[API] KERANI denied access to employee ${empCode}. Emp division: ${empDivision}, gang: ${empRows[0].GangCode || '-'}, requested: ${requestedDivision || '-'}, User divisions: ${JSON.stringify(currentUser.divisions)}`);
                         set.status = 403;
                         return { error: `Akses ditolak: Anda tidak memiliki izin untuk melihat data karyawan dari divisi lain`, emp_code: empCode };
                     }

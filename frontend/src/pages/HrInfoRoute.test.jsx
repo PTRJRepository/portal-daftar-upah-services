@@ -1,0 +1,40 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { createRoot } from 'react-dom/client';
+const { act } = React;
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ token: 'test-token', loading: false }),
+}));
+
+vi.mock('../components/employee/HrInfoPage', () => ({
+  default: () => React.createElement('main', { 'data-testid': 'hr-info-page' }, 'HR info'),
+}));
+
+vi.mock('../components/common/LoadingScreen', () => ({
+  default: ({ message }) => React.createElement('div', null, message),
+}));
+
+import HrInfoRoute from './HrInfoRoute';
+
+describe('HrInfoRoute layout', () => {
+  it('does not add a second vertical scroll container around the HR page', async () => {
+    window.history.pushState({}, '', '/hr-info?nik=B001&month=4&year=2026&division=PG2B');
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<HrInfoRoute />);
+    });
+
+    expect(container.firstElementChild?.getAttribute('data-testid')).toBe('hr-info-page');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+});

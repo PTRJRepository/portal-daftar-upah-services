@@ -192,6 +192,47 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('KASBON');
     });
 
+    it('renders only total pendapatan lainnya without detail income columns', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: [],
+            dynamic_potongan_headers: [],
+            premi_title_map: {},
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            pendapatan_thr: 100000,
+            pendapatan_bonus: 50000,
+            pendapatan_kontan: 25000,
+            total_pendapatan_lainnya: 175000
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('TOTAL (+)');
+        expect(html).toContain('PEND. LAIN (-)');
+        expect(html).not.toContain('THR (+)');
+        expect(html).not.toContain('BONUS (+)');
+        expect(html).not.toContain('KONTAN (+)');
+        expect(html).not.toContain('THR (-)');
+        expect(html).not.toContain('BONUS (-)');
+        expect(html).not.toContain('KONTAN (-)');
+        expect(html).not.toContain('data-field="pendapatan_thr"');
+        expect(html).not.toContain('data-field="pendapatan_bonus"');
+        expect(html).not.toContain('data-field="pendapatan_kontan"');
+    });
+
     it('shows premium detail action in view mode when metadata exists', () => {
         mocked.streamMeta = {
             dynamic_premi_headers: ['premi_pruning'],

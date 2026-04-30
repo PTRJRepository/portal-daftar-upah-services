@@ -24,6 +24,22 @@ const mocked = vi.hoisted(() => ({
                 task_desc: '(AL) TUNJANGAN PREMI ((PM) WEEDING - CIRCLE RAKING)',
                 input_type: 'blok',
                 is_active: true
+            },
+            {
+                adjustment_type: 'POTONGAN_KOTOR',
+                adjustment_name: 'KOREKSI X',
+                ad_code: 'DE0004',
+                task_desc: '(DE) POTONGAN PREMI',
+                input_type: 'blok',
+                is_active: true
+            },
+            {
+                adjustment_type: 'POTONGAN_BERSIH',
+                adjustment_name: 'POTONGAN X',
+                ad_code: 'DE0002',
+                task_desc: '(DE) POTONGAN HUTANG',
+                input_type: 'amount',
+                is_active: true
             }
         ]
     })),
@@ -116,7 +132,7 @@ describe('ManualAdjustmentColumnModal', () => {
         }
     });
 
-    it('loads all saved column presets for non-PREMI categories', async () => {
+    it('loads KOREKSI X template from premium definitions for non-PREMI categories', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
@@ -136,8 +152,11 @@ describe('ManualAdjustmentColumnModal', () => {
             });
             await flushEffects();
 
-            expect(mocked.fetchManualAdjustmentPresets).toHaveBeenCalledWith('test-token', {});
-            expect(container.textContent || '').toContain('Preset Kolom Tersimpan');
+            expect(mocked.fetchPremiumDefinitions).toHaveBeenCalledWith('test-token');
+            expect(mocked.fetchManualAdjustmentPresets).not.toHaveBeenCalled();
+            expect(container.textContent || '').toContain('KOREKSI X');
+            expect(container.textContent || '').toContain('Ganti X pada KOREKSI X');
+            expect(container.textContent || '').toContain('(DE) POTONGAN PREMI');
         } finally {
             await act(async () => {
                 root.unmount();
@@ -146,7 +165,7 @@ describe('ManualAdjustmentColumnModal', () => {
         }
     });
 
-    it('uses ADCode parsed from preset remarks when the saved preset row has no ad_code field', async () => {
+    it('saves another koreksi column name while keeping the template TaskDesc', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root = createRoot(container);
@@ -167,11 +186,11 @@ describe('ManualAdjustmentColumnModal', () => {
             });
             await flushEffects();
 
-            const presetButton = findButton(container, 'KOREKSI DENDA PANEN');
-            expect(presetButton).toBeTruthy();
+            const nameInput = container.querySelector('input[placeholder="contoh: PANEN"]');
+            expect(nameInput).toBeTruthy();
 
             await act(async () => {
-                presetButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                changeInputValue(nameInput, 'DENDA PANEN');
             });
             await flushEffects();
 
@@ -187,7 +206,10 @@ describe('ManualAdjustmentColumnModal', () => {
                 adjustment_type: 'POTONGAN_KOTOR',
                 adjustment_name: 'KOREKSI DENDA PANEN',
                 ad_code: 'DE0004',
+                task_code: 'DE0004',
+                base_task_code: 'DE0004',
                 task_desc: '(DE) POTONGAN PREMI',
+                input_type: 'blok',
                 remarks: 'KOREKSI DENDA PANEN | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH'
             }));
         } finally {
@@ -332,7 +354,7 @@ describe('ManualAdjustmentColumnModal', () => {
             });
             await flushEffects();
 
-            const searchInput = container.querySelector('input[placeholder="Cari definisi premi..."]');
+            const searchInput = container.querySelector('input[placeholder="Cari nama, ADCode, TaskDesc, atau input type..."]');
             expect(searchInput).toBeTruthy();
 
             await act(async () => {

@@ -3028,8 +3028,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         // PENDAPATAN LAINNYA
         const activePendapatan = getOtherIncomeDetailFields(effectiveActivePendapatanFields);
-        const deductionOtherIncomeFields = getOtherIncomeDetailFields(effectiveActivePendapatanFields, { includeKontan: true });
-        const showOtherIncomeDetails = true;
+        const showOtherIncomeDetails = isEditMode && isOtherIncomeExpanded;
+        const deductionOtherIncomeFields = showOtherIncomeDetails
+            ? getOtherIncomeDetailFields(effectiveActivePendapatanFields, { includeKontan: true })
+            : [];
         if (showOtherIncomeDetails) {
             for (const field of activePendapatan) {
                 const displayName = formatOtherIncomeColumnLabel(field, '(+)');

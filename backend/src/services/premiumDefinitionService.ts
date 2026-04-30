@@ -21,7 +21,7 @@ import { join } from "path";
 export type PremiumInputType = 'amount' | 'blok' | 'exp' | 'kendaraan' | 'blok,exp';
 
 export interface PremiumDefinition {
-    adjustment_type?: 'PREMI' | 'POTONGAN_KOTOR';
+    adjustment_type?: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
     adjustment_name: string;    // e.g. "PREMI PRUNING"
     ad_code: string;            // e.g. "AL3PM0601P1A"
     task_desc: string;          // e.g. "(AL) TUNJANGAN PREMI ((PM) PRUNING)"

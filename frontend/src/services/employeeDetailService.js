@@ -35,16 +35,31 @@ const getBaseUrl = () => {
 
 
 
-export async function getEmployeeCheckroll(token, empCode, month, year, division = null) {
+const hasQueryValue = (value) => value !== null && value !== undefined && value !== ''
+
+const toBooleanQueryValue = (value) => {
+    if (!hasQueryValue(value)) return null
+    if (typeof value === 'boolean') return value
+    return String(value).trim().toLowerCase() === 'true'
+}
+
+export async function getEmployeeCheckroll(token, empCode, month, year, division = null, useHistoryDb = null, snapshotVersion = null) {
     try {
         const params = { month, year }
         if (division) {
             params.div = division
         }
+        if (hasQueryValue(useHistoryDb)) {
+            params.use_history = toBooleanQueryValue(useHistoryDb).toString()
+        }
+        if (hasQueryValue(snapshotVersion)) {
+            params.snapshot_version = String(snapshotVersion)
+        }
 
         const baseUrl = getBaseUrl()
+        const encodedEmpCode = encodeURIComponent(String(empCode || '').trim())
 
-        const response = await axios.get(`${baseUrl}/${empCode}/checkroll`, {
+        const response = await axios.get(`${baseUrl}/${encodedEmpCode}/checkroll`, {
             headers: { Authorization: `Bearer ${token}` },
             params
         })

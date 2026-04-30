@@ -18,13 +18,6 @@ function buildRemarks(definition, adjustmentName, amount = 0) {
     return `${adjustmentName} | ${adCode}${taskDesc ? ` - ${taskDesc}` : ''} | ${amount} | sync:MISS | match:MISMATCH`;
 }
 
-const KOREKSI_PREFIX = 'KOREKSI';
-const POTONGAN_PREFIX = 'POTONGAN';
-
-function removeLeadingPrefix(value, prefix) {
-    return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
-}
-
 function isSuffixTemplateDefinition(definition) {
     return /\bX$/i.test(String(definition?.adjustment_name || '').trim());
 }
@@ -40,36 +33,6 @@ function getTemplateSuffix(definition, value) {
     if (!isSuffixTemplateDefinition(definition)) return '';
     const prefix = templateName.replace(/\bX$/i, '').trim();
     return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
-}
-
-function containsWord(value, word) {
-    return new RegExp(`\\b${word}\\b`, 'i').test(String(value || ''));
-}
-
-function buildAdjustmentName(adjustmentType, docDesc) {
-    const trimmed = docDesc.trim();
-    if (adjustmentType === 'POTONGAN_KOTOR') {
-        return `${KOREKSI_PREFIX} ${removeLeadingPrefix(trimmed, KOREKSI_PREFIX)}`.trim();
-    }
-    if (adjustmentType === 'POTONGAN_BERSIH') {
-        return `${POTONGAN_PREFIX} ${removeLeadingPrefix(trimmed, POTONGAN_PREFIX)}`.trim();
-    }
-    return trimmed;
-}
-
-function validateAdjustmentName(adjustmentType, docDesc) {
-    const trimmed = docDesc.trim();
-    if (!trimmed) return 'Nama kolom wajib diisi.';
-    if (adjustmentType === 'POTONGAN_KOTOR') {
-        const suffix = removeLeadingPrefix(trimmed, KOREKSI_PREFIX);
-        if (!suffix.trim()) return 'Lanjutkan nama kolom setelah kata KOREKSI.';
-        if (containsWord(suffix, POTONGAN_PREFIX)) return 'Nama kolom Koreksi tidak boleh memakai kata POTONGAN.';
-    }
-    if (adjustmentType === 'POTONGAN_BERSIH') {
-        const suffix = removeLeadingPrefix(trimmed, POTONGAN_PREFIX);
-        if (!suffix.trim()) return 'Lanjutkan nama kolom setelah kata POTONGAN.';
-    }
-    return '';
 }
 
 export default function ManualAdjustmentColumnModal({
@@ -119,11 +82,11 @@ export default function ManualAdjustmentColumnModal({
         });
     }, [activeDefinitions, premiumDefinitionSearch]);
 
+    const selectedDefinition = adjustmentType === 'POTONGAN_KOTOR' ? koreksiBaseDefinition : selectedPremiumDef;
+    const selectedUsesSuffix = isSuffixTemplateDefinition(selectedDefinition);
     const nameError = selectedUsesSuffix && !String(docDesc || '').trim()
         ? 'Lanjutkan nama kolom untuk mengganti X.'
         : '';
-    const selectedDefinition = adjustmentType === 'POTONGAN_KOTOR' ? koreksiBaseDefinition : selectedPremiumDef;
-    const selectedUsesSuffix = isSuffixTemplateDefinition(selectedDefinition);
     const resolvedAdjustmentName = selectedUsesSuffix
         ? buildNameFromTemplate(selectedDefinition, docDesc)
         : selectedDefinition?.adjustment_name || '';
@@ -170,7 +133,7 @@ export default function ManualAdjustmentColumnModal({
     const handlePremiumDefSelect = (def) => {
         setSelectedPremiumDef(def);
         if (def) {
-            setDocDesc(def.adjustment_name);
+            setDocDesc(isSuffixTemplateDefinition(def) ? '' : def.adjustment_name);
             setError('');
         }
     };
@@ -287,24 +250,24 @@ export default function ManualAdjustmentColumnModal({
                             </div>
                         </div>
 
-                        {adjustmentType === 'POTONGAN_KOTOR' && (
+                        {selectedUsesSuffix && (
                             <div>
                                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                                    Nama Koreksi
+                                    Ganti X pada {selectedDefinition?.adjustment_name}
                                 </label>
                                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
                                     <span style={{ padding: '10px 12px', border: '1px solid #cbd5e1', borderRight: 0, borderRadius: '9px 0 0 9px', background: '#fff7ed', color: '#c2410c', fontWeight: 800 }}>
-                                        {KOREKSI_PREFIX}
+                                        {String(selectedDefinition?.adjustment_name || '').replace(/\bX$/i, '').trim()}
                                     </span>
                                     <input
-                                        value={removeLeadingPrefix(docDesc, KOREKSI_PREFIX)}
-                                        onChange={(event) => setDocDesc(`${KOREKSI_PREFIX} ${event.target.value}`.trimEnd())}
+                                        value={getTemplateSuffix(selectedDefinition, resolvedAdjustmentName)}
+                                        onChange={(event) => setDocDesc(event.target.value.toUpperCase())}
                                         placeholder="contoh: PANEN"
                                         style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
                                     />
                                 </div>
                                 <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
-                                    TaskDesc, ADCode, dan input detail tetap mengikuti definisi KOREKSI di premium_definitions.json.
+                                    ADCode, TaskDesc, dan input detail tetap mengikuti definisi template dari premium_definitions.json.
                                 </div>
                                 {nameError && (
                                     <div style={{ marginTop: 6, color: '#b45309', fontSize: 12, fontWeight: 700 }}>
@@ -314,7 +277,6 @@ export default function ManualAdjustmentColumnModal({
                             </div>
                         )}
 
-                        {adjustmentType !== 'POTONGAN_KOTOR' && (
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
                                 Definisi Kolom dari premium_definitions.json
@@ -381,7 +343,6 @@ export default function ManualAdjustmentColumnModal({
                                 )}
                             </div>
                         </div>
-                        )}
 
                         <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' }}>
                             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Konfigurasi Terpilih</div>

@@ -567,50 +567,33 @@ export class EmployeeDetailService {
             return { emp_code: empCode, error: "Employee not found" };
         }
 
-        // Get PTKP Status - Use ptkpTaxService (from db_ptrj) instead of history
-        try {
-            const ptkpRecords = await ptkpTaxService.getPtkpByYear(year);
-            const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
-            if (ptkpRecord) {
-                employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
-            }
-        } catch (e) {
+        const ptkpPromise = ptkpTaxService.getPtkpByYear(year).catch((e) => {
             console.error("[EmployeeDetailService] Failed to get PTKP status:", e);
-        }
+            return [];
+        });
 
-        const attendanceData = await this.getDailyAttendance(empCode, month, year);
-        const overtimeData = await this.getDailyOvertime(empCode, month, year);
-        
-        // [OPTIMIZATION] Skip harvest data for Payslips
-        const harvestData = !skipHarvest ? await harvesterService.getDailyEmployeeHarvest(empCode, month, year) : { summary: {}, details: [] };
+        const attendancePromise = this.getDailyAttendance(empCode, month, year);
+        const overtimePromise = this.getDailyOvertime(empCode, month, year);
+        const harvestPromise = !skipHarvest
+            ? harvesterService.getDailyEmployeeHarvest(empCode, month, year)
+            : Promise.resolve({ summary: {}, details: [] });
 
-        // Fetch calculated payroll data
-        let payrollData = null;
-        let debugInfo: any = { error: "Not attempted" };
-
-        try {
-            // Pass empCode as specificEmpCode (5th argument) to use optimized single-employee fetch
-            // Use Config.DB_PROFILE for payroll data - this reads from db_ptrj (production database)
-            // skipHarvest=true means we skip harvest data which is optional
-            const payrollResult = await dataExtractorService.extractPayrollData(
-                month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, useHistoryDb, undefined, skipHarvest, false, snapshotVersion
-            );
-            // Filter for this specific employee (handle whitespace)
+        const payrollPromise = dataExtractorService.extractPayrollData(
+            month, year, "ALL", undefined, empCode, Config.DB_PROFILE, false, useHistoryDb, undefined, skipHarvest, false, snapshotVersion
+        ).then((payrollResult) => {
             const targetNik = empCode.trim().toUpperCase();
-
-            debugInfo = {
+            const debugInfo: any = {
                 target_nik: targetNik,
                 rows_fetched: payrollResult?.data_rows?.length || 0,
                 available_niks: payrollResult?.data_rows?.map(r => `${r.emp_code || '?'}/${r.nik || 'N/A'}`).slice(0, 5)
             };
 
-            // Match by emp_code first (exact match), then by nik (KTP)
-            const empPayroll = payrollResult.data_rows.find(row =>
+            const payrollData = payrollResult.data_rows.find(row =>
                 (row.emp_code || '').trim().toUpperCase() === targetNik ||
                 (row.nik || '').trim().toUpperCase() === targetNik
-            );
-            if (empPayroll) {
-                payrollData = empPayroll;
+            ) || null;
+
+            if (payrollData) {
                 console.log(`[EmployeeDetailService] Payroll Data Found for '${empCode}' (Rows: ${payrollResult.data_rows.length})`);
                 debugInfo.found = true;
             } else {
@@ -619,10 +602,28 @@ export class EmployeeDetailService {
                 console.warn(`[EmployeeDetailService] ExtractPayrollData returned ${payrollResult.data_rows.length} rows.`);
                 debugInfo.found = false;
             }
-        } catch (e: any) {
+
+            return { payrollData, debugInfo };
+        }).catch((e: any) => {
             console.error("[EmployeeDetailService] Failed to extract payroll data:", e);
-            debugInfo.error = e.message || String(e);
+            return { payrollData: null, debugInfo: { error: e.message || String(e) } };
+        });
+
+        const [ptkpRecords, attendanceData, overtimeData, harvestData, payrollResult] = await Promise.all([
+            ptkpPromise,
+            attendancePromise,
+            overtimePromise,
+            harvestPromise,
+            payrollPromise
+        ]);
+
+        const ptkpRecord = ptkpRecords.find(p => p.emp_code.trim() === empCode);
+        if (ptkpRecord) {
+            employeeInfo.status_ptkp = ptkpRecord.ptkp_status;
         }
+
+        const payrollData = payrollResult.payrollData;
+        const debugInfo = payrollResult.debugInfo;
 
         // Enrich employeeInfo.jabatan from payrollData (db_ptrj source)
         console.log(`[EmployeeDetailService] Jabatan enrichment - payrollData.jabatan_estate=${payrollData?.jabatan_estate}, payrollData.task_desc=${payrollData?.task_desc}`);

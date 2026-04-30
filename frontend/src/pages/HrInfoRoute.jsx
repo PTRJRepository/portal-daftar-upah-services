@@ -73,14 +73,12 @@ export default function HrInfoRoute() {
     }
 
     return (
-        <div style={{ height: '100vh', width: '100vw', overflow: 'auto', backgroundColor: '#f8fafc' }}>
-            <HrInfoPage
-                employeeData={{ nik: params.nik }}
-                month={params.month}
-                year={params.year}
-                division={params.division}
-                onBack={() => window.close()}
-            />
-        </div>
+        <HrInfoPage
+            employeeData={{ nik: params.nik }}
+            month={params.month}
+            year={params.year}
+            division={params.division}
+            onBack={() => window.close()}
+        />
     )
 }

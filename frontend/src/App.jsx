@@ -6,6 +6,7 @@ import { ReportProvider, useReport } from './context/ReportContext'
 import LoadingScreen from './components/common/LoadingScreen'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { isProdMode, getUserDivision, redirectToExternalLogin, buildAppPath, getBasePath } from './utils/prodModeUtils'
+import { openEmployeeDetailPage } from './utils/employeeDetailNavigation'
 import DashboardLayout from './layouts/DashboardLayout'
 import ReportToolbar from './components/common/ReportToolbar'
 import './styles/print-overrides.css'
@@ -73,6 +74,7 @@ import OtherIncomesPage from './pages/OtherIncomesPage'
 import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
+import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGangPrefixState'
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
 import { getEmployeeRows } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
@@ -218,12 +220,15 @@ const OperationalReportWrapper = () => {
     return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
   }, [division, gangs, getAsistensi]);
 
-  // Reset gangPrefix when division changes
+  // Keep the selected group unless it is no longer valid for the current division.
   useEffect(() => {
-      // [OPTIMIZATION] Set to the first available group automatically instead of 'SEMUA GROUP'
-      const targetPrefix = shouldIgnoreGangPrefixForDivision(division) ? '' : (availablePrefixes.length > 0 ? availablePrefixes[0] : '');
-      if (gangPrefix !== targetPrefix) {
-          setGangPrefix(targetPrefix);
+      const nextPrefix = resolveGangPrefixAfterAvailablePrefixesChange({
+        division,
+        gangPrefix,
+        availablePrefixes
+      });
+      if (gangPrefix !== nextPrefix) {
+          setGangPrefix(nextPrefix);
       }
   }, [availablePrefixes, division, gangPrefix, setGangPrefix]);
 
@@ -361,24 +366,18 @@ const OperationalReportWrapper = () => {
   const handleViewEmployeeDetail = (employeeData) => {
     console.log('[OperationalReport] Opening detail tab for employee:', employeeData)
 
-    // Prefer emp_code (Plantware code like B0075) over NIK (KTP number)
-    const empCode = employeeData.emp_code || employeeData.EmpCode || employeeData.nik || employeeData.NIK
-    if (!empCode) {
-      console.error('[OperationalReport] Cannot view detail: emp_code is missing', employeeData)
-      return
-    }
-
-    // Open in new tab with params for EmployeeDetailRoute
-    const params = new URLSearchParams({
-      nik: empCode,
-      month: month,
-      year: year,
-      division: division
+    const detailPath = openEmployeeDetailPage({
+      employeeData,
+      month,
+      year,
+      division,
+      useHistoryDb: effectiveUseHistoryDb,
+      snapshotVersion: effectiveSnapshotVersion
     })
 
-    // Use buildAppPath to add base path (/upah) in proxy mode
-    const detailPath = buildAppPath(`/employee/detail?${params.toString()}`)
-    window.open(detailPath, '_blank', 'noopener,noreferrer')
+    if (!detailPath) {
+      console.error('[OperationalReport] Cannot view detail: emp_code is missing', employeeData)
+    }
   }
 
   const handleOpenHrProfile = (employeeData) => {

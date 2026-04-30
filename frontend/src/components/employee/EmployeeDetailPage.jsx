@@ -111,6 +111,8 @@ export default function EmployeeDetailPage({
     month,
     year,
     division,
+    useHistoryDb = null,
+    snapshotVersion = null,
     onBack
 }) {
     const { token } = useAuth()
@@ -201,7 +203,15 @@ export default function EmployeeDetailPage({
 
             try {
                 // Fetch checkroll
-                const data = await getEmployeeCheckroll(token, empCode, month, year, division);
+                const data = await getEmployeeCheckroll(
+                    token,
+                    empCode,
+                    month,
+                    year,
+                    division,
+                    useHistoryDb,
+                    snapshotVersion
+                );
 
                 console.log('[EmployeeDetailPage] Received Checkroll Data:', data)
                 
@@ -219,7 +229,7 @@ export default function EmployeeDetailPage({
             }
         }
         loadData()
-    }, [token, empCode, month, year, division])
+    }, [token, empCode, month, year, division, useHistoryDb, snapshotVersion])
 
     if (loading) {
         return <LoadingScreen isLoading={true} message="Memuat Data History HR..." />
@@ -1238,7 +1248,7 @@ export default function EmployeeDetailPage({
 
                 {/* Salary History Table */}
                 <SalaryHistoryTable
-                    key={`sht-${empCode}-${Date.now()}`}
+                    key={`sht-${empCode}`}
                     empCode={empCode}
                     months={12}
                     onPeriodClick={(record) => {
