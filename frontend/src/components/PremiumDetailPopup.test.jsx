@@ -90,6 +90,36 @@ describe('PremiumDetailPopup', () => {
         expect(html).not.toContain('Amount tersimpan berbeda');
     });
 
+    it('shows the reason when a pruning detail cell was marked red', () => {
+        const html = renderToString(
+            <PremiumDetailPopup
+                isOpen
+                onClose={() => {}}
+                onSave={() => {}}
+                inputType="blok"
+                definitionName="PREMI RAKING"
+                storedAmount={650000}
+                mismatch={{
+                    amount: 650000,
+                    detail_total: 677650,
+                    diff: 27650
+                }}
+                initialData={{
+                    input_type: 'blok',
+                    items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 677650 }],
+                    total_amount: 677650
+                }}
+            />
+        );
+
+        expect(html).toContain('Alasan tanda merah');
+        expect(html).toContain('total detail terbaru');
+        expect(html).toContain('650.000');
+        expect(html).toContain('677.650');
+        expect(html).toContain('Saat disimpan, amount akan mengikuti total detail terbaru');
+        expect(html).not.toContain('Amount tersimpan berbeda');
+    });
+
     it('does not show old-vs-detail verification for non pruning/raking premium detail', () => {
         const html = renderToString(
             <PremiumDetailPopup
@@ -167,6 +197,29 @@ describe('PremiumDetailPopup', () => {
             });
             container.remove();
         }
+    });
+
+    it('marks structured detail inputs as incomplete when required fields are missing', () => {
+        const html = renderToString(
+            <PremiumDetailPopup
+                isOpen
+                onClose={() => {}}
+                onSave={() => {}}
+                inputType="kendaraan"
+                definitionName="PREMI RITASE"
+                storedAmount={150000}
+                initialData={{
+                    input_type: 'kendaraan',
+                    items: [{ nomor_kendaraan: '', expense_code: 'ANGKUT', jumlah: 150000 }],
+                    total_amount: 150000
+                }}
+            />
+        );
+
+        expect(html).toContain('Data detail belum lengkap');
+        expect(html).toContain('nomor kendaraan wajib diisi');
+        expect(html).toContain('border-color:#ef4444');
+        expect(html).toContain('disabled=""');
     });
 
     it('renders detail metadata as read-only when editing is disabled', async () => {

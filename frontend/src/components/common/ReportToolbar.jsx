@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react'
 import CompactPeriodScroll from './CompactPeriodScroll'
+import { shouldIgnoreGangPrefixForDivision } from '../../utils/payrollRequestScope'
 
 // ─── SVG Icons (inline, no emoji) ───────────────────────────────────────────
 const IconBack = () => (
@@ -251,6 +252,7 @@ export default function ReportToolbar({
 
     // Calculate available prefixes (Asistensi)
     const availablePrefixes = React.useMemo(() => {
+        if (shouldIgnoreGangPrefixForDivision(division)) return [];
         const prefixes = new Set();
         gangs.forEach(g => {
             const asist = getAsistensi(g.gang_code, division);
@@ -258,6 +260,8 @@ export default function ReportToolbar({
         });
         return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
     }, [gangs, division, getAsistensi]);
+
+    const effectiveGangPrefix = shouldIgnoreGangPrefixForDivision(division) ? '' : gangPrefix;
 
     return (
         <div style={{
@@ -355,10 +359,10 @@ export default function ReportToolbar({
                         style={{
                             ...SELECT_STYLE,
                             minWidth: '110px',
-                            backgroundColor: gangPrefix ? '#eff6ff' : '#ffffff',
-                            borderColor: gangPrefix ? '#3b82f6' : '#cbd5e1',
+                            backgroundColor: effectiveGangPrefix ? '#eff6ff' : '#ffffff',
+                            borderColor: effectiveGangPrefix ? '#3b82f6' : '#cbd5e1',
                         }}
-                        value={gangPrefix || ''}
+                        value={effectiveGangPrefix || ''}
                         onChange={(e) => {
                             const newPrefix = e.target.value;
                             onGangPrefixChange && onGangPrefixChange(newPrefix);
@@ -367,7 +371,7 @@ export default function ReportToolbar({
                         }}
                         disabled={disableControls || !division}
                         onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)' }}
-                        onBlur={(e) => { e.target.style.borderColor = gangPrefix ? '#3b82f6' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
+                        onBlur={(e) => { e.target.style.borderColor = effectiveGangPrefix ? '#3b82f6' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                     >
                         <option value="">SEMUA</option>
                         {availablePrefixes.map(p => (
@@ -403,7 +407,7 @@ export default function ReportToolbar({
                         onBlur={(e) => { e.target.style.borderColor = gangCode === 'ALL' ? '#86efac' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                     >
                         {/* When group filter is active, show contextual ALL option */}
-                        {gangPrefix ? (
+                        {effectiveGangPrefix ? (
                             <option value="ALL">
                                 SEMUA GANG – Group {gangPrefix} ({gangs.filter(g => getAsistensi(g.gang_code, division) === gangPrefix).length} gang)
                             </option>
@@ -412,7 +416,7 @@ export default function ReportToolbar({
                         )}
                         {gangs && gangs.length > 0 ? (
                             gangs
-                                .filter(g => !gangPrefix || getAsistensi(g.gang_code, division) === gangPrefix)
+                                .filter(g => !effectiveGangPrefix || getAsistensi(g.gang_code, division) === effectiveGangPrefix)
                                 .map(g => (
                                     <option key={g.gang_code} value={g.gang_code}>
                                         {g.gang_code}{g.description ? ` - ${g.description}` : ''}

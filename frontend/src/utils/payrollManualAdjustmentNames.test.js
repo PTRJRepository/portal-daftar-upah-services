@@ -119,8 +119,11 @@ describe('payrollManualAdjustmentNames', () => {
         task_code: 'AL001P2A',
         base_task_code: 'AL001',
         task_desc: '(AL) PANEN',
+        input_type: 'blok',
       },
     });
+
+    const metadata = JSON.parse(payload.metadata_json);
 
     expect(payload).toEqual({
       period_month: 4,
@@ -138,6 +141,12 @@ describe('payrollManualAdjustmentNames', () => {
       task_code: 'AL001P2A',
       base_task_code: 'AL001',
       task_desc: '(AL) PANEN',
+      metadata_json: JSON.stringify({
+        input_type: 'blok',
+        items: [{ subblok: '', gang_code: 'B1H', jumlah: 0 }],
+        total_amount: 0,
+      }),
     });
+    expect(metadata.input_type).toBe('blok');
   });
 });

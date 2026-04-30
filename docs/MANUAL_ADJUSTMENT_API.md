@@ -304,6 +304,7 @@ Saat agent menyimpan manual adjustment, pakai:
 - `adjustment_type` dari response.
 - `adjustment_name = description` dari response.
 - `ad_code`, `task_code`, `task_desc`, dan `base_task_code` dari response.
+- Identitas karyawan wajib dipisahkan: `emp_code` berisi EmpCode PTRJ/Plantware, `nik` berisi NIK/KTP, dan `emp_name` hanya berisi nama karyawan. Jangan pernah mengirim NIK di `emp_name`.
 
 **Payload Save Manual Adjustment:**
 
@@ -312,6 +313,8 @@ Saat agent menyimpan manual adjustment, pakai:
   "period_month": 4,
   "period_year": 2026,
   "emp_code": "A0001",
+  "nik": "1902050504860001",
+  "emp_name": "BUDI TEST",
   "gang_code": "G1H",
   "division_code": "AB1",
   "adjustment_type": "PREMI",
@@ -323,6 +326,8 @@ Saat agent menyimpan manual adjustment, pakai:
   "remarks": "AD CODE: AL0001 - (AL) BENEFIT IN KIND - ACCOMMODATION"
 }
 ```
+
+Jika caller tidak yakin nama karyawan benar, jangan kirim `emp_name`; backend akan mencoba resolve nama dari `HR_EMPLOYEE.EmpName` berdasarkan `emp_code`/`nik`. Jangan mengisi `emp_name` dengan NIK numeric atau EmpCode.
 
 Jika `ad_code` kosong untuk kategori selain `AUTO_BUFFER`, API akan menolak request dengan error `ADCode wajib diisi untuk manual adjustment selain auto buffer`.
 
@@ -366,7 +371,7 @@ Alias yang didukung: `P1A/PG1A/1A`, `P1B/PG1B/1B`, `P2A/PG2A/2A`,
 
 | Field | Makna |
 |-------|-------|
-| `emp_code` | Kode/identifier karyawan yang tersimpan di manual adjustment. Bisa EmpCode PTRJ letter seperti `C0763` atau NIK numeric untuk row tertentu. |
+| `emp_code` | Kode karyawan PTRJ/Plantware dari `HR_EMPLOYEE.EmpCode`, contoh `C0763`. Row lama bisa masih berisi NIK numeric, tetapi save baru harus memakai EmpCode PTRJ. |
 | `emp_name` | Nama karyawan dari `HR_EMPLOYEE.EmpName` jika tersedia. Field ini bukan NIK. |
 | `nik` | NIK/KTP karyawan dari `HR_EMPLOYEE.NewICNo` jika tersedia. |
 | `gang_code` | Gang/asistensi asal row manual adjustment. Field ini wajib dipakai agent saat menampilkan atau mengelompokkan detail karyawan. |
@@ -577,8 +582,8 @@ Simpan manual adjustment baru atau update yang sudah ada (upsert berdasarkan uni
 |-------|------|----------|-------------|
 | `period_month` | number | ✅ | Bulan (1-12) |
 | `period_year` | number | ✅ | Tahun |
-| `nik` | string | ❌ | NIK (KTP) - untuk PENDAPATAN_LAINNYA |
-| `emp_code` | string | ✅ | Employee code |
+| `nik` | string | ❌ | NIK/KTP numeric dari `HR_EMPLOYEE.NewICNo`; kirim jika tersedia |
+| `emp_code` | string | ✅ | EmpCode PTRJ/Plantware dari `HR_EMPLOYEE.EmpCode`, contoh `C0001`; jangan isi dengan NIK |
 | `emp_name` | string | ❌ | Nama karyawan dari `HR_EMPLOYEE.EmpName`; jangan isi dengan NIK/EmpCode |
 | `gang_code` | string | ✅ | Gang code |
 | `division_code` | string | ❌ | Division code |
@@ -587,7 +592,11 @@ Simpan manual adjustment baru atau update yang sudah ada (upsert berdasarkan uni
 | `amount` | number | ✅ | Jumlah nominal |
 | `remarks` | string | ❌ | Catatan |
 
-Rule identitas untuk save: `emp_code` harus berisi EmpCode PTRJ/Plantware, `nik` harus berisi NIK/KTP numeric, dan `emp_name` hanya untuk nama karyawan. Jika caller tidak yakin nama benar, jangan kirim `emp_name`; backend akan mencoba resolve dari `HR_EMPLOYEE`.
+Rule identitas untuk save:
+
+- Benar: `emp_code = "C0001"`, `nik = "1902050504860001"`, `emp_name = "BUDI TEST"`.
+- Salah: `emp_name = "1902050504860001"` atau `emp_name = "C0001"`.
+- Jika caller tidak yakin nama benar, jangan kirim `emp_name`; backend akan mencoba resolve dari `HR_EMPLOYEE`.
 
 **Adjustment Types:**
 
@@ -609,6 +618,8 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/by-api-key" \
     "period_month": 4,
     "period_year": 2026,
     "emp_code": "C0001",
+    "nik": "1902050504860001",
+    "emp_name": "BUDI TEST",
     "gang_code": "H1H",
     "division_code": "AB1",
     "adjustment_type": "PREMI",
@@ -634,7 +645,10 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/by-api-key" \
 
 Manual adjustment menggunakan **upsert** — jika kombinasi berikut sudah ada, nilainya di-update:
 
-- `period_month` + `period_year` + `emp_code` + `adjustment_name`
+- `period_month` + `period_year`
+- employee identity match: resolved `emp_code`, resolved `nik`, atau original identifier legacy
+- `adjustment_type`
+- normalized `adjustment_name`
 
 Jika belum ada, akan dibuat record baru.
 
@@ -1441,7 +1455,7 @@ curl -s -X GET "${BASE_URL}/payroll/manual-adjustment/by-api-key?period_month=4&
 curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/by-api-key" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${API_KEY}" \
-  -d '{"period_month":4,"period_year":2026,"emp_code":"C0001","gang_code":"H1H","adjustment_type":"PREMI","adjustment_name":"BONUS LEBARAN","amount":500000}' | jq .
+  -d '{"period_month":4,"period_year":2026,"emp_code":"C0001","nik":"1902050504860001","emp_name":"BUDI TEST","gang_code":"H1H","adjustment_type":"PREMI","adjustment_name":"BONUS LEBARAN","amount":500000}' | jq .
 ```
 
 

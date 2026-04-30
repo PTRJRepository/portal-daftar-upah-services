@@ -10,6 +10,11 @@ describe('resolveEffectiveGangPrefix', () => {
         expect(resolveEffectiveGangPrefix('ALL', '1')).toBe('1');
         expect(resolveEffectiveGangPrefix(null, '1')).toBe('1');
     });
+
+    it('drops gangPrefix for INFRA virtual division so INF and INT are not filtered out', () => {
+        expect(resolveEffectiveGangPrefix('ALL', '1', 'INFRA')).toBeNull();
+        expect(resolveEffectiveGangPrefix('ALL', '1', 'INF')).toBeNull();
+    });
 });
 
 describe('buildPayrollRequestScopeKey', () => {
@@ -57,5 +62,28 @@ describe('buildPayrollRequestScopeKey', () => {
         });
 
         expect(keyA).not.toBe(keyB);
+    });
+
+    it('does not change when stale gangPrefix changes for INFRA virtual division', () => {
+        const keyA = buildPayrollRequestScopeKey({
+            division: 'INFRA',
+            month: 3,
+            year: 2026,
+            gangCode: 'ALL',
+            gangPrefix: null,
+            useHistoryDb: false,
+            snapshotVersion: null
+        });
+        const keyB = buildPayrollRequestScopeKey({
+            division: 'INFRA',
+            month: 3,
+            year: 2026,
+            gangCode: 'ALL',
+            gangPrefix: '1',
+            useHistoryDb: false,
+            snapshotVersion: null
+        });
+
+        expect(keyA).toBe(keyB);
     });
 });

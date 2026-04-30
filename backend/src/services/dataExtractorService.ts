@@ -30,6 +30,10 @@ import { payrollAutoBufferService, resolveSyncFrameColor } from "./payroll/payro
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { buildLeaveSqlExpressions } from "./payroll/extractors/leaveRules";
 import { processInBatches } from "../utils/batchProcessor";
+import {
+    resolvePayrollDivisionCodeForScope,
+    resolvePayrollGangPrefixForDivision
+} from "../utils/payrollGangScope";
 
 const CATEGORY = "DataExtractor";
 
@@ -118,6 +122,7 @@ export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityI
 }
 
 type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
+const DETAIL_TOTAL_MISMATCH_PREMI_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
 
 function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetadataType | null {
     const normalized = String(value || '').trim().toUpperCase();
@@ -128,7 +133,7 @@ function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetada
 }
 
 export function attachManualAdjustmentMetadata(
-    target: { manual_adjustment_metadata?: Record<string, any>; manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number }> },
+    target: { manual_adjustment_metadata?: Record<string, any>; manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number; reason?: string }> },
     adjustments: any[]
 ): void {
     for (const adjustment of adjustments || []) {
@@ -152,12 +157,18 @@ export function attachManualAdjustmentMetadata(
         target.manual_adjustment_metadata ||= {};
         target.manual_adjustment_metadata[fieldName] = enrichedMetadata;
 
-        if (!enrichedMetadata.detail_matches_amount) {
+        const shouldExposeMismatch = adjustmentType === 'PREMI'
+            && DETAIL_TOTAL_MISMATCH_PREMI_NAMES.has(String(adjustment.adjustment_name || '').trim().toUpperCase())
+            && Math.abs(amount) > 0.01
+            && !enrichedMetadata.detail_matches_amount;
+
+        if (shouldExposeMismatch) {
             target.manual_adjustment_metadata_mismatch ||= {};
             target.manual_adjustment_metadata_mismatch[fieldName] = {
                 amount,
                 detail_total: detailTotal,
-                diff: detailTotal - amount
+                diff: detailTotal - amount,
+                reason: 'Total detail terbaru berbeda dari amount lama. Untuk PREMI PRUNING/RAKING, total detail terbaru dipakai saat simpan.'
             };
         }
     }
@@ -391,7 +402,7 @@ interface PayrollRow {
     value_sync_frame?: Record<string, "red" | "green">;
     value_source_compare?: Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
     manual_adjustment_metadata?: Record<string, any>;
-    manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number }>;
+    manual_adjustment_metadata_mismatch?: Record<string, { amount: number; detail_total: number; diff: number; reason?: string }>;
     [key: string]: any;
 }
 
@@ -454,6 +465,8 @@ export class DataExtractorService {
         const nextMonth = month === 12 ? 1 : month + 1;
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
+        const resolvedDivisionCode = resolvePayrollDivisionCodeForScope(divisionCode);
+        const effectiveGangPrefix = resolvePayrollGangPrefixForDivision(divisionCode, gangPrefix);
 
         // Calculate days in the selected month for ideal salary calculation
         const daysInMonth = new Date(year, month, 0).getDate();
@@ -513,15 +526,15 @@ export class DataExtractorService {
                 if (historyData && historyData.data_rows.length > 0) {
                     console.log(`[DataExtractor] Found seeded history: ${historyData.data_rows.length} rows`);
                     // Apply gangPrefix filter if present
-                    if (gangPrefix) {
-                        const isNumeric = /^\d+$/.test(gangPrefix);
+                    if (effectiveGangPrefix) {
+                        const isNumeric = /^\d+$/.test(effectiveGangPrefix);
                         historyData.data_rows = historyData.data_rows.filter((r: any) => {
                             const gc = (r.gang_code || '').trim().toUpperCase();
                             if (isNumeric) {
                                 const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
-                                return asistensi === gangPrefix;
+                                return asistensi === effectiveGangPrefix;
                             }
-                            return gc.startsWith(gangPrefix.toUpperCase());
+                            return gc.startsWith(effectiveGangPrefix.toUpperCase());
                         });
                     }
 
@@ -574,7 +587,7 @@ export class DataExtractorService {
             console.log(`[DataExtractor] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
             
             if (isVirtual) {
-                if (divisionCode.toUpperCase() === 'INF') {
+                if (resolvedDivisionCode === 'INF') {
                     // [USER REQUEST] Hardcoded isolation for Infrastruktur: Anything starting with IN
                     gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN ('INF', 'INT') OR UPPER(RTRIM(g.GangCode)) IN ('INF', 'INT'))`;
                 } else if (allGangs.length > 0) {
@@ -617,17 +630,17 @@ export class DataExtractorService {
         debug(CATEGORY, `Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
-        if (gangPrefix && employees.length > 0) {
-            const isNumeric = /^\d+$/.test(gangPrefix);
+        if (effectiveGangPrefix && employees.length > 0) {
+            const isNumeric = /^\d+$/.test(effectiveGangPrefix);
             employees = employees.filter(emp => {
                 const gc = (emp.gang_code || '').trim().toUpperCase();
                 if (isNumeric) {
                     // Extract asistensi number from gang code:
                     // K2xxx → '1' (special case), otherwise first digit sequence
                     const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
-                    return asistensi === gangPrefix;
+                    return asistensi === effectiveGangPrefix;
                 }
-                return gc.startsWith(gangPrefix.toUpperCase());
+                return gc.startsWith(effectiveGangPrefix.toUpperCase());
             });
         }
 
@@ -3551,6 +3564,8 @@ export class DataExtractorService {
         const nextMonth = month === 12 ? 1 : month + 1;
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`;
+        const resolvedDivisionCode = resolvePayrollDivisionCodeForScope(divisionCode);
+        const effectiveGangPrefix = resolvePayrollGangPrefixForDivision(divisionCode, gangPrefix);
 
         const buildProgressiveGangsMap = (rows: PayrollRow[]): Map<string, any[]> => {
             const gangsMap = new Map<string, any[]>();
@@ -3608,7 +3623,7 @@ export class DataExtractorService {
                 serverProfile,
                 false,
                 useHistoryDb,
-                gangPrefix,
+                effectiveGangPrefix,
                 false,
                 false,
                 snapshotVersion,
@@ -3648,7 +3663,7 @@ export class DataExtractorService {
             console.log(`--- REFLI VERSION 1.1.0 (Progressive) ---`);
             console.log(`[DataExtractor.Progressive] Division: ${divisionCode}, isVirtual: ${isVirtual}, allGangs: ${allGangs.length}`);
             if (isVirtual) {
-                if (divisionCode.toUpperCase() === 'INF') {
+                if (resolvedDivisionCode === 'INF') {
                     // [USER REQUEST] Hardcoded isolation for Infrastruktur: Strictly INF and INT
                     gangCondition = `(UPPER(RTRIM(gl.GangCode)) IN ('INF', 'INT') OR UPPER(RTRIM(g.GangCode)) IN ('INF', 'INT'))`;
                 } else if (allGangs.length > 0) {
@@ -4021,15 +4036,15 @@ export class DataExtractorService {
         }
 
         // Apply gangPrefix filter
-        if (gangPrefix && employees.length > 0) {
-            const isNumeric = /^\d+$/.test(gangPrefix);
+        if (effectiveGangPrefix && employees.length > 0) {
+            const isNumeric = /^\d+$/.test(effectiveGangPrefix);
             employees = employees.filter(emp => {
                 const gc = (emp.gang_code || '').trim().toUpperCase();
                 if (isNumeric) {
                     const asistensi = gc.startsWith('K2') ? '1' : (gc.match(/\d+/)?.[0] ?? null);
-                    return asistensi === gangPrefix;
+                    return asistensi === effectiveGangPrefix;
                 }
-                return gc.startsWith(gangPrefix.toUpperCase());
+                return gc.startsWith(effectiveGangPrefix.toUpperCase());
             });
         }
 

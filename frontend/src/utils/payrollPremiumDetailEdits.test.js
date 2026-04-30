@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPremiumDetailEdit } from './payrollPremiumDetailEdits';
+import { buildPremiumDetailEdit, validatePremiumDetailMetadata } from './payrollPremiumDetailEdits';
 
 describe('buildPremiumDetailEdit', () => {
     it('creates a pending edit from popup metadata when the amount cell was not edited first', () => {
@@ -93,4 +93,40 @@ describe('buildPremiumDetailEdit', () => {
         }));
         expect(result).not.toHaveProperty('metadata_json');
     });
+});
+
+describe('validatePremiumDetailMetadata', () => {
+  it('requires subblok, gang, and positive amount for blok input', () => {
+    expect(validatePremiumDetailMetadata({
+      input_type: 'blok',
+      items: [{ subblok: '', gang_code: 'D1H', jumlah: 100000 }],
+    }, 'blok')).toEqual({
+      isComplete: false,
+      inputType: 'blok',
+      reasons: ['Baris blok 1: subblok wajib diisi.'],
+    });
+
+    expect(validatePremiumDetailMetadata({
+      input_type: 'blok',
+      items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 100000 }],
+    }, 'blok').isComplete).toBe(true);
+  });
+
+  it('requires vehicle number, expense code, and positive amount for kendaraan input', () => {
+    const result = validatePremiumDetailMetadata({
+      input_type: 'kendaraan',
+      items: [{ nomor_kendaraan: '', expense_code: 'ANGKUT', jumlah: 150000 }],
+    }, 'kendaraan');
+
+    expect(result.isComplete).toBe(false);
+    expect(result.reasons).toContain('Baris kendaraan 1: nomor kendaraan wajib diisi.');
+  });
+
+  it('marks empty structured metadata as incomplete', () => {
+    expect(validatePremiumDetailMetadata(null, 'blok')).toMatchObject({
+      isComplete: false,
+      inputType: 'blok',
+      reasons: ['Minimal satu detail blok wajib diisi.'],
+    });
+  });
 });

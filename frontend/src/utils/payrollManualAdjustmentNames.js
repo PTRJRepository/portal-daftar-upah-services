@@ -182,6 +182,47 @@ function buildPlaceholderRemarks(column) {
   return `${name} | ${adCodePart} | 0 | sync:MISS | match:MISMATCH | INIT_COLUMN`;
 }
 
+function buildPlaceholderMetadata(inputType, gangCode) {
+  const normalizedInputType = normalizeIdentity(inputType).toLowerCase();
+  if (!normalizedInputType || normalizedInputType === 'amount') return undefined;
+
+  if (normalizedInputType === 'blok') {
+    return {
+      input_type: 'blok',
+      items: [{ subblok: '', gang_code: gangCode || '', jumlah: 0 }],
+      total_amount: 0,
+    };
+  }
+
+  if (normalizedInputType === 'kendaraan') {
+    return {
+      input_type: 'kendaraan',
+      items: [{ nomor_kendaraan: '', expense_code: '', jumlah: 0 }],
+      total_amount: 0,
+    };
+  }
+
+  if (normalizedInputType === 'exp') {
+    return {
+      input_type: 'exp',
+      expense_code: '',
+      jumlah: 0,
+      total_amount: 0,
+    };
+  }
+
+  if (normalizedInputType === 'blok,exp') {
+    return {
+      input_type: 'blok,exp',
+      blok_items: [{ subblok: '', gang_code: gangCode || '', jumlah: 0 }],
+      expense: { expense_code: '', jumlah: 0 },
+      total_amount: 0,
+    };
+  }
+
+  return undefined;
+}
+
 export function buildManualColumnPlaceholderPayload({ month, year, division, column }) {
   const empCode = normalizeIdentity(column?.emp_code) || normalizeIdentity(column?.nik);
   const nik = normalizeIdentity(column?.nik);
@@ -197,8 +238,9 @@ export function buildManualColumnPlaceholderPayload({ month, year, division, col
   const taskCode = resolveColumnCode(column, 'task_code');
   const baseTaskCode = resolveColumnCode(column, 'base_task_code');
   const taskDesc = normalizeIdentity(column?.task_desc);
+  const placeholderMetadata = buildPlaceholderMetadata(column?.input_type, gangCode);
 
-  return {
+  const payload = {
     period_month: Number(month),
     period_year: Number(year),
     nik,
@@ -215,4 +257,10 @@ export function buildManualColumnPlaceholderPayload({ month, year, division, col
     base_task_code: baseTaskCode || undefined,
     task_desc: taskDesc || undefined,
   };
+
+  if (placeholderMetadata) {
+    payload.metadata_json = JSON.stringify(placeholderMetadata);
+  }
+
+  return payload;
 }

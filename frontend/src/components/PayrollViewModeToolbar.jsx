@@ -58,14 +58,14 @@ export default function PayrollViewModeToolbar({
                     type="button"
                     className={`payroll-view-toolbar__button payroll-view-toolbar__button--dbptrj ${valuePriorityMode === 'db_ptrj_only' ? 'is-active' : ''}`}
                     aria-pressed={valuePriorityMode === 'db_ptrj_only'}
-                    title={valuePriorityMode === 'db_ptrj_only' ? 'Kembali ke Smart: manual adjustment/auto buffer diprioritaskan' : 'Tampilkan nilai asli dari db_ptrj pada kolom yang sama'}
+                    title={valuePriorityMode === 'db_ptrj_only' ? 'Kembali ke Auto Buffer: manual adjustment/auto buffer diprioritaskan' : 'Tampilkan nilai asli dari db_ptrj pada kolom yang sama'}
                     onClick={() => onValuePriorityModeChange(valuePriorityMode === 'db_ptrj_only' ? 'smart' : 'db_ptrj_only')}
                 >
                     <span className="payroll-view-toolbar__button-copy">
-                        {valuePriorityMode === 'db_ptrj_only' ? 'DB_PTRJ Aktif' : 'Show DB_PTRJ'}
+                        {valuePriorityMode === 'db_ptrj_only' ? 'DB_PTRJ Aktif' : 'Auto Buffer Aktif'}
                     </span>
                     <span className="payroll-view-toolbar__button-state">
-                        {valuePriorityMode === 'db_ptrj_only' ? 'Kolom sama' : 'Toggle'}
+                        {valuePriorityMode === 'db_ptrj_only' ? 'Klik: Auto Buffer' : 'Klik: DB_PTRJ'}
                     </span>
                 </button>
             </div>

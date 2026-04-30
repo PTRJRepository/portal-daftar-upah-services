@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchTaskCodeOptions, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
-import {
-    createManualAdjustmentPreset,
-    fetchManualAdjustmentPresets
-} from '../services/manualAdjustmentPresetService';
+import { fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 
 const CATEGORY_OPTIONS = [
     { value: 'PREMI', label: 'Premi', color: '#16a34a' },
@@ -11,99 +7,19 @@ const CATEGORY_OPTIONS = [
     { value: 'POTONGAN_BERSIH', label: 'Potongan Bersih', color: '#dc2626' }
 ];
 
-const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
-const KOREKSI_DEFAULT_TASK_DESC = '(DE) POTONGAN PREMI';
-const KOREKSI_INPUT_TYPE = 'blok';
-const KOREKSI_PREFIX = 'KOREKSI';
-const POTONGAN_PREFIX = 'POTONGAN';
-
-function expectedTaskDescPrefix(adjustmentType) {
-    if (adjustmentType === 'PREMI') return '(AL)';
-    if (adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') return '(DE)';
-    return '';
+function resolveAdCode(definition) {
+    return definition?.ad_code || '';
 }
 
-function normalizeSearchWords(value) {
-    return String(value || '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, ' ')
-        .split(' ')
-        .filter((word) => word.length >= 3 && !['PREMI', 'POTONGAN', 'KOREKSI', 'MANUAL', 'EDIT', 'SYNC', 'MATCH'].includes(word));
-}
-
-function scoreTaskCodeOption(option, searchWords) {
-    const haystack = `${option?.task_desc || ''} ${option?.doc_desc || ''} ${option?.ad_code || ''} ${option?.task_code || ''} ${option?.base_task_code || ''}`.toUpperCase();
-    return searchWords.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
-}
-
-function pickBestTaskCodeOption(options, adjustmentType, adjustmentName) {
-    const prefix = expectedTaskDescPrefix(adjustmentType);
-    const prefixedOptions = prefix
-        ? options.filter((option) => String(option.task_desc || option.doc_desc || '').trim().toUpperCase().startsWith(prefix))
-        : options;
-    const candidates = prefixedOptions.length ? prefixedOptions : options;
-    const searchWords = normalizeSearchWords(adjustmentName);
-    return [...candidates].sort((a, b) => scoreTaskCodeOption(b, searchWords) - scoreTaskCodeOption(a, searchWords))[0] || null;
-}
-
-function resolveAdCode(taskCodeOption) {
-    return taskCodeOption?.ad_code || taskCodeOption?.base_task_code || taskCodeOption?.task_code || '';
-}
-
-function inferPresetAdCodeFromRemarks(value) {
-    const remarks = String(value || '').trim();
-    if (!remarks) return { adCode: '', taskDesc: '' };
-
-    const segments = remarks.split('|').map((segment) => segment.trim());
-    const candidateSegments = segments.length > 1 ? segments.slice(1) : segments;
-    for (const segment of candidateSegments) {
-        const match = segment.match(/^([A-Z]{2}\d{3,})\s*(?:-\s*([^|]+))?/i);
-        if (match) {
-            return {
-                adCode: match[1].toUpperCase(),
-                taskDesc: String(match[2] || '').trim()
-            };
-        }
-    }
-
-    const labelMatch = remarks.match(/AD\s*CODE\s*:\s*([A-Z]{2}\d{3,})\s*(?:-\s*([^|]+))?/i);
-    return {
-        adCode: labelMatch?.[1]?.toUpperCase() || '',
-        taskDesc: String(labelMatch?.[2] || '').replace(/\|.*$/, '').trim()
-    };
-}
-
-function presetToTaskCodeOption(preset) {
-    const inferred = inferPresetAdCodeFromRemarks(preset?.remarks_template);
-    const adCode = preset?.ad_code || preset?.base_task_code || preset?.task_code || inferred.adCode || '';
-    const taskDesc = preset?.task_desc || inferred.taskDesc || '';
-    return {
-        ad_code: adCode,
-        task_code: preset?.task_code || adCode,
-        base_task_code: preset?.base_task_code || adCode,
-        task_desc: taskDesc,
-        doc_desc: taskDesc || preset?.adjustment_name || '',
-        loc_code: preset?.division_code || null
-    };
-}
-
-function buildRemarks(taskCodeOption, adjustmentName, amount = 0) {
-    if (!taskCodeOption) return '';
-    const adCode = resolveAdCode(taskCodeOption);
-    const taskDesc = taskCodeOption.task_desc || taskCodeOption.doc_desc || '';
+function buildRemarks(definition, adjustmentName, amount = 0) {
+    if (!definition) return '';
+    const adCode = resolveAdCode(definition);
+    const taskDesc = definition.task_desc || '';
     return `${adjustmentName} | ${adCode}${taskDesc ? ` - ${taskDesc}` : ''} | ${amount} | sync:MISS | match:MISMATCH`;
 }
 
-function buildKoreksiDefaultOption(division) {
-    return {
-        ad_code: KOREKSI_DEFAULT_AD_CODE,
-        task_code: KOREKSI_DEFAULT_AD_CODE,
-        base_task_code: KOREKSI_DEFAULT_AD_CODE,
-        task_desc: KOREKSI_DEFAULT_TASK_DESC,
-        doc_desc: KOREKSI_DEFAULT_TASK_DESC,
-        loc_code: division && division !== 'ALL' ? division : null
-    };
-}
+const KOREKSI_PREFIX = 'KOREKSI';
+const POTONGAN_PREFIX = 'POTONGAN';
 
 function removeLeadingPrefix(value, prefix) {
     return String(value || '').replace(new RegExp(`^${prefix}\\s*`, 'i'), '').trimStart();
@@ -139,18 +55,6 @@ function validateAdjustmentName(adjustmentType, docDesc) {
     return '';
 }
 
-function normalizePremiumName(value) {
-    return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
-}
-
-function findPremiumDefinition(definitions, adjustmentName) {
-    const target = normalizePremiumName(adjustmentName);
-    if (!target) return null;
-    return (definitions || []).find((def) =>
-        def?.is_active !== false && normalizePremiumName(def.adjustment_name) === target
-    ) || null;
-}
-
 export default function ManualAdjustmentColumnModal({
     isOpen,
     onClose,
@@ -161,19 +65,9 @@ export default function ManualAdjustmentColumnModal({
 }) {
     const [adjustmentType, setAdjustmentType] = useState('PREMI');
     const [docDesc, setDocDesc] = useState('');
-    const [search, setSearch] = useState('');
-    const [options, setOptions] = useState([]);
-    const [presets, setPresets] = useState([]);
-    const [selectedTaskCode, setSelectedTaskCode] = useState(null);
-    const [loadingOptions, setLoadingOptions] = useState(false);
-    const [loadingPresets, setLoadingPresets] = useState(false);
-    const [presetSaving, setPresetSaving] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
-    const [presetError, setPresetError] = useState('');
-    const [presetRemarks, setPresetRemarks] = useState('');
 
-    // --- Premium Definitions (format baku) ---
     const [premiumDefinitions, setPremiumDefinitions] = useState([]);
     const [selectedPremiumDef, setSelectedPremiumDef] = useState(null);
     const [premiumDefinitionSearch, setPremiumDefinitionSearch] = useState('');
@@ -184,141 +78,49 @@ export default function ManualAdjustmentColumnModal({
         [adjustmentType]
     );
 
-    const koreksiDefaultOption = useMemo(() => {
-        if (adjustmentType !== 'POTONGAN_KOTOR') return null;
-        return options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE && option.task_desc === KOREKSI_DEFAULT_TASK_DESC)
-            || options.find((option) => resolveAdCode(option) === KOREKSI_DEFAULT_AD_CODE)
-            || buildKoreksiDefaultOption(division);
-    }, [adjustmentType, division, options]);
-
-    const filteredOptions = useMemo(() => {
-        if (adjustmentType === 'POTONGAN_KOTOR') {
-            return koreksiDefaultOption ? [koreksiDefaultOption] : [];
-        }
-        if (adjustmentType === 'POTONGAN_BERSIH') {
-            return options.filter((option) => String(option.task_desc || option.doc_desc || '').trim().startsWith('(DE)'));
-        }
-        return options;
-    }, [adjustmentType, koreksiDefaultOption, options]);
-
-    const activePremiumDefinitions = useMemo(
-        () => (premiumDefinitions || []).filter((def) => def?.is_active !== false && (!def?.adjustment_type || def.adjustment_type === 'PREMI')),
-        [premiumDefinitions]
+    const activeDefinitions = useMemo(
+        () => (premiumDefinitions || []).filter((def) => {
+            const type = def?.adjustment_type || 'PREMI';
+            if (def?.is_active === false) return false;
+            if (adjustmentType === 'POTONGAN_KOTOR') return type === 'POTONGAN_KOTOR';
+            return type === adjustmentType;
+        }),
+        [premiumDefinitions, adjustmentType]
     );
+
+    const koreksiBaseDefinition = useMemo(
+        () => activeDefinitions[0] || null,
+        [activeDefinitions]
+    );
+
     const filteredPremiumDefinitions = useMemo(() => {
         const query = premiumDefinitionSearch.trim().toUpperCase();
-        if (!query) return activePremiumDefinitions;
-        return activePremiumDefinitions.filter((def) => {
+        if (!query) return activeDefinitions;
+        return activeDefinitions.filter((def) => {
             const text = `${def.adjustment_name || ''} ${def.ad_code || ''} ${def.task_desc || ''} ${def.input_type || ''}`.toUpperCase();
             return text.includes(query);
         });
-    }, [activePremiumDefinitions, premiumDefinitionSearch]);
+    }, [activeDefinitions, premiumDefinitionSearch]);
 
-    const nameError = validateAdjustmentName(adjustmentType, docDesc);
-    const resolvedAdjustmentName = buildAdjustmentName(adjustmentType, docDesc);
-    const premiumSelectionError = adjustmentType === 'PREMI' && !selectedPremiumDef
-        ? 'Pilih premi dari daftar definisi format baku.'
+    const nameError = adjustmentType === 'POTONGAN_KOTOR'
+        ? validateAdjustmentName(adjustmentType, docDesc)
+        : '';
+    const selectedDefinition = adjustmentType === 'POTONGAN_KOTOR' ? koreksiBaseDefinition : selectedPremiumDef;
+    const resolvedAdjustmentName = adjustmentType === 'POTONGAN_KOTOR'
+        ? buildAdjustmentName(adjustmentType, docDesc)
+        : selectedPremiumDef?.adjustment_name || '';
+    const premiumSelectionError = !selectedDefinition
+        ? 'Pilih definisi dari premium_definitions.json.'
         : '';
 
     useEffect(() => {
         if (!isOpen) return;
         setAdjustmentType(CATEGORY_OPTIONS.some((option) => option.value === initialAdjustmentType) ? initialAdjustmentType : 'PREMI');
         setDocDesc('');
-        setSearch('');
-        setSelectedTaskCode(null);
-        setOptions([]);
-        setPresets([]);
         setError('');
-        setPresetError('');
-        setPresetRemarks('');
-        setPresetSaving(false);
         setSelectedPremiumDef(null);
         setPremiumDefinitionSearch('');
     }, [isOpen, initialAdjustmentType]);
-
-    useEffect(() => {
-        if (adjustmentType !== 'POTONGAN_KOTOR' || !koreksiDefaultOption) return;
-
-        setSelectedTaskCode(koreksiDefaultOption);
-    }, [adjustmentType, koreksiDefaultOption]);
-
-    useEffect(() => {
-        if (!isOpen || selectedTaskCode || !resolvedAdjustmentName || options.length === 0) return;
-
-        const bestOption = pickBestTaskCodeOption(options, adjustmentType, resolvedAdjustmentName);
-        if (bestOption) setSelectedTaskCode(bestOption);
-    }, [isOpen, selectedTaskCode, resolvedAdjustmentName, options, adjustmentType]);
-
-    useEffect(() => {
-        if (!isOpen || !token) return;
-
-        let cancelled = false;
-        const timer = setTimeout(async () => {
-            setLoadingOptions(true);
-            setError('');
-            try {
-                if (adjustmentType === 'PREMI') {
-                    if (!cancelled) setOptions([]);
-                    return;
-                }
-                if (adjustmentType === 'POTONGAN_KOTOR') {
-                    if (!cancelled) setOptions([]);
-                    return;
-                }
-                const result = await fetchTaskCodeOptions(token, {
-                    search,
-                    divisionCode: division,
-                    limit: 50
-                });
-                let loadedOptions = Array.isArray(result) ? result : result?.data || [];
-                if (loadedOptions.length === 0 && search) {
-                    const fallbackResult = await fetchTaskCodeOptions(token, {
-                        divisionCode: division,
-                        limit: 100
-                    });
-                    loadedOptions = Array.isArray(fallbackResult) ? fallbackResult : fallbackResult?.data || [];
-                }
-                if (!cancelled) setOptions(loadedOptions);
-            } catch (e) {
-                if (!cancelled) {
-                    setOptions([]);
-                    setError(e?.response?.data?.error || e.message || 'Gagal memuat TaskCode');
-                }
-            } finally {
-                if (!cancelled) setLoadingOptions(false);
-            }
-        }, 250);
-
-        return () => {
-            cancelled = true;
-            clearTimeout(timer);
-        };
-    }, [isOpen, token, search, division, adjustmentType]);
-
-    const loadPresets = async () => {
-        if (!isOpen || !token) return;
-        if (adjustmentType === 'PREMI') {
-            setPresets([]);
-            setPresetError('');
-            setLoadingPresets(false);
-            return;
-        }
-        setLoadingPresets(true);
-        setPresetError('');
-        try {
-            const result = await fetchManualAdjustmentPresets(token, {});
-            setPresets(Array.isArray(result) ? result : result?.data || []);
-        } catch (e) {
-            setPresets([]);
-            setPresetError(e?.response?.data?.error || e.message || 'Gagal memuat preset manual adjustment');
-        } finally {
-            setLoadingPresets(false);
-        }
-    };
-
-    useEffect(() => {
-        loadPresets();
-    }, [isOpen, token, division, adjustmentType]);
 
     // Load premium definitions (format baku) when modal opens
     useEffect(() => {
@@ -343,7 +145,7 @@ export default function ManualAdjustmentColumnModal({
         resolvedAdjustmentName
         && !nameError
         && !premiumSelectionError
-        && selectedTaskCode
+        && selectedDefinition
         && !saving
     );
 
@@ -351,69 +153,7 @@ export default function ManualAdjustmentColumnModal({
         setSelectedPremiumDef(def);
         if (def) {
             setDocDesc(def.adjustment_name);
-            setPresetRemarks('');
-            // Create a synthetic taskCode option from the definition
-            const syntheticOption = {
-                ad_code: def.ad_code,
-                task_code: def.ad_code,
-                base_task_code: def.ad_code,
-                task_desc: def.task_desc,
-                doc_desc: def.adjustment_name,
-                loc_code: division && division !== 'ALL' ? division : null
-            };
-            setSelectedTaskCode(syntheticOption);
-        }
-    };
-
-    const handleOptionSelect = (option) => {
-        setSelectedTaskCode(option);
-        setPresetRemarks('');
-    };
-
-    const handlePresetSelect = (preset) => {
-        const presetOption = presetToTaskCodeOption(preset);
-        const matchingOption = options.find((option) => resolveAdCode(option) === resolveAdCode(presetOption)) || presetOption;
-        const nextAdjustmentType = preset.adjustment_type || adjustmentType;
-        if (nextAdjustmentType === 'PREMI') {
-            const premiumDef = findPremiumDefinition(activePremiumDefinitions, preset.adjustment_name);
-            if (!premiumDef) {
-                setError(`Premi "${preset.adjustment_name || '-'}" tidak ada di premium_definitions.json.`);
-                return;
-            }
-            setAdjustmentType('PREMI');
-            handlePremiumDefSelect(premiumDef);
-            setSearch('');
             setError('');
-            return;
-        }
-        setAdjustmentType(nextAdjustmentType);
-        setSelectedPremiumDef(null);
-        setDocDesc(preset.adjustment_name || '');
-        setSearch(resolveAdCode(presetOption));
-        setSelectedTaskCode(matchingOption);
-        setPresetRemarks(preset.remarks_template || buildRemarks(matchingOption, preset.adjustment_name || '', 0));
-    };
-
-    const handleSavePreset = async () => {
-        if (!resolvedAdjustmentName || !selectedTaskCode || presetSaving) return;
-        setPresetSaving(true);
-        setPresetError('');
-        try {
-            await createManualAdjustmentPreset(token, {
-                adjustment_type: adjustmentType,
-                adjustment_name: resolvedAdjustmentName,
-                ad_code: resolveAdCode(selectedTaskCode),
-                task_code: selectedTaskCode.task_code,
-                base_task_code: selectedTaskCode.base_task_code || resolveAdCode(selectedTaskCode),
-                task_desc: selectedTaskCode.task_desc,
-                division_code: division && division !== 'ALL' ? division : undefined,
-                remarks_template: buildRemarks(selectedTaskCode, resolvedAdjustmentName, 0)
-            });
-            await loadPresets();
-        } catch (e) {
-            setPresetError(e?.response?.data?.error || e.message || 'Gagal menyimpan preset');
-        } finally {
-            setPresetSaving(false);
         }
     };
 
@@ -432,22 +172,17 @@ export default function ManualAdjustmentColumnModal({
         setSaving(true);
         setError('');
         try {
-            const fallbackTaskCode = selectedTaskCode || pickBestTaskCodeOption(options, adjustmentType, resolvedAdjustmentName);
-            const adCode = resolveAdCode(fallbackTaskCode);
+            const adCode = resolveAdCode(selectedDefinition);
             await onSaved?.({
                 adjustment_type: adjustmentType,
                 adjustment_name: resolvedAdjustmentName,
                 ad_code: adCode,
-                task_code: fallbackTaskCode?.task_code,
-                base_task_code: fallbackTaskCode?.base_task_code || adCode,
-                task_desc: fallbackTaskCode?.task_desc,
-                loc_code: fallbackTaskCode?.loc_code,
-                remarks: presetRemarks || (fallbackTaskCode
-                    ? buildRemarks(fallbackTaskCode, resolvedAdjustmentName, 0)
-                    : `${resolvedAdjustmentName} | MANUAL EDIT | 0 | sync:MISS | match:MISMATCH`),
-                input_type: adjustmentType === 'POTONGAN_KOTOR'
-                    ? KOREKSI_INPUT_TYPE
-                    : selectedPremiumDef?.input_type || undefined
+                task_code: adCode,
+                base_task_code: adCode,
+                task_desc: selectedDefinition?.task_desc,
+                loc_code: division && division !== 'ALL' ? division : undefined,
+                remarks: buildRemarks(selectedDefinition, resolvedAdjustmentName, 0),
+                input_type: selectedDefinition?.input_type || 'amount'
             });
             onClose?.();
         } catch (e) {
@@ -490,7 +225,7 @@ export default function ManualAdjustmentColumnModal({
                         <div>
                             <h2 style={{ margin: 0, fontSize: 20, color: '#0f172a' }}>Tambah Kolom Manual Adjustment</h2>
                             <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 13 }}>
-                                Isi DocDesc sebagai nama kolom, lalu pilih ADCode dari daftar AL/DE yang tersedia.
+                                Pilih format baku dari backend/data/premium_definitions.json. Tidak ada preset tambahan di luar file itu.
                             </p>
                         </div>
                         <button type="button" onClick={onClose} style={{ border: 0, background: '#f1f5f9', borderRadius: 8, padding: '8px 10px', cursor: 'pointer' }}>
@@ -502,168 +237,10 @@ export default function ManualAdjustmentColumnModal({
                 <form onSubmit={handleSubmit} style={{ maxHeight: 'calc(90vh - 86px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ padding: 22, overflowY: 'auto', minHeight: 0 }}>
                     <div style={{ display: 'grid', gap: 14 }}>
-                        {adjustmentType !== 'PREMI' && (
-                        <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 8 }}>
-                                <div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Preset Kolom Tersimpan</div>
-                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                                        {loadingPresets ? 'Memuat preset...' : `${presets.length} preset tersimpan ditampilkan`}
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleSavePreset}
-                                    disabled={!resolvedAdjustmentName || !selectedTaskCode || presetSaving}
-                                    style={{
-                                        border: 0,
-                                        borderRadius: 8,
-                                        padding: '8px 10px',
-                                        background: resolvedAdjustmentName && selectedTaskCode && !presetSaving ? '#0f172a' : '#94a3b8',
-                                        color: 'white',
-                                        fontWeight: 800,
-                                        cursor: resolvedAdjustmentName && selectedTaskCode && !presetSaving ? 'pointer' : 'not-allowed',
-                                        fontSize: 12
-                                    }}
-                                >
-                                    {presetSaving ? 'Menyimpan...' : 'Simpan sebagai preset'}
-                                </button>
-                            </div>
-                            {presets.length > 0 && (
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                    {presets.map((preset) => (
-                                        <button
-                                            key={preset.id || `${preset.adjustment_type}-${preset.adjustment_name}-${preset.ad_code}`}
-                                            type="button"
-                                            onClick={() => handlePresetSelect(preset)}
-                                            style={{
-                                                border: '1px solid #cbd5e1',
-                                                background: '#ffffff',
-                                                borderRadius: 999,
-                                                padding: '7px 10px',
-                                                cursor: 'pointer',
-                                                color: '#0f172a',
-                                                fontSize: 12,
-                                                fontWeight: 800
-                                            }}
-                                            title={`${preset.adjustment_name} - ${resolveAdCode(presetToTaskCodeOption(preset))}${preset.remarks_template ? ` - ${preset.remarks_template}` : ''}`}
-                                        >
-                                            {preset.adjustment_name} - {resolveAdCode(presetToTaskCodeOption(preset)) || 'ADCode dari remarks'}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                            {presetError && (
-                                <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>{presetError}</div>
-                            )}
-                        </div>
-                        )}
-
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                                {adjustmentType === 'PREMI' ? 'Definisi Premi (Format Baku)' : 'DocDesc / Nama Kolom'}
+                                Kategori Rule
                             </label>
-                            {(adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH') ? (
-                                <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                                    <span style={{ padding: '10px 12px', border: '1px solid #cbd5e1', borderRight: 0, borderRadius: '9px 0 0 9px', background: '#f8fafc', color: '#0f172a', fontWeight: 800 }}>
-                                        {adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX}
-                                    </span>
-                                    <input
-                                        value={removeLeadingPrefix(docDesc, adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX)}
-                                        onChange={(e) => {
-                                            const prefix = adjustmentType === 'POTONGAN_KOTOR' ? KOREKSI_PREFIX : POTONGAN_PREFIX;
-                                            setDocDesc(`${prefix} ${e.target.value}`.trimEnd());
-                                            setPresetRemarks('');
-                                        }}
-                                        placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'contoh: PANEN' : 'contoh: SPSI'}
-                                        style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
-                                    />
-                                </div>
-                            ) : adjustmentType === 'PREMI' ? (
-                                <div>
-                                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
-                                        <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
-                                            {loadingDefs ? 'Memuat definisi premi...' : `${filteredPremiumDefinitions.length} dari ${activePremiumDefinitions.length} definisi premi aktif`}
-                                        </div>
-                                        <div style={{ padding: 10, borderTop: '1px solid #f1f5f9', background: '#ffffff' }}>
-                                            <input
-                                                value={premiumDefinitionSearch}
-                                                onChange={(e) => setPremiumDefinitionSearch(e.target.value)}
-                                                placeholder="Cari definisi premi..."
-                                                style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                        {filteredPremiumDefinitions.map((def) => {
-                                            const active = selectedPremiumDef?.adjustment_name === def.adjustment_name;
-                                            const typeLabel = {
-                                                'amount': 'Nominal',
-                                                'blok': 'Blok Detail',
-                                                'exp': 'Expense',
-                                                'kendaraan': 'Kendaraan',
-                                                'blok,exp': 'Blok + Expense'
-                                            }[def.input_type] || def.input_type;
-                                            return (
-                                                <button
-                                                    key={def.adjustment_name}
-                                                    type="button"
-                                                    onClick={() => handlePremiumDefSelect(def)}
-                                                    style={{
-                                                        width: '100%',
-                                                        textAlign: 'left',
-                                                        padding: '10px 12px',
-                                                        border: 0,
-                                                        borderTop: '1px solid #f1f5f9',
-                                                        background: active ? '#ecfdf5' : '#ffffff',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                                                        <strong style={{ color: '#0f172a' }}>{def.adjustment_name}</strong>
-                                                        <span style={{
-                                                            fontSize: 11,
-                                                            fontWeight: 700,
-                                                            color: active ? '#16a34a' : '#64748b',
-                                                            border: '1px solid #e2e8f0',
-                                                            borderRadius: 999,
-                                                            padding: '2px 8px',
-                                                            background: active ? '#f0fdf4' : '#f8fafc'
-                                                        }}>
-                                                            {typeLabel}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>
-                                                        {def.ad_code}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                        {!loadingDefs && filteredPremiumDefinitions.length === 0 && (
-                                            <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                                                Tidak ada definisi premi yang cocok.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <input
-                                    value={docDesc}
-                                    onChange={(e) => {
-                                        setDocDesc(e.target.value);
-                                        setPresetRemarks('');
-                                    }}
-                                    placeholder="Ketik nama premi, contoh: PRUNING"
-                                    style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1' }}
-                                />
-                            )}
-                            {nameError && (
-                                <div style={{ marginTop: 6, color: '#b45309', fontSize: 12, fontWeight: 700 }}>
-                                    {nameError}
-                                </div>
-                            )}
-                        </div>
-
-                        <div>
-                            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Kategori Rule</label>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                 {CATEGORY_OPTIONS.map((option) => (
                                     <button
@@ -671,19 +248,10 @@ export default function ManualAdjustmentColumnModal({
                                         type="button"
                                         onClick={() => {
                                             setAdjustmentType(option.value);
-                                            setSelectedTaskCode(null);
                                             setSelectedPremiumDef(null);
-                                            if (option.value === 'POTONGAN_KOTOR') {
-                                                setDocDesc((current) => buildAdjustmentName('POTONGAN_KOTOR', current || KOREKSI_PREFIX));
-                                                setSearch(KOREKSI_DEFAULT_AD_CODE);
-                                            } else if (option.value === 'POTONGAN_BERSIH') {
-                                                setDocDesc((current) => buildAdjustmentName('POTONGAN_BERSIH', current || POTONGAN_PREFIX));
-                                                setSearch('DE');
-                                            } else {
-                                                const cleanedName = removeLeadingPrefix(removeLeadingPrefix(docDesc, KOREKSI_PREFIX), POTONGAN_PREFIX);
-                                                setDocDesc(cleanedName);
-                                                setSearch('');
-                                            }
+                                            setDocDesc('');
+                                            setPremiumDefinitionSearch('');
+                                            setError('');
                                         }}
                                         style={{
                                             border: adjustmentType === option.value ? `2px solid ${option.color}` : '1px solid #cbd5e1',
@@ -701,91 +269,117 @@ export default function ManualAdjustmentColumnModal({
                             </div>
                         </div>
 
-                        {adjustmentType === 'PREMI' && (
-                            <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' }}>
-                                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Konfigurasi Premi</div>
-                                {selectedPremiumDef ? (
-                                    <>
-                                        <div style={{ fontSize: 13 }}>ADCode: <strong>{selectedPremiumDef.ad_code || '-'}</strong></div>
-                                        <div style={{ fontSize: 13, marginTop: 4 }}>TaskDesc: {selectedPremiumDef.task_desc || '-'}</div>
-                                        <div style={{ fontSize: 13, marginTop: 4 }}>Input detail: {selectedPremiumDef.input_type || 'amount'}</div>
-                                    </>
-                                ) : (
-                                    <div style={{ fontSize: 13, color: '#64748b' }}>
-                                        Pilih salah satu definisi premi di atas. Nama, ADCode, dan tipe input mengikuti premium_definitions.json.
+                        {adjustmentType === 'POTONGAN_KOTOR' && (
+                            <div>
+                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                                    Nama Koreksi
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                                    <span style={{ padding: '10px 12px', border: '1px solid #cbd5e1', borderRight: 0, borderRadius: '9px 0 0 9px', background: '#fff7ed', color: '#c2410c', fontWeight: 800 }}>
+                                        {KOREKSI_PREFIX}
+                                    </span>
+                                    <input
+                                        value={removeLeadingPrefix(docDesc, KOREKSI_PREFIX)}
+                                        onChange={(event) => setDocDesc(`${KOREKSI_PREFIX} ${event.target.value}`.trimEnd())}
+                                        placeholder="contoh: PANEN"
+                                        style={{ flex: 1, padding: 10, borderRadius: '0 9px 9px 0', border: '1px solid #cbd5e1' }}
+                                    />
+                                </div>
+                                <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
+                                    TaskDesc, ADCode, dan input detail tetap mengikuti definisi KOREKSI di premium_definitions.json.
+                                </div>
+                                {nameError && (
+                                    <div style={{ marginTop: 6, color: '#b45309', fontSize: 12, fontWeight: 700 }}>
+                                        {nameError}
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        {adjustmentType !== 'PREMI' && (
+                        {adjustmentType !== 'POTONGAN_KOTOR' && (
                         <div>
                             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                                ADCode Wajib ({division || 'ALL'})
+                                Definisi Kolom dari premium_definitions.json
                             </label>
-                            <input
-                                value={adjustmentType === 'POTONGAN_KOTOR' ? `${KOREKSI_DEFAULT_AD_CODE} - ${KOREKSI_DEFAULT_TASK_DESC}` : search}
-                                onChange={(e) => {
-                                    if (adjustmentType === 'POTONGAN_KOTOR') return;
-                                    setSearch(e.target.value);
-                                }}
-                                readOnly={adjustmentType === 'POTONGAN_KOTOR'}
-                                placeholder={adjustmentType === 'POTONGAN_KOTOR' ? 'Otomatis DE0004 - (DE) POTONGAN PREMI' : adjustmentType === 'POTONGAN_BERSIH' ? 'Cari ADCode potongan bersih, hanya (DE)...' : 'Cari ADCode, TaskCode, atau TaskDesc AL/DE...'}
-                                style={{ width: '100%', padding: 10, borderRadius: 9, border: '1px solid #cbd5e1', marginBottom: 8 }}
-                            />
-                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 260, overflowY: 'auto' }}>
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', maxHeight: 320, overflowY: 'auto' }}>
                                 <div style={{ padding: '8px 12px', background: '#f8fafc', color: '#64748b', fontSize: 12 }}>
-                                    {loadingOptions ? 'Memuat ADCode...' : `${filteredOptions.length} ADCode ditemukan`}
+                                    {loadingDefs ? 'Memuat definisi...' : `${filteredPremiumDefinitions.length} dari ${activeDefinitions.length} definisi aktif untuk ${selectedCategory.label}`}
                                 </div>
-                                {filteredOptions.map((option) => {
-                                    const active = selectedTaskCode?.task_code === option.task_code;
+                                <div style={{ padding: 10, borderTop: '1px solid #f1f5f9', background: '#ffffff' }}>
+                                    <input
+                                        value={premiumDefinitionSearch}
+                                        onChange={(e) => setPremiumDefinitionSearch(e.target.value)}
+                                        placeholder="Cari nama, ADCode, TaskDesc, atau input type..."
+                                        style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                                {filteredPremiumDefinitions.map((def) => {
+                                    const active = selectedPremiumDef?.adjustment_name === def.adjustment_name;
+                                    const typeLabel = {
+                                        'amount': 'Nominal',
+                                        'blok': 'Blok Detail',
+                                        'exp': 'Expense',
+                                        'kendaraan': 'Kendaraan',
+                                        'blok,exp': 'Blok + Expense'
+                                    }[def.input_type] || def.input_type || 'Nominal';
                                     return (
                                         <button
-                                            key={`${option.doc_desc || ''}-${option.loc_code}-${option.task_code}-${option.task_desc}`}
+                                            key={`${def.adjustment_type || 'PREMI'}-${def.adjustment_name}`}
                                             type="button"
-                                            onClick={() => handleOptionSelect(option)}
+                                            onClick={() => handlePremiumDefSelect(def)}
                                             style={{
                                                 width: '100%',
                                                 textAlign: 'left',
                                                 padding: '10px 12px',
                                                 border: 0,
                                                 borderTop: '1px solid #f1f5f9',
-                                                background: active ? '#eff6ff' : '#ffffff',
+                                                background: active ? '#ecfdf5' : '#ffffff',
                                                 cursor: 'pointer'
                                             }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                                                <strong style={{ color: '#0f172a' }}>{option.doc_desc || option.task_desc || '-'}</strong>
-                                                <span style={{ color: '#64748b', fontSize: 12 }}>{option.loc_code || '-'}</span>
+                                                <strong style={{ color: '#0f172a' }}>{def.adjustment_name}</strong>
+                                                <span style={{
+                                                    fontSize: 11,
+                                                    fontWeight: 700,
+                                                    color: active ? '#16a34a' : '#64748b',
+                                                    border: '1px solid #e2e8f0',
+                                                    borderRadius: 999,
+                                                    padding: '2px 8px',
+                                                    background: active ? '#f0fdf4' : '#f8fafc'
+                                                }}>
+                                                    {typeLabel}
+                                                </span>
                                             </div>
-                                            <div style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
-                                                ADCode: <strong>{resolveAdCode(option)}</strong>{option.task_code && option.task_code !== resolveAdCode(option) ? ` (TaskCode ${option.task_code})` : ''}
-                                            </div>
-                                            <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{option.task_desc || '-'}</div>
+                                            <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{def.ad_code || '-'}</div>
+                                            <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{def.task_desc || '-'}</div>
                                         </button>
                                     );
                                 })}
-                                {!loadingOptions && filteredOptions.length === 0 && (
+                                {!loadingDefs && filteredPremiumDefinitions.length === 0 && (
                                     <div style={{ padding: 18, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                                        Tidak ada ADCode untuk filter ini.
+                                        Tidak ada definisi aktif untuk kategori ini. Tambahkan format baku di backend/data/premium_definitions.json.
                                     </div>
                                 )}
                             </div>
                         </div>
                         )}
 
-                        {selectedTaskCode && (
-                            <div style={{ padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#14532d' }}>
-                                <strong>Dipilih:</strong> {selectedTaskCode.doc_desc || docDesc} | ADCode {resolveAdCode(selectedTaskCode)} | {selectedTaskCode.task_desc || '-'} | {selectedCategory.label}
-                            </div>
-                        )}
-
-                        {presetRemarks && (
-                            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a' }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Remarks Preset:</div>
-                                <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{presetRemarks}</code>
-                            </div>
-                        )}
+                        <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a' }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Konfigurasi Terpilih</div>
+                            {selectedDefinition ? (
+                                <>
+                                    <div style={{ fontSize: 13 }}>Nama: <strong>{resolvedAdjustmentName || '-'}</strong></div>
+                                    <div style={{ fontSize: 13, marginTop: 4 }}>ADCode: <strong>{selectedDefinition.ad_code || '-'}</strong></div>
+                                    <div style={{ fontSize: 13, marginTop: 4 }}>TaskDesc: {selectedDefinition.task_desc || '-'}</div>
+                                    <div style={{ fontSize: 13, marginTop: 4 }}>Input detail: {selectedDefinition.input_type || 'amount'}</div>
+                                </>
+                            ) : (
+                                <div style={{ fontSize: 13, color: '#64748b' }}>
+                                    Pilih definisi dari daftar. Tidak ada preset tambahan di luar premium_definitions.json.
+                                </div>
+                            )}
+                        </div>
 
                         {error && (
                             <div style={{ padding: 12, borderRadius: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 13, border: '1px solid #fecaca' }}>

@@ -7,7 +7,7 @@ import {
 } from "./dataExtractorService";
 
 describe("manual adjustment metadata extraction", () => {
-    it("attaches koreksi block metadata and mismatch information", () => {
+    it("attaches koreksi block metadata without old-vs-new mismatch warning", () => {
         const row: any = {};
 
         attachManualAdjustmentMetadata(row, [{
@@ -30,11 +30,63 @@ describe("manual adjustment metadata extraction", () => {
             detail_matches_amount: false
         });
         expect(row.manual_adjustment_metadata.premi_koreksi_panen).toBeUndefined();
-        expect(row.manual_adjustment_metadata_mismatch.koreksi_panen).toEqual({
+        expect(row.manual_adjustment_metadata_mismatch).toBeUndefined();
+    });
+
+    it("creates old-vs-new mismatch info only for pruning and raking premiums", () => {
+        const row: any = {};
+
+        attachManualAdjustmentMetadata(row, [
+            {
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 100000,
+                metadata_json: JSON.stringify({
+                    input_type: "blok",
+                    items: [{ subblok: "P09/15", gang_code: "D1H", jumlah: 90000 }],
+                    total_amount: 90000
+                })
+            },
+            {
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI TBS",
+                amount: 100000,
+                metadata_json: JSON.stringify({
+                    input_type: "blok",
+                    items: [{ subblok: "P09/16", gang_code: "D1H", jumlah: 80000 }],
+                    total_amount: 80000
+                })
+            }
+        ]);
+
+        expect(row.manual_adjustment_metadata_mismatch.premi_pruning).toMatchObject({
             amount: 100000,
             detail_total: 90000,
             diff: -10000
         });
+        expect(row.manual_adjustment_metadata_mismatch.premi_tbs).toBeUndefined();
+    });
+
+    it("ignores pruning mismatch when old amount is zero", () => {
+        const row: any = {};
+
+        attachManualAdjustmentMetadata(row, [{
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI PRUNING",
+            amount: 0,
+            metadata_json: JSON.stringify({
+                input_type: "blok",
+                items: [{ subblok: "P09/15", gang_code: "D1H", jumlah: 90000 }],
+                total_amount: 90000
+            })
+        }]);
+
+        expect(row.manual_adjustment_metadata.premi_pruning).toMatchObject({
+            amount: 0,
+            detail_total: 90000,
+            detail_matches_amount: false
+        });
+        expect(row.manual_adjustment_metadata_mismatch).toBeUndefined();
     });
 
     it("registers dynamic premium and koreksi headers from stored rows even when amounts are not applied", () => {

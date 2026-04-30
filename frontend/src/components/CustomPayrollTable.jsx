@@ -23,7 +23,7 @@ import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
-import { buildPremiumDetailEdit } from '../utils/payrollPremiumDetailEdits';
+import { buildPremiumDetailEdit, validatePremiumDetailMetadata } from '../utils/payrollPremiumDetailEdits';
 import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
 import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -153,7 +153,89 @@ const formatSourceCompareValue = (value) => {
     return String(value);
 };
 
-const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_');
+const STATIC_PREMI_FIELDS = new Set(['premi_brondol']);
+const STATIC_POTONGAN_FIELDS = new Set(['pot_spsi']);
+
+const isBrondolFieldKey = (value) => {
+    const normalized = normalizeFieldKey(value);
+    if (!normalized) return false;
+    return normalized === 'brondol'
+        || normalized === 'premi_brondol'
+        || normalized.startsWith('premi_brondol_')
+        || /^premi_.*(^|_)brondol(_|$)/.test(normalized);
+};
+
+const isSpsiFieldKey = (value) => {
+    const normalized = normalizeFieldKey(value);
+    if (!normalized) return false;
+    return normalized === 'spsi'
+        || normalized === 'pot_spsi'
+        || normalized === 'potongan_spsi'
+        || normalized === 'potongan_lainnya_spsi'
+        || /^potongan_.*(^|_)spsi(_|$)/.test(normalized);
+};
+
+const isStaticPremiFieldKey = (value) => STATIC_PREMI_FIELDS.has(normalizeFieldKey(value)) || isBrondolFieldKey(value);
+const isStaticPotonganFieldKey = (value) => STATIC_POTONGAN_FIELDS.has(normalizeFieldKey(value)) || isSpsiFieldKey(value);
+const isBrondolLabel = (value) => /\bBRONDOL\b/i.test(String(value || ''));
+const isSpsiLabel = (value) => /\bSPSI\b/i.test(String(value || ''));
+
+const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_') && !isStaticPremiFieldKey(value);
+const DETAIL_TOTAL_MISMATCH_PREMI_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
+
+const normalizeAdjustmentNameForMismatch = (value) => String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+const buildManualDetailMismatchReason = (mismatch) => {
+    if (!mismatch) return '';
+    return mismatch.reason || `Total detail terbaru ${formatNumber(mismatch.detail_total)} berbeda dari amount awal ${formatNumber(mismatch.amount)}. Detail terbaru dipakai saat simpan.`;
+};
+
+const buildIncompleteDetailReason = (validation) => {
+    const reasons = validation?.reasons || [];
+    return reasons.length ? reasons.join(' ') : 'Data detail belum lengkap.';
+};
+
+const buildManualDetailIssueReason = ({ mismatch, validation }) => {
+    if (mismatch) return `Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`;
+    if (validation && !validation.isComplete) return `Data detail belum lengkap: ${buildIncompleteDetailReason(validation)}`;
+    return '';
+};
+
+const getVisibleManualDetailMismatch = ({ row, field, adjustmentType, adjustmentName }) => {
+    const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+    if (!mismatch) return null;
+    if (normalizeAdjustmentNameForMismatch(adjustmentType) !== 'PREMI') return null;
+    if (!DETAIL_TOTAL_MISMATCH_PREMI_NAMES.has(normalizeAdjustmentNameForMismatch(adjustmentName))) return null;
+    if (Math.abs(Number(mismatch.amount || 0)) <= 0.01) return null;
+    return mismatch;
+};
+
+const normalizeManualDetailInputType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['amount', 'blok', 'exp', 'kendaraan', 'blok,exp'].includes(normalized) ? normalized : '';
+};
+
+const resolveManualDetailInputType = ({ edit, storedMetadata, addedColumn, definition, defaultInputType = 'amount' } = {}) => (
+    normalizeManualDetailInputType(parseMetadataObjectValue(edit?.metadata_json)?.input_type)
+    || normalizeManualDetailInputType(storedMetadata?.input_type)
+    || normalizeManualDetailInputType(addedColumn?.input_type)
+    || normalizeManualDetailInputType(definition?.input_type)
+    || normalizeManualDetailInputType(defaultInputType)
+    || 'amount'
+);
+
+const getManualDetailValidation = ({ metadata, inputType, amount }) => {
+    const normalizedInputType = normalizeManualDetailInputType(inputType);
+    if (!normalizedInputType || normalizedInputType === 'amount') return null;
+    if (!metadata) {
+        return Math.abs(Number(amount || 0)) > 0.01
+            ? { isComplete: false, reasons: ['Detail wajib diisi sesuai input type.'], inputType: normalizedInputType }
+            : null;
+    }
+
+    const validation = validatePremiumDetailMetadata(metadata, normalizedInputType);
+    return validation.isComplete ? null : validation;
+};
 
 const isDynamicGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
@@ -167,7 +249,7 @@ const isGrossDeductionFieldKey = (value) => {
 
 const isPotonganFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
-    return !isGrossDeductionFieldKey(normalized) && normalized.startsWith('potongan_');
+    return !isStaticPotonganFieldKey(normalized) && !isGrossDeductionFieldKey(normalized) && normalized.startsWith('potongan_');
 };
 
 const isDynamicPotonganFieldKey = (value) => isPotonganFieldKey(value) || isDynamicGrossDeductionFieldKey(value);
@@ -406,8 +488,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // ================================================================
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
     const effectiveGangPrefix = useMemo(
-        () => resolveEffectiveGangPrefix(gangCode, gangPrefix),
-        [gangCode, gangPrefix]
+        () => resolveEffectiveGangPrefix(gangCode, gangPrefix, division),
+        [division, gangCode, gangPrefix]
     );
     const canStartDataFlow = !!token && !!division && !!month && !!year && !currentPeriodLoading;
 
@@ -711,30 +793,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             });
             return result;
         };
-        const mergeHeaderMap = (target, source = {}) => {
+        const mergeHeaderMap = (target, source = {}, shouldSkip = () => false) => {
             const registeredFields = new Set(Object.values(target).map((field) => normalizeFieldKey(field)));
             for (const [label, field] of Object.entries(source || {})) {
                 const normalizedField = normalizeFieldKey(field);
-                if (!normalizedField || registeredFields.has(normalizedField)) continue;
+                if (!normalizedField || registeredFields.has(normalizedField) || shouldSkip(label, normalizedField)) continue;
                 registeredFields.add(normalizedField);
                 target[label] = normalizedField;
             }
         };
+        const skipStaticPremiHeader = (label, field) => isStaticPremiFieldKey(field) || isBrondolLabel(label);
+        const skipStaticPotonganHeader = (label, field) => isStaticPotonganFieldKey(field) || isSpsiLabel(label);
 
         const result = { premi: {}, potongan: {} };
-        mergeHeaderMap(result.premi, buildTitleMap(stream.meta?.dynamic_premi_headers || [], stream.meta?.premi_title_map || {}));
-        mergeHeaderMap(result.potongan, buildTitleMap(stream.meta?.dynamic_potongan_headers || [], stream.meta?.potongan_title_map || {}));
-        mergeHeaderMap(result.premi, dynamicHeaders.premi);
-        mergeHeaderMap(result.potongan, dynamicHeaders.potongan);
-        mergeHeaderMap(result.premi, metadataDynamicHeaders.premi);
-        mergeHeaderMap(result.potongan, metadataDynamicHeaders.potongan);
+        mergeHeaderMap(result.premi, buildTitleMap(stream.meta?.dynamic_premi_headers || [], stream.meta?.premi_title_map || {}), skipStaticPremiHeader);
+        mergeHeaderMap(result.potongan, buildTitleMap(stream.meta?.dynamic_potongan_headers || [], stream.meta?.potongan_title_map || {}), skipStaticPotonganHeader);
+        mergeHeaderMap(result.premi, dynamicHeaders.premi, skipStaticPremiHeader);
+        mergeHeaderMap(result.potongan, dynamicHeaders.potongan, skipStaticPotonganHeader);
+        mergeHeaderMap(result.premi, metadataDynamicHeaders.premi, skipStaticPremiHeader);
+        mergeHeaderMap(result.potongan, metadataDynamicHeaders.potongan, skipStaticPotonganHeader);
 
         for (const field of streamActiveFields.activePremi || []) {
-            mergeHeaderMap(result.premi, { [formatFallbackPremiLabel(field)]: field });
+            mergeHeaderMap(result.premi, { [formatFallbackPremiLabel(field)]: field }, skipStaticPremiHeader);
         }
 
         for (const field of streamActiveFields.activePot || []) {
-            mergeHeaderMap(result.potongan, { [formatFallbackPotonganLabel(field)]: field });
+            mergeHeaderMap(result.potongan, { [formatFallbackPotonganLabel(field)]: field }, skipStaticPotonganHeader);
         }
 
         return result;
@@ -1246,6 +1330,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     task_code: addedColumn?.task_code,
                     base_task_code: addedColumn?.base_task_code,
                     task_desc: addedColumn?.task_desc,
+                    input_type: addedColumn?.input_type,
                     remarks: addedColumn?.remarks
                 }
             };
@@ -1316,29 +1401,35 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return Number(displayAmount || 0) !== 0;
     };
 
-    const getManualCellTriggerStyle = ({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch }) => ({
-        border: '1px solid #cbd5e1',
-        background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
+    const getManualCellTriggerStyle = ({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete }) => {
+        const hasDetailIssue = mismatch || incomplete || (detailValidation && !detailValidation.isComplete);
+        return ({
+        border: hasDetailIssue ? '1px solid #ef4444' : '1px solid #cbd5e1',
+        background: hasDetailIssue ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
         borderRadius: 6,
         padding: '3px 7px',
         cursor: 'pointer',
         fontSize: 11,
-        color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#475569',
+        color: hasDetailIssue ? '#b91c1c' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#475569',
         fontWeight: 800,
         lineHeight: 1.1,
         minWidth: hasData ? 58 : 46,
         textAlign: 'center'
-    });
+        });
+    };
 
-    const renderManualCellTrigger = ({ label, hasData, displayAmount, hasDbMetadata, hasFallbackMetadata, mismatch, onClick }) => (
+    const renderManualCellTrigger = ({ label, hasData, displayAmount, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete, onClick }) => (
         <button
             type="button"
-            title={hasData ? 'Edit input manual adjustment' : 'Input manual adjustment'}
+            title={buildManualDetailIssueReason({
+                mismatch,
+                validation: detailValidation || (incomplete ? { isComplete: false, reasons: ['Isi field wajib sesuai input type.'] } : null)
+            }) || (hasData ? 'Edit input manual adjustment' : 'Input manual adjustment')}
             onClick={(event) => {
                 event.stopPropagation();
                 onClick?.();
             }}
-            style={getManualCellTriggerStyle({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch })}
+            style={getManualCellTriggerStyle({ hasData, hasDbMetadata, hasFallbackMetadata, mismatch, detailValidation, incomplete })}
         >
             {label || (hasData ? formatNumber(displayAmount) : 'Input')}
         </button>
@@ -2767,7 +2858,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             cols.push({ field: 'premi_brondol', headers: [PREMI, null, 'BRONDOL'], w: 80, className: 'text-right' });
 
             Object.entries(effectiveDynamicHeaders.premi)
-                .filter(([label, field]) => field !== 'brondol' && (effectiveActivePremiFields.includes(field) || isEditMode))
+                .filter(([label, field]) => !isStaticPremiFieldKey(field) && !isBrondolLabel(label) && (effectiveActivePremiFields.includes(field) || isEditMode))
                 .forEach(([label, field]) => {
                     const displayName = label.replace('PREMI ', '');
                     const canonicalName = buildCanonicalManualAdjustmentName('PREMI', label);
@@ -2788,18 +2879,28 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 remarks: edit?.remarks || row?.manual_adjustment_remarks || row?.remarks
                             });
                             const premiumDef = resolvedPremium.definition;
+                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'PREMI');
                             const resolvedAdjustmentName = resolvedPremium.adjustmentName || canonicalName;
-                            const inputType = premiumDef?.input_type || storedMetadata?.input_type || 'amount';
+                            const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn, definition: premiumDef });
                             const popupInitialData = row.type === 'employee' && inputType !== 'amount'
                                 ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: resolvedAdjustmentName })
                                 : null;
-                            const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                            const mismatch = getVisibleManualDetailMismatch({
+                                row,
+                                field,
+                                adjustmentType: 'PREMI',
+                                adjustmentName: resolvedAdjustmentName
+                            });
                             const popupMetadata = parsePremiumMetadataValue(popupInitialData);
                             const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
                             const hasFallbackMetadata = !!popupMetadata?.legacy_source;
                             const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
-                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'PREMI');
-                            const hasStructuredDetail = row.type === 'employee' && inputType !== 'amount' && (premiumDef || popupMetadata);
+                            const hasStructuredDetail = row.type === 'employee' && inputType !== 'amount' && (premiumDef || addedColumn || popupMetadata);
+                            const popupDetailValidation = popupMetadata
+                                ? validatePremiumDetailMetadata(popupMetadata, inputType)
+                                : null;
+                            const popupDetailIncomplete = popupDetailValidation && !popupDetailValidation.isComplete;
+                            const popupDetailIssueReason = buildManualDetailIssueReason({ mismatch, validation: popupDetailValidation });
                             const editBase = isEditMode ? {
                                 emp_code: empCode,
                                 nik: row.nik,
@@ -2814,12 +2915,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 task_code: edit?.task_code || addedColumn?.task_code || premiumDef?.ad_code,
                                 base_task_code: edit?.base_task_code || addedColumn?.base_task_code || premiumDef?.ad_code,
                                 task_desc: edit?.task_desc || addedColumn?.task_desc || premiumDef?.task_desc,
+                                input_type: inputType,
                                 remarks: edit?.remarks || addedColumn?.remarks
                             } : null;
                             const detailButton = hasStructuredDetail ? (
                                 <button
                                     type="button"
-                                    title={isEditMode ? (mismatch ? `Detail beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail') : 'Lihat detail pekerjaan'}
+                                    title={popupDetailIssueReason || (isEditMode ? 'Edit detail' : 'Lihat detail pekerjaan')}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         setPremiumPopup({
@@ -2835,13 +2937,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         });
                                     }}
                                     style={{
-                                        border: '1px solid #cbd5e1',
-                                        background: mismatch ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
+                                        border: (mismatch || popupDetailIncomplete) ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                                        background: (mismatch || popupDetailIncomplete) ? '#fee2e2' : hasDbMetadata ? '#dcfce7' : hasFallbackMetadata ? '#fef3c7' : '#f8fafc',
                                         borderRadius: 6,
                                         padding: '2px 5px',
                                         cursor: 'pointer',
                                         fontSize: 10,
-                                        color: mismatch ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#64748b',
+                                        color: (mismatch || popupDetailIncomplete) ? '#dc2626' : hasDbMetadata ? '#16a34a' : hasFallbackMetadata ? '#b45309' : '#64748b',
                                         fontWeight: 800,
                                         lineHeight: 1.1,
                                         minWidth: 38
@@ -2860,6 +2962,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
                                 const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
                                 const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
+                                const triggerValidation = getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount });
                                 const triggerEditBase = {
                                     ...editBase,
                                     value: triggerStoredAmount,
@@ -2870,7 +2973,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                         {mismatch && (
                                             <span
-                                                title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                                title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                                 style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
                                             >
                                                 !
@@ -2882,6 +2985,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                             hasDbMetadata,
                                             hasFallbackMetadata: triggerHasFallbackMetadata,
                                             mismatch,
+                                            detailValidation: triggerValidation,
                                             onClick: () => setPremiumPopup({
                                                 isOpen: true,
                                                 editKey,
@@ -2903,7 +3007,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         <span>{val === 0 ? '-' : formatNumber(val)}</span>
                                         {mismatch && (
                                             <span
-                                                title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                                title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                                 style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
                                             >
                                                 !
@@ -3042,6 +3146,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         const registerDynamicPotonganEntry = (label, field) => {
             const normalizedField = normalizeFieldKey(field);
+            if (isStaticPotonganFieldKey(normalizedField) || isSpsiLabel(label)) return;
             if (!normalizedField || dynamicPotonganEntriesMap.has(normalizedField)) return;
             dynamicPotonganEntriesMap.set(normalizedField, [label, field]);
         };
@@ -3096,13 +3201,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         const edit = editedCells[editKey];
                         const displayVal = isEditMode ? (edit?.value ?? val) : val;
                         const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_KOTOR');
-                        const inputType = addedColumn?.input_type || KOREKSI_DEFAULT_INPUT_TYPE;
+                        const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                        const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn, defaultInputType: KOREKSI_DEFAULT_INPUT_TYPE });
                         const popupInitialData = row.type === 'employee'
                             ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: canonicalName })
                             : null;
-                        const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
+                        const mismatch = getVisibleManualDetailMismatch({
+                            row,
+                            field,
+                            adjustmentType: 'POTONGAN_KOTOR',
+                            adjustmentName: canonicalName
+                        });
                         const popupMetadata = parsePremiumMetadataValue(popupInitialData);
-                        const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
                         const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
                         const hasFallbackMetadata = !!popupMetadata?.legacy_source;
                         const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
@@ -3120,12 +3230,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             task_code: addedColumn?.task_code || KOREKSI_DEFAULT_AD_CODE,
                             base_task_code: addedColumn?.base_task_code || KOREKSI_DEFAULT_AD_CODE,
                             task_desc: addedColumn?.task_desc || KOREKSI_DEFAULT_TASK_DESC,
+                            input_type: inputType,
                             remarks: addedColumn?.remarks
                         } : null;
                         const detailButton = row.type === 'employee' ? (
                             <button
                                 type="button"
-                                title={isEditMode ? (mismatch ? `Detail koreksi beda ${formatNumber(Math.abs(mismatch.diff))}` : 'Edit detail koreksi') : 'Lihat detail koreksi'}
+                                title={isEditMode ? (mismatch ? `Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}` : 'Edit detail koreksi') : 'Lihat detail koreksi'}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     setPremiumPopup({
@@ -3166,6 +3277,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const triggerMetadata = parsePremiumMetadataValue(triggerInitialData);
                             const triggerStoredAmount = Number(triggerMetadata?.amount ?? mismatch?.amount ?? triggerAmount) || 0;
                             const triggerHasFallbackMetadata = !!triggerMetadata?.legacy_source;
+                            const triggerValidation = getManualDetailValidation({ metadata: triggerMetadata, inputType, amount: triggerAmount });
                             const triggerEditBase = {
                                 ...editBase,
                                 value: triggerStoredAmount,
@@ -3175,7 +3287,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                     {mismatch && (
                                         <span
-                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                             style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
                                         >
                                             !
@@ -3187,6 +3299,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         hasDbMetadata,
                                         hasFallbackMetadata: triggerHasFallbackMetadata,
                                         mismatch,
+                                        detailValidation: triggerValidation,
                                         onClick: () => setPremiumPopup({
                                             isOpen: true,
                                             editKey,
@@ -3207,7 +3320,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                     <span>{val === 0 ? '-' : formatNumber(val)}</span>
                                     {mismatch && (
                                         <span
-                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                             style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
                                         >
                                             !
@@ -3361,14 +3474,20 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const displayAmount = getManualCellDisplayAmount({ row, field, edit, fallbackAmount: val });
                             const hasData = hasManualCellData({ row, field, edit, displayAmount });
                             const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
-                            const mismatch = row?.manual_adjustment_metadata_mismatch?.[field];
-                            const inputType = storedMetadata?.input_type || 'amount';
+                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_BERSIH');
+                            const mismatch = getVisibleManualDetailMismatch({
+                                row,
+                                field,
+                                adjustmentType: 'POTONGAN_BERSIH',
+                                adjustmentName: canonicalName
+                            });
+                            const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn });
                             const initialData = inputType !== 'amount'
                                 ? resolvePremiumPopupInitialData({ edit, amount: displayAmount, inputType, row, field, adjustmentName: canonicalName })
                                 : null;
                             const popupMetadata = parsePremiumMetadataValue(initialData);
                             const storedAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayAmount) || 0;
-                            const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_BERSIH');
+                            const detailValidation = getManualDetailValidation({ metadata: popupMetadata, inputType, amount: displayAmount });
                             const editBase = {
                                 emp_code: empCode,
                                 nik: row.nik,
@@ -3383,13 +3502,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 task_code: edit?.task_code || addedColumn?.task_code,
                                 base_task_code: edit?.base_task_code || addedColumn?.base_task_code,
                                 task_desc: edit?.task_desc || addedColumn?.task_desc,
+                                input_type: inputType,
                                 remarks: edit?.remarks || addedColumn?.remarks
                             };
                             return (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                     {mismatch && (
                                         <span
-                                            title={`Total detail ${formatNumber(mismatch.detail_total)} berbeda dari amount ${formatNumber(mismatch.amount)}`}
+                                            title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
                                             style={{ color: '#dc2626', fontSize: 11, fontWeight: 800 }}
                                         >
                                             !
@@ -3401,6 +3521,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                         hasDbMetadata: !!edit?.metadata_json || !!storedMetadata,
                                         hasFallbackMetadata: !!popupMetadata?.legacy_source,
                                         mismatch,
+                                        detailValidation,
                                         onClick: () => setPremiumPopup({
                                             isOpen: true,
                                             editKey,

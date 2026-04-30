@@ -72,6 +72,7 @@ import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
 import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
+import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
 import { getEmployeeRows } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
@@ -201,12 +202,13 @@ const OperationalReportWrapper = () => {
 
   // Filter gangs by group prefix
   const filteredGangs = useMemo(() => {
-    if (!gangPrefix) return gangs;
+    if (!gangPrefix || shouldIgnoreGangPrefixForDivision(division)) return gangs;
     return gangs.filter(g => getAsistensi(g.gang_code) === gangPrefix);
-  }, [gangs, gangPrefix, getAsistensi]);
+  }, [division, gangs, gangPrefix, getAsistensi]);
 
   // Available asistensi prefixes from loaded gangs
   const availablePrefixes = useMemo(() => {
+    if (shouldIgnoreGangPrefixForDivision(division)) return [];
     if (!gangs || gangs.length === 0) return [];
     const prefixes = new Set();
     gangs.forEach(g => {
@@ -214,16 +216,16 @@ const OperationalReportWrapper = () => {
       if (a) prefixes.add(a);
     });
     return Array.from(prefixes).sort((a, b) => Number(a) - Number(b));
-  }, [gangs, getAsistensi]);
+  }, [division, gangs, getAsistensi]);
 
   // Reset gangPrefix when division changes
   useEffect(() => {
       // [OPTIMIZATION] Set to the first available group automatically instead of 'SEMUA GROUP'
-      const targetPrefix = availablePrefixes.length > 0 ? availablePrefixes[0] : '';
+      const targetPrefix = shouldIgnoreGangPrefixForDivision(division) ? '' : (availablePrefixes.length > 0 ? availablePrefixes[0] : '');
       if (gangPrefix !== targetPrefix) {
           setGangPrefix(targetPrefix);
       }
-  }, [availablePrefixes, division, setGangPrefix]);
+  }, [availablePrefixes, division, gangPrefix, setGangPrefix]);
 
   // Layout state for selectors
   // If not admin and locked mode, division is read-only

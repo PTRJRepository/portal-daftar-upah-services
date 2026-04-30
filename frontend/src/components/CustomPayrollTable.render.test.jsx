@@ -141,6 +141,57 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('payroll-value-compare__meta is-mismatch');
     });
 
+    it('does not render static brondol and SPSI aliases as duplicate dynamic columns', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: ['premi_brondol', 'premi_brondol_total', 'premi_insentif'],
+            dynamic_potongan_headers: ['potongan_SPSI', 'SPSI', 'potongan_lainnya_kasbon'],
+            premi_title_map: {
+                premi_brondol: 'PREMI BRONDOL',
+                premi_brondol_total: 'PREMI BRONDOL TOTAL',
+                premi_insentif: 'PREMI INSENTIF'
+            },
+            potongan_title_map: {
+                potongan_SPSI: 'SPSI',
+                SPSI: 'SPSI',
+                potongan_lainnya_kasbon: 'POTONGAN LAINNYA KASBON'
+            }
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            premi_brondol: 125000,
+            premi_brondol_total: 125000,
+            premi_insentif: 50000,
+            pot_spsi: 4000,
+            potongan_SPSI: 4000,
+            SPSI: 4000,
+            potongan_lainnya_kasbon: 25000,
+            total_premi: 175000,
+            total_potongan_bersih: 29000
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect((html.match(/>BRONDOL</g) || []).length).toBe(1);
+        expect((html.match(/>SPSI \(-\)</g) || []).length).toBe(1);
+        expect(html).not.toContain('BRONDOL TOTAL');
+        expect(html).not.toContain('data-field="premi_brondol_total"');
+        expect(html).not.toContain('data-field="potongan_SPSI"');
+        expect(html).not.toContain('data-field="SPSI"');
+        expect(html).toContain('INSENTIF');
+        expect(html).toContain('KASBON');
+    });
+
     it('shows premium detail action in view mode when metadata exists', () => {
         mocked.streamMeta = {
             dynamic_premi_headers: ['premi_pruning'],
@@ -217,6 +268,100 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('PRUNING');
         expect(html).toContain('title="Lihat detail pekerjaan"');
         expect(html).toContain('Detail');
+    });
+
+    it('does not mark non pruning/raking premium detail mismatch as red', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: ['premi_tbs'],
+            dynamic_potongan_headers: [],
+            premi_title_map: {
+                premi_tbs: 'PREMI TBS'
+            },
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            premi_tbs: 650000,
+            total_premi: 650000,
+            manual_adjustment_metadata: {
+                premi_tbs: {
+                    input_type: 'blok',
+                    adjustment_name: 'PREMI TBS',
+                    items: [{ subblok: 'P09/15', gang_code: 'D1H', jumlah: 677650 }],
+                    total_amount: 677650,
+                    amount: 650000
+                }
+            },
+            manual_adjustment_metadata_mismatch: {
+                premi_tbs: {
+                    amount: 650000,
+                    detail_total: 677650,
+                    diff: 27650
+                }
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('TBS');
+        expect(html).toContain('title="Lihat detail pekerjaan"');
+        expect(html).not.toContain('Detail beda');
+        expect(html).not.toContain('Total detail 677.650 berbeda dari amount 650.000');
+    });
+
+    it('marks incomplete structured premium metadata as red in edit mode', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: ['premi_ritase'],
+            dynamic_potongan_headers: [],
+            premi_title_map: {
+                premi_ritase: 'PREMI RITASE'
+            },
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            premi_ritase: 150000,
+            total_premi: 150000,
+            manual_adjustment_metadata: {
+                premi_ritase: {
+                    input_type: 'kendaraan',
+                    adjustment_name: 'PREMI RITASE',
+                    items: [{ nomor_kendaraan: '', expense_code: 'ANGKUT', jumlah: 150000 }],
+                    total_amount: 150000,
+                    amount: 150000
+                }
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+                isEditMode
+            />
+        );
+
+        expect(html).toContain('RITASE');
+        expect(html).toContain('Data detail belum lengkap');
+        expect(html).toContain('nomor kendaraan wajib diisi');
+        expect(html).toContain('background:#fee2e2');
     });
 
     it('shows koreksi detail action in view mode because koreksi is blok-based', () => {
