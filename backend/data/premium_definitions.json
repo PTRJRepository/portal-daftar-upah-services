@@ -134,5 +134,12 @@
     "task_desc": "(DE) POTONGAN HUTANG",
     "input_type": "amount",
     "is_active": true
+  },
+  {
+    "adjustment_name": "PREMI PERBAIKAN JALAN",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - PERBAIKAN JALAN)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - PERBAIKAN JALAN)",
+    "input_type": "kendaraan",
+    "is_active": true
   }
 ]

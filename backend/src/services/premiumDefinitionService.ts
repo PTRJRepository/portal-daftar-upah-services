@@ -15,10 +15,12 @@
  * - "blok,exp"   : combo blok items + single expense
  */
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 
 export type PremiumInputType = 'amount' | 'blok' | 'exp' | 'kendaraan' | 'blok,exp';
+const PREMIUM_INPUT_TYPES = new Set<string>(['amount', 'blok', 'exp', 'kendaraan', 'blok,exp']);
+const ADJUSTMENT_TYPES = new Set<string>(['PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH']);
 
 export interface PremiumDefinition {
     adjustment_type?: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
@@ -79,11 +81,12 @@ export type PremiumMetadata = MetadataBlok | MetadataExp | MetadataKendaraan | M
 // Path to the JSON definitions file
 const DEFINITIONS_FILE = join(import.meta.dir, "../../data/premium_definitions.json");
 
-class PremiumDefinitionService {
+export class PremiumDefinitionService {
     private static instance: PremiumDefinitionService;
     private definitions: PremiumDefinition[] | null = null;
+    private definitionsFingerprint: string | null = null;
 
-    private constructor() {}
+    private constructor(private readonly definitionsFile: string = DEFINITIONS_FILE) {}
 
     public static getInstance(): PremiumDefinitionService {
         if (!PremiumDefinitionService.instance) {
@@ -92,28 +95,44 @@ class PremiumDefinitionService {
         return PremiumDefinitionService.instance;
     }
 
+    public static createForFile(filePath: string): PremiumDefinitionService {
+        return new PremiumDefinitionService(filePath);
+    }
+
+    private getDefinitionsFingerprint(): string | null {
+        if (!existsSync(this.definitionsFile)) {
+            return null;
+        }
+        const stat = statSync(this.definitionsFile);
+        return `${stat.mtimeMs}:${stat.size}`;
+    }
+
     /**
      * Load definitions from JSON file (cached in memory, re-reads on first call or after invalidation)
      */
     private loadDefinitions(): PremiumDefinition[] {
-        if (this.definitions !== null) {
+        const fingerprint = this.getDefinitionsFingerprint();
+        if (this.definitions !== null && this.definitionsFingerprint === fingerprint) {
             return this.definitions;
         }
 
-        if (!existsSync(DEFINITIONS_FILE)) {
-            console.warn(`[PremiumDefinitionService] File not found: ${DEFINITIONS_FILE}`);
+        if (!fingerprint) {
+            console.warn(`[PremiumDefinitionService] File not found: ${this.definitionsFile}`);
             this.definitions = [];
+            this.definitionsFingerprint = null;
             return this.definitions;
         }
 
         try {
-            const raw = readFileSync(DEFINITIONS_FILE, "utf-8");
+            const raw = readFileSync(this.definitionsFile, "utf-8");
             this.definitions = JSON.parse(raw) as PremiumDefinition[];
+            this.definitionsFingerprint = fingerprint;
             console.log(`[PremiumDefinitionService] Loaded ${this.definitions.length} premium definitions`);
             return this.definitions;
         } catch (err) {
             console.error(`[PremiumDefinitionService] Failed to parse definitions file:`, err);
             this.definitions = [];
+            this.definitionsFingerprint = fingerprint;
             return this.definitions;
         }
     }
@@ -123,6 +142,7 @@ class PremiumDefinitionService {
      */
     public invalidateCache(): void {
         this.definitions = null;
+        this.definitionsFingerprint = null;
     }
 
     /**
@@ -168,11 +188,11 @@ class PremiumDefinitionService {
         );
 
         const entry: PremiumDefinition = {
-            adjustment_type: data.adjustment_type || 'PREMI',
+            adjustment_type: this.normalizeAdjustmentType(data.adjustment_type),
             adjustment_name: data.adjustment_name.trim().toUpperCase(),
             ad_code: data.ad_code.trim(),
             task_desc: data.task_desc.trim(),
-            input_type: data.input_type,
+            input_type: this.normalizeInputType(data.input_type),
             is_active: data.is_active ?? true
         };
 
@@ -191,12 +211,29 @@ class PremiumDefinitionService {
      */
     private persistDefinitions(defs: PremiumDefinition[]): void {
         try {
-            writeFileSync(DEFINITIONS_FILE, JSON.stringify(defs, null, 2), "utf-8");
+            writeFileSync(this.definitionsFile, JSON.stringify(defs, null, 2), "utf-8");
+            this.definitionsFingerprint = this.getDefinitionsFingerprint();
             console.log(`[PremiumDefinitionService] Saved ${defs.length} definitions to file`);
         } catch (err) {
             console.error(`[PremiumDefinitionService] Failed to write definitions file:`, err);
             throw new Error("Failed to save premium definitions");
         }
+    }
+
+    private normalizeAdjustmentType(value?: PremiumDefinition["adjustment_type"]): PremiumDefinition["adjustment_type"] {
+        const normalized = String(value || "PREMI").trim().toUpperCase();
+        if (!ADJUSTMENT_TYPES.has(normalized)) {
+            throw new Error(`adjustment_type "${value}" tidak didukung.`);
+        }
+        return normalized as PremiumDefinition["adjustment_type"];
+    }
+
+    private normalizeInputType(value: PremiumInputType): PremiumInputType {
+        const normalized = String(value || "").trim().toLowerCase();
+        if (!PREMIUM_INPUT_TYPES.has(normalized)) {
+            throw new Error(`input_type "${value}" tidak didukung. Gunakan: amount, blok, exp, kendaraan, atau blok,exp.`);
+        }
+        return normalized as PremiumInputType;
     }
 
     /**

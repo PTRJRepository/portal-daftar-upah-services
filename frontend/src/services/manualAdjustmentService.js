@@ -51,7 +51,11 @@ export async function deleteManualAdjustmentColumn(token, params = {}) {
 
 export async function fetchPremiumDefinitions(token) {
     const response = await axios.get('payroll/premium-definitions', {
-        headers: authHeaders(token)
+        params: { _: Date.now() },
+        headers: {
+            ...authHeaders(token),
+            'Cache-Control': 'no-cache'
+        }
     });
     return response.data;
 }

@@ -13,6 +13,7 @@ dist
 .worktrees/
 worktrees/
 backend/logs/
+backend/.tmp-premium-definition-tests/
 logs/
 backend/tsconfig.tsbuildinfo
 _dev_utils/*

@@ -2622,6 +2622,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Premium Definitions (from JSON file) ---
     .get("/premium-definitions", async ({ set }) => {
         try {
+            set.headers["Cache-Control"] = "no-store, max-age=0";
             const { premiumDefinitionService } = await import("../services/premiumDefinitionService");
             const definitions = premiumDefinitionService.getActiveDefinitions();
             return { success: true, count: definitions.length, data: definitions };

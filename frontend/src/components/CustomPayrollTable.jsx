@@ -24,6 +24,7 @@ import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../uti
 import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
 import { buildPremiumDetailEdit, validatePremiumDetailMetadata } from '../utils/payrollPremiumDetailEdits';
+import { normalizeManualDetailInputType, resolveManualDetailInputType } from '../utils/manualDetailInputType';
 import { parsePayrollInputNumber, resolvePersistentOriginalNumber, toFinitePayrollNumber } from '../utils/payrollNumericValues';
 import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../utils/payrollResponsiveScale';
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
@@ -221,20 +222,6 @@ const getVisibleManualDetailMismatch = ({ row, field, adjustmentType, adjustment
     if (Math.abs(Number(mismatch.amount || 0)) <= 0.01) return null;
     return mismatch;
 };
-
-const normalizeManualDetailInputType = (value) => {
-    const normalized = String(value || '').trim().toLowerCase();
-    return ['amount', 'blok', 'exp', 'kendaraan', 'blok,exp'].includes(normalized) ? normalized : '';
-};
-
-const resolveManualDetailInputType = ({ edit, storedMetadata, addedColumn, definition, defaultInputType = 'amount' } = {}) => (
-    normalizeManualDetailInputType(addedColumn?.input_type)
-    || normalizeManualDetailInputType(definition?.input_type)
-    || normalizeManualDetailInputType(parseMetadataObjectValue(edit?.metadata_json)?.input_type)
-    || normalizeManualDetailInputType(storedMetadata?.input_type)
-    || normalizeManualDetailInputType(defaultInputType)
-    || 'amount'
-);
 
 const getManualDetailValidation = ({ metadata, inputType, amount, adjustmentType }) => {
     const normalizedInputType = normalizeManualDetailInputType(inputType);
@@ -1164,16 +1151,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             .catch(console.error);
     }, []);
 
-    // Load premium definitions for popup usage
-    useEffect(() => {
-        if (!token) return;
-        fetchPremiumDefinitions(token)
-            .then(result => {
-                const defs = Array.isArray(result) ? result : result?.data || [];
-                setPremiumDefinitions(defs);
-            })
-            .catch(() => setPremiumDefinitions([]));
+    const refreshPremiumDefinitions = useCallback(async () => {
+        if (!token) {
+            setPremiumDefinitions([]);
+            return [];
+        }
+        try {
+            const result = await fetchPremiumDefinitions(token);
+            const defs = Array.isArray(result) ? result : result?.data || [];
+            setPremiumDefinitions(defs);
+            return defs;
+        } catch {
+            setPremiumDefinitions([]);
+            return [];
+        }
     }, [token]);
+
+    // Load premium definitions for popup usage, and refresh when edit tools are opened.
+    useEffect(() => {
+        refreshPremiumDefinitions();
+    }, [refreshPremiumDefinitions, isEditMode, manualAdjustmentModal.isOpen]);
 
     const handleAddColumn = (groupLabel) => {
         setManualAdjustmentModal({
@@ -1254,6 +1251,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return exists ? prev : [...prev, nextColumn];
         });
 
+        refreshPremiumDefinitions();
         showPayrollToast('info', 'Kolom ditambahkan', `Kolom ${pendingColumn.adjustmentName} akan disimpan saat tombol Simpan Perubahan ditekan.`);
     };
 
