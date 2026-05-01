@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { Database } from "../db/client";
 import { taskCodeOptionService } from "./taskCodeOptionService";
 import { manualAdjustmentPresetService } from "./manualAdjustmentPresetService";
+import { EmployeeEstateService } from "./employeeEstateService";
 import {
     buildAdtransDuplicateReport,
     buildManualAdjustmentApiResponseRows,
@@ -983,6 +984,58 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("enriches fetched manual adjustment rows with jabatan for vehicle expense normalization", async () => {
+        const originalGetInstance = Database.getInstance;
+        const originalGetEmployeeJobsWithNik = EmployeeEstateService.getEmployeeJobsWithNik;
+        const mockDb = {
+            query: async (sql: string) => {
+                if (sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 31,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "G0352",
+                            nik: "5203180107750348",
+                            emp_name: "MAHSUN",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI RITASE",
+                            amount: 29475,
+                            metadata_json: JSON.stringify({
+                                input_type: "kendaraan",
+                                items: [{ nomor_kendaraan: "BN8781WA", expense_code: "TRANSPORT", jumlah: 29475 }],
+                                total_amount: 29475
+                            })
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+        const getEmployeeJobsWithNik = mock(async () => ({
+            empcodeMap: { G0352: "(PM) HELPER" },
+            nikMap: {}
+        }));
+
+        (Database as any).getInstance = () => mockDb;
+        (EmployeeEstateService as any).getEmployeeJobsWithNik = getEmployeeJobsWithNik;
+
+        try {
+            const rows = await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "AB1", "PREMI", undefined, true);
+
+            expect(rows[0]).toMatchObject({
+                emp_code: "G0352",
+                jabatan: "(PM) HELPER"
+            });
+            expect(getEmployeeJobsWithNik).toHaveBeenCalledWith(["G0352"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+            (EmployeeEstateService as any).getEmployeeJobsWithNik = originalGetEmployeeJobsWithNik;
+        }
+    });
+
     it("lists distinct manual adjustment names by division, gang, and type", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -1118,11 +1171,71 @@ describe("manual adjustment ADCode rules", () => {
             expect(result.rows).toEqual([
                 expect.objectContaining({
                     id: 10,
+                    ad_code: "AL0018P1A",
+                    ad_code_desc: "(AL) TUNJANGAN JAGA GENSET",
+                    ad_desc: "(AL) TUNJANGAN JAGA GENSET",
+                    task_desc: "(AL) TUNJANGAN JAGA GENSET",
                     old_sync_status: "MANUAL",
                     new_sync_status: "SYNC",
                     status: "UPDATED"
                 })
             ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("fills sync status ADCode fields from premium definitions when remarks do not contain ADCode", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT TOP") && sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 15,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "G0352",
+                            nik: "5203180107750348",
+                            emp_name: "MAHSUN ( INAQ MAHYAM )",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI JAGA",
+                            amount: 350000,
+                            remarks: "PREMI JAGA | MANUAL EDIT | 350000 | sync:MANUAL | match:MANUAL"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                adjustmentTypes: ["PREMI"],
+                syncStatus: "SYNC",
+                updatedBy: "agent_sync"
+            });
+
+            expect(result.rows[0]).toMatchObject({
+                id: 15,
+                ad_code: "AL0018P1A",
+                ad_code_desc: "(AL) TUNJANGAN JAGA GENSET",
+                ad_desc: "(AL) TUNJANGAN JAGA GENSET",
+                task_desc: "(AL) TUNJANGAN JAGA GENSET",
+                status: "UPDATED"
+            });
+            expect(result.rows[0].ad_code).not.toBe("");
+            expect(result.rows[0].ad_code_desc).not.toBe("");
+            expect(result.rows[0].task_desc).not.toBe("");
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -1429,6 +1542,32 @@ describe("manual adjustment grouped response", () => {
         });
     });
 
+    it("uses adjustment name as final non-null ADCode display fallback", () => {
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 25,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "G9999",
+                nik: "5200000000000000",
+                emp_name: "TEST USER",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI TANPA DEFINISI",
+                amount: 1000,
+                remarks: "manual note without parseable taskdesc"
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            ad_code: "PREMI TANPA DEFINISI",
+            ad_code_desc: "PREMI TANPA DEFINISI",
+            ad_desc: "PREMI TANPA DEFINISI",
+            task_desc: "PREMI TANPA DEFINISI"
+        });
+    });
+
     it("groups rows by division, gang, and employee with premium metadata details", () => {
         const grouped = buildGroupedManualAdjustmentResponse([
             {
@@ -1528,7 +1667,9 @@ describe("manual adjustment grouped response", () => {
             {
                 detail_type: "kendaraan",
                 nomor_kendaraan: "B1234AB",
-                expense_code: "TRANSPORT",
+                expense_code: "DRIVER",
+                expense_code_raw: "TRANSPORT",
+                expense_code_source: "task_desc",
                 jumlah: 5000,
                 amount: 5000
             }
@@ -1548,6 +1689,7 @@ describe("manual adjustment grouped response", () => {
                 division_code: "G 1",
                 ad_code: "AL3PM0601P1A",
                 ad_code_desc: "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
+                ad_desc: "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
                 task_desc: "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
                 detail_type: "blok",
                 subblok: "P0921",
@@ -1568,10 +1710,13 @@ describe("manual adjustment grouped response", () => {
                 division_code: "G 1",
                 ad_code: "AL3PT2305P1A",
                 ad_code_desc: "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+                ad_desc: "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
                 task_desc: "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
                 detail_type: "kendaraan",
                 nomor_kendaraan: "B1234AB",
-                expense_code: "TRANSPORT",
+                expense_code: "DRIVER",
+                expense_code_raw: "TRANSPORT",
+                expense_code_source: "task_desc",
                 jumlah: 5000,
                 amount: 5000
             }
@@ -1608,7 +1753,7 @@ describe("manual adjustment grouped response", () => {
         const employee = grouped.divisions[0].gangs[0].employees[0];
 
         expect(employee.premiums[0].metadata).toMatchObject({
-            items: [{ subblok: "P09/01-A" }]
+            items: [{ subblok: "P0901A", subblok_raw: "P09/01-A" }]
         });
         expect(employee.premiums[0].detail_items[0]).toMatchObject({
             detail_type: "blok",
@@ -1622,6 +1767,100 @@ describe("manual adjustment grouped response", () => {
             subblok_raw: "P09/01-A",
             amount: 304000
         });
+    });
+
+    it("normalizes kendaraan expense_code to DRIVER or HELPER from jabatan context", () => {
+        const grouped = buildGroupedManualAdjustmentResponse([
+            {
+                id: 32,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "G0352",
+                nik: "5203180107750348",
+                emp_name: "MAHSUN",
+                jabatan: "(PM) HELPER",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RITASE",
+                amount: 29475,
+                metadata_json: JSON.stringify({
+                    input_type: "kendaraan",
+                    items: [{ nomor_kendaraan: "BN8781WA", expense_code: "TRANSPORT", jumlah: 29475 }],
+                    total_amount: 29475
+                })
+            }
+        ] as any);
+
+        const employee = grouped.divisions[0].gangs[0].employees[0];
+        expect(employee.premiums[0].detail_items[0]).toMatchObject({
+            detail_type: "kendaraan",
+            nomor_kendaraan: "BN8781WA",
+            expense_code: "HELPER",
+            expense_code_raw: "TRANSPORT",
+            expense_code_source: "jabatan",
+            jumlah: 29475,
+            amount: 29475
+        });
+        expect(employee.premium_transactions[0]).toMatchObject({
+            detail_type: "kendaraan",
+            nomor_kendaraan: "BN8781WA",
+            expense_code: "HELPER",
+            expense_code_raw: "TRANSPORT",
+            expense_code_source: "jabatan",
+            amount: 29475
+        });
+        expect(JSON.parse(employee.premiums[0].metadata_json as string)).toMatchObject({
+            input_type: "kendaraan",
+            items: [
+                {
+                    nomor_kendaraan: "BN8781WA",
+                    expense_code: "HELPER",
+                    expense_code_raw: "TRANSPORT",
+                    expense_code_source: "jabatan",
+                    jumlah: 29475
+                }
+            ],
+            total_amount: 29475
+        });
+        expect(employee.premiums[0].metadata_json_raw).toContain('"expense_code":"TRANSPORT"');
+        expect(employee.premiums[0].metadata).toMatchObject({
+            input_type: "kendaraan",
+            items: [{ expense_code: "HELPER", expense_code_raw: "TRANSPORT" }]
+        });
+    });
+
+    it("normalizes kendaraan expense_code inside flat response metadata_json", () => {
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 33,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "G0352",
+                nik: "5203180107750348",
+                emp_name: "MAHSUN",
+                jabatan: "(PM) HELPER",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RITASE",
+                amount: 29475,
+                metadata_json: JSON.stringify({
+                    input_type: "kendaraan",
+                    items: [{ nomor_kendaraan: "BN8781WA", expense_code: "TRANSPORT", jumlah: 29475 }],
+                    total_amount: 29475
+                })
+            }
+        ] as any);
+
+        expect(JSON.parse(rows[0].metadata_json as string).items[0]).toMatchObject({
+            nomor_kendaraan: "BN8781WA",
+            expense_code: "HELPER",
+            expense_code_raw: "TRANSPORT",
+            expense_code_source: "jabatan",
+            jumlah: 29475
+        });
+        expect(rows[0].metadata_json_raw).toContain('"expense_code":"TRANSPORT"');
     });
 
     it("separates estate, derived division code, and ADCode fields in grouped response", () => {
@@ -1677,7 +1916,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
     it("groups duplicate records by employee and requested category", () => {
         const report = buildAdtransDuplicateReport([
             { id: 10, doc_id: "DOC-OLD", doc_date: "2026-04-01", doc_desc: "POTONGAN SPSI", emp_code: "A0001", emp_name: "BUDI", amount: 4000 },
-            { id: 12, doc_id: "DOC-NEW", doc_date: "2026-04-02", doc_desc: "SPSI BULANAN", emp_code: "A0001", emp_name: "BUDI", amount: 4000 },
+            { id: 12, doc_id: "DOC-NEW", doc_date: "2026-04-02", doc_desc: "POTONGAN SPSI", emp_code: "A0001", emp_name: "BUDI", amount: 4000 },
             { id: 20, doc_id: "DOC-ONLY", doc_date: "2026-04-01", doc_desc: "TUNJANGAN JABATAN", emp_code: "A0001", emp_name: "BUDI", amount: 150000 },
             { id: 30, doc_id: "DOC-OTHER", doc_date: "2026-04-01", doc_desc: "POTONGAN SPSI", emp_code: "A0002", emp_name: "ANI", amount: 4000 }
         ], ["spsi", "jabatan"]);
@@ -1695,10 +1934,47 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 delete_doc_ids: ["DOC-OLD"],
                 records: [
                     { id: 10, doc_id: "DOC-OLD", doc_date: "2026-04-01", doc_desc: "POTONGAN SPSI", amount: 4000, action: "DELETE_OLD" },
-                    { id: 12, doc_id: "DOC-NEW", doc_date: "2026-04-02", doc_desc: "SPSI BULANAN", amount: 4000, action: "KEEP_NEWEST" }
+                    { id: 12, doc_id: "DOC-NEW", doc_date: "2026-04-02", doc_desc: "POTONGAN SPSI", amount: 4000, action: "KEEP_NEWEST" }
                 ]
             }]
         });
+    });
+
+    it("splits duplicate premi by employee, DocDesc, and amount content", () => {
+        const report = buildAdtransDuplicateReport([
+            { id: 101, doc_id: "DOC-A1", doc_date: "2026-04-30", doc_desc: "PREMI INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 102, doc_id: "DOC-B1", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 },
+            { id: 201, doc_id: "DOC-A2", doc_date: "2026-04-30", doc_desc: "PREMI INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 202, doc_id: "DOC-B2", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 },
+            { id: 301, doc_id: "DOC-C1", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 999999 }
+        ], ["premi"]);
+
+        expect(report.duplicate_count).toBe(2);
+        expect(report.duplicates.map((duplicate) => ({
+            emp_code: duplicate.emp_code,
+            category: duplicate.category,
+            doc_desc: duplicate.doc_desc,
+            amount: duplicate.amount,
+            keep_doc_id: duplicate.keep_doc_id,
+            delete_doc_ids: duplicate.delete_doc_ids
+        }))).toEqual([
+            {
+                emp_code: "L0073",
+                category: "premi",
+                doc_desc: "PREMI INSENTIF PANEN",
+                amount: 150000,
+                keep_doc_id: "DOC-A2",
+                delete_doc_ids: ["DOC-A1"]
+            },
+            {
+                emp_code: "L0073",
+                category: "premi",
+                doc_desc: "PREMI TBS",
+                amount: 1046398,
+                keep_doc_id: "DOC-B2",
+                delete_doc_ids: ["DOC-B1"]
+            }
+        ]);
     });
 
     it("maps ADTRANS DocDesc variants to comparison categories", () => {

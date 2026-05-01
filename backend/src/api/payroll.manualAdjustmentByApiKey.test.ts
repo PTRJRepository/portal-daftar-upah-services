@@ -1,7 +1,20 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
 
 process.env.API_KEY_BYPASS = "test-manual-adjustment-api-key";
 process.env.LOG_TO_FILE = "false";
+
+const actualManualAdjustmentServiceModule = await import("../services/manualAdjustmentService");
+const actualTaskCodeOptionServiceModule = await import("../services/taskCodeOptionService");
+const manualAdjustmentService = actualManualAdjustmentServiceModule.manualAdjustmentService as any;
+const taskCodeOptionService = actualTaskCodeOptionServiceModule.taskCodeOptionService as any;
+const originalManualAdjustmentMethods = {
+    getAdjustments: manualAdjustmentService.getAdjustments,
+    listAdjustmentNameOptions: manualAdjustmentService.listAdjustmentNameOptions,
+    updateManualAdjustmentSyncStatus: manualAdjustmentService.updateManualAdjustmentSyncStatus
+};
+const originalTaskCodeOptionMethods = {
+    searchAutomationAdjustmentOptions: taskCodeOptionService.searchAutomationAdjustmentOptions
+};
 
 const getAdjustments = mock(async () => [
     {
@@ -14,51 +27,12 @@ const getAdjustments = mock(async () => [
         gang_code: "G1H",
         division_code: "AB1",
         adjustment_type: "PREMI",
-        adjustment_name: "PREMI PRUNING",
-        amount: 3000,
-        metadata_json: "{\"input_type\":\"blok\",\"items\":[{\"subblok\":\"P0921\",\"gang_code\":\"G1H\",\"jumlah\":3000}],\"total_amount\":3000}"
+        adjustment_name: "PREMI JAGA",
+        amount: 350000,
+        remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL",
+        metadata_json: "{\"input_type\":\"blok\",\"items\":[{\"subblok\":\"P09/03\",\"gang_code\":\"G1H\",\"jumlah\":350000}],\"total_amount\":350000}"
     }
 ]);
-
-const buildGroupedManualAdjustmentResponse = mock(() => ({
-    summary: {
-        division_count: 1,
-        gang_count: 1,
-        employee_count: 1,
-        adjustment_count: 1
-    },
-    divisions: [
-        {
-            division_code: "AB1",
-            gangs: [
-                {
-                    gang_code: "G1H",
-                    employees: [
-                        {
-                            emp_code: "A0001",
-                            premium_transactions: [
-                                {
-                                    adjustment_name: "PREMI PRUNING",
-                                    subblok: "P0921",
-                                    amount: 3000
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        }
-    ]
-}));
-
-const buildManualAdjustmentApiResponseRows = mock((rows: any[]) => rows.map((row) => ({
-    ...row,
-    estate: row.division_code,
-    estate_code: row.division_code,
-    division_code: "G 1",
-    ad_code: "AL0001",
-    ad_code_desc: "PREMI PRUNING"
-})));
 
 const listAdjustmentNameOptions = mock(async () => [
     {
@@ -139,28 +113,22 @@ const searchAutomationAdjustmentOptions = mock(async () => [
     }
 ]);
 
-mock.module("../services/manualAdjustmentService", () => ({
-    manualAdjustmentService: {
-        getAdjustments,
-        listAdjustmentNameOptions,
-        updateManualAdjustmentSyncStatus
-    },
-    buildManualAdjustmentApiResponseRows,
-    buildGroupedManualAdjustmentResponse
-}));
-
-mock.module("../services/taskCodeOptionService", () => ({
-    taskCodeOptionService: {
-        searchAutomationAdjustmentOptions
-    }
-}));
+manualAdjustmentService.getAdjustments = getAdjustments;
+manualAdjustmentService.listAdjustmentNameOptions = listAdjustmentNameOptions;
+manualAdjustmentService.updateManualAdjustmentSyncStatus = updateManualAdjustmentSyncStatus;
+taskCodeOptionService.searchAutomationAdjustmentOptions = searchAutomationAdjustmentOptions;
 
 describe("manual adjustment by-api-key route", () => {
+    afterAll(() => {
+        manualAdjustmentService.getAdjustments = originalManualAdjustmentMethods.getAdjustments;
+        manualAdjustmentService.listAdjustmentNameOptions = originalManualAdjustmentMethods.listAdjustmentNameOptions;
+        manualAdjustmentService.updateManualAdjustmentSyncStatus = originalManualAdjustmentMethods.updateManualAdjustmentSyncStatus;
+        taskCodeOptionService.searchAutomationAdjustmentOptions = originalTaskCodeOptionMethods.searchAutomationAdjustmentOptions;
+    });
+
     beforeEach(() => {
         getAdjustments.mockClear();
         listAdjustmentNameOptions.mockClear();
-        buildGroupedManualAdjustmentResponse.mockClear();
-        buildManualAdjustmentApiResponseRows.mockClear();
         searchAutomationAdjustmentOptions.mockClear();
         updateManualAdjustmentSyncStatus.mockClear();
     });
@@ -182,10 +150,15 @@ describe("manual adjustment by-api-key route", () => {
         expect(body.success).toBe(true);
         expect(body.view).toBe("grouped");
         expect(body.metadata_only).toBe(true);
-        expect(body.data[0].gangs[0].employees[0].premium_transactions[0]).toEqual({
-            adjustment_name: "PREMI PRUNING",
-            subblok: "P0921",
-            amount: 3000
+        expect(body.data[0].gangs[0].employees[0].premium_transactions[0]).toMatchObject({
+            adjustment_name: "PREMI JAGA",
+            subblok: "P0903",
+            subblok_raw: "P09/03",
+            amount: 350000,
+            ad_code: "AL0018P1A",
+            ad_code_desc: "(AL) TUNJANGAN JAGA GENSET",
+            ad_desc: "(AL) TUNJANGAN JAGA GENSET",
+            task_desc: "(AL) TUNJANGAN JAGA GENSET"
         });
         expect(getAdjustments).toHaveBeenCalledWith(
             4,
@@ -218,10 +191,11 @@ describe("manual adjustment by-api-key route", () => {
             estate: "AB1",
             estate_code: "AB1",
             division_code: "G 1",
-            ad_code: "AL0001",
-            ad_code_desc: "PREMI PRUNING"
+            ad_code: "AL0018P1A",
+            ad_code_desc: "(AL) TUNJANGAN JAGA GENSET",
+            ad_desc: "(AL) TUNJANGAN JAGA GENSET",
+            task_desc: "(AL) TUNJANGAN JAGA GENSET"
         });
-        expect(buildManualAdjustmentApiResponseRows).toHaveBeenCalledTimes(1);
     });
 
     it("returns existing manual adjustment name variations grouped by adjustment type", async () => {

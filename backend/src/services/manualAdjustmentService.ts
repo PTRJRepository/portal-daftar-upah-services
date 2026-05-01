@@ -4,6 +4,7 @@ import { Config } from "../config";
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { taskCodeOptionService, type TaskCodeOption } from "./taskCodeOptionService";
 import { premiumDefinitionService } from "./premiumDefinitionService";
+import { EmployeeEstateService } from "./employeeEstateService";
 import {
     normalizeManualAdjustmentDivisionCode,
     normalizeStoredAdjustmentName,
@@ -50,6 +51,10 @@ type AdtransDocDescDetail = {
 
 type ManualAdjustmentSyncAdtransDetail = AdtransDocDescDetail & {
     emp_code: string;
+};
+
+type AdtransDocDescDetailWithCategory = ManualAdjustmentSyncAdtransDetail & {
+    category: string;
 };
 
 export interface AdtransComparisonItem {
@@ -165,6 +170,49 @@ const KOREKSI_DEFAULT_TASK_DESC = "(DE) POTONGAN PREMI";
 
 function normalizeText(value: unknown): string {
     return String(value || '').trim();
+}
+
+function normalizeAdtransDuplicateDocDesc(value: unknown): string {
+    return normalizeText(value).toUpperCase().replace(/\s+/g, " ");
+}
+
+function normalizeAdtransDuplicateAmount(value: unknown): string {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
+}
+
+function matchesAdtransDuplicateFilter(docDesc: string, filter: string): boolean {
+    const category = normalizeAdtransFilter(filter);
+    const normalizedDocDesc = normalizeAdtransDuplicateDocDesc(docDesc);
+
+    if (category === "premi") {
+        return /^PREMI(\s|$)/.test(normalizedDocDesc);
+    }
+
+    return matchesAdtransFilter(docDesc, filter);
+}
+
+function buildAdtransDocDescDetails(
+    rows: AdtransDuplicateSourceRow[],
+    filters: string[]
+): AdtransDocDescDetailWithCategory[] {
+    const details: AdtransDocDescDetailWithCategory[] = [];
+
+    for (const row of rows) {
+        for (const filter of filters) {
+            if (!matchesAdtransFilter(row.doc_desc || '', filter)) continue;
+
+            details.push({
+                emp_code: normalizeIdentityValue(row.emp_code),
+                category: normalizeAdtransFilter(filter),
+                doc_desc: normalizeText(row.doc_desc),
+                doc_id: row.doc_id ? normalizeText(row.doc_id) : null,
+                amount: Number(row.amount || 0)
+            });
+        }
+    }
+
+    return details;
 }
 
 function removeLeadingWordPrefix(value: unknown, prefix: string): string {
@@ -372,10 +420,15 @@ export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], f
 
     for (const row of rows) {
         for (const filter of filters) {
-            if (!matchesAdtransFilter(row.doc_desc || '', filter)) continue;
+            if (!matchesAdtransDuplicateFilter(row.doc_desc || '', filter)) continue;
 
             const category = normalizeAdtransFilter(filter);
-            const key = `${row.emp_code}|${category}`;
+            const key = [
+                normalizeIdentityValue(row.emp_code),
+                category,
+                normalizeAdtransDuplicateDocDesc(row.doc_desc),
+                normalizeAdtransDuplicateAmount(row.amount)
+            ].join('|');
             const groupRows = groups.get(key) || [];
             groupRows.push(row);
             groups.set(key, groupRows);
@@ -393,6 +446,8 @@ export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], f
                 emp_code: empCode,
                 emp_name: keepRecord?.emp_name || sortedRows[0]?.emp_name || '',
                 category,
+                doc_desc: keepRecord?.doc_desc || sortedRows[0]?.doc_desc || '',
+                amount: Number(keepRecord?.amount || sortedRows[0]?.amount || 0),
                 record_count: sortedRows.length,
                 keep_id: keepRecord.id,
                 keep_doc_id: keepRecord.doc_id,
@@ -423,6 +478,8 @@ export interface ManualAdjustment {
     nik?: string;       // Real NIK (KTP) - primary identifier
     emp_code: string;   // Emp code (B0065, etc.) - for lookup
     emp_name?: string;
+    jabatan?: string;
+    jabatan_estate?: string;
     gang_code: string;
     division_code?: string;
     adjustment_type: 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH' | 'PENDAPATAN_LAINNYA' | 'AUTO_BUFFER';
@@ -452,14 +509,18 @@ export type ManualAdjustmentDetailItem = Record<string, unknown> & {
     amount: number;
 };
 
-export type GroupedManualAdjustmentItem = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code"> & {
+export type GroupedManualAdjustmentItem = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code" | "metadata_json"> & {
     nik: string | null;
     emp_name: string | null;
     estate: string;
     estate_code: string;
     division_code: string;
-    ad_code: string | null;
-    ad_code_desc: string | null;
+    metadata_json: string | null;
+    metadata_json_raw?: string | null;
+    ad_code: string;
+    ad_code_desc: string;
+    ad_desc: string;
+    task_desc: string;
     metadata: unknown | null;
     metadata_parse_error: string | null;
     detail_items: ManualAdjustmentDetailItem[];
@@ -477,9 +538,10 @@ export type GroupedManualAdjustmentPremiumTransaction = ManualAdjustmentDetailIt
     estate: string;
     estate_code: string;
     division_code: string;
-    ad_code: string | null;
-    ad_code_desc: string | null;
-    task_desc: string | null;
+    ad_code: string;
+    ad_code_desc: string;
+    ad_desc: string;
+    task_desc: string;
 };
 
 export type GroupedManualAdjustmentEmployee = {
@@ -534,15 +596,22 @@ export type GroupedManualAdjustmentResponse = {
     divisions: GroupedManualAdjustmentDivision[];
 };
 
-export type ManualAdjustmentApiResponseRow = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code" | "ad_code"> & {
+export type ManualAdjustmentApiResponseRow = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code" | "ad_code" | "metadata_json"> & {
     nik: string | null;
     emp_name: string | null;
     gang_code: string;
     estate: string;
     estate_code: string;
     division_code: string;
-    ad_code: string | null;
-    ad_code_desc: string | null;
+    metadata_json: string | null;
+    metadata_json_raw?: string | null;
+    metadata: unknown | null;
+    metadata_parse_error: string | null;
+    detail_items: ManualAdjustmentDetailItem[];
+    ad_code: string;
+    ad_code_desc: string;
+    ad_desc: string;
+    task_desc: string;
 };
 
 export type ManualAdjustmentNameOption = {
@@ -579,6 +648,10 @@ export type ManualAdjustmentSyncStatusRowResult = {
     target_amount: number;
     metadata_detail_total: number | null;
     adtrans_amount: number | null;
+    ad_code: string;
+    ad_code_desc: string;
+    ad_desc: string;
+    task_desc: string;
     old_sync_status: string | null;
     new_sync_status: string | null;
     status: "UPDATED" | "UNCHANGED" | "SKIPPED";
@@ -797,6 +870,30 @@ function deriveDivisionCodeFromGangCode(value: unknown): string {
     return code ? code.split("").join(" ") : "";
 }
 
+async function enrichManualAdjustmentRowsWithJabatan(rows: ManualAdjustment[]): Promise<ManualAdjustment[]> {
+    const empCodes = Array.from(new Set(rows
+        .map((row) => normalizeIdentityValue(row.emp_code))
+        .filter(Boolean)));
+    if (empCodes.length === 0) return rows;
+
+    try {
+        const jobTitles = await EmployeeEstateService.getEmployeeJobsWithNik(empCodes);
+        return rows.map((row) => {
+            const existingJabatan = normalizeText(row.jabatan || row.jabatan_estate);
+            const empCode = normalizeIdentityValue(row.emp_code);
+            const nik = normalizeIdentityValue(row.nik);
+            const resolvedJabatan = existingJabatan
+                || normalizeText(jobTitles.empcodeMap[empCode])
+                || normalizeText(jobTitles.nikMap[nik]);
+
+            return resolvedJabatan ? { ...row, jabatan: resolvedJabatan } : row;
+        });
+    } catch (error) {
+        console.warn("[ManualAdjustmentService] Could not enrich manual adjustments with jabatan:", error);
+        return rows;
+    }
+}
+
 function resolveManualAdjustmentDefinitionAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null; task_desc: string | null } {
     const adjustmentType = normalizeText(row.adjustment_type).toUpperCase();
     const definition = premiumDefinitionService.getDefinitionByName(normalizeStoredAdjustmentName(row.adjustment_name));
@@ -817,16 +914,18 @@ function resolveManualAdjustmentDefinitionAdCodeFields(row: ManualAdjustment): {
     };
 }
 
-function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null; task_desc: string | null } {
+function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string; ad_code_desc: string; ad_desc: string; task_desc: string } {
     const inferred = inferManualAdjustmentAdCodeFromRemarks(row.remarks);
     const definition = resolveManualAdjustmentDefinitionAdCodeFields(row);
-    const taskDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.task_desc || definition.ad_code_desc) || null;
-    const adCode = normalizeText(row.ad_code || row.base_task_code || row.task_code || inferred.adCode || definition.ad_code).toUpperCase() || null;
-    const adCodeDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.ad_code_desc || definition.task_desc) || null;
+    const fallbackName = normalizeStoredAdjustmentName(row.adjustment_name) || "UNKNOWN_ADJUSTMENT";
+    const taskDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.task_desc || definition.ad_code_desc || fallbackName);
+    const adCodeDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.ad_code_desc || definition.task_desc || taskDesc || fallbackName);
+    const adCode = normalizeText(row.ad_code || row.base_task_code || row.task_code || inferred.adCode || definition.ad_code || taskDesc || adCodeDesc || fallbackName).toUpperCase();
 
     return {
         ad_code: adCode,
         ad_code_desc: adCodeDesc,
+        ad_desc: adCodeDesc,
         task_desc: taskDesc
     };
 }
@@ -842,7 +941,47 @@ function parseManualAdjustmentMetadataValue(value: unknown): { metadata: unknown
     }
 }
 
-function buildDetailItem(detailType: string, item: Record<string, unknown>): ManualAdjustmentDetailItem {
+type ManualAdjustmentResponseAdCodeFields = ReturnType<typeof resolveManualAdjustmentResponseAdCodeFields>;
+
+type ManualAdjustmentDetailContext = {
+    row?: ManualAdjustment;
+    adCodeFields?: ManualAdjustmentResponseAdCodeFields;
+};
+
+function resolveVehicleExpenseCodeFromText(value: unknown): "DRIVER" | "HELPER" | null {
+    const text = normalizeText(value).toUpperCase();
+    if (!text) return null;
+    if (/\bHELPER\b/.test(text)) return "HELPER";
+    if (/\b(DRIVER|OPERATOR|SOPIR|SUPIR)\b/.test(text)) return "DRIVER";
+    return null;
+}
+
+function resolveKendaraanExpenseCode(
+    item: Record<string, unknown>,
+    context: ManualAdjustmentDetailContext
+): { code: "DRIVER" | "HELPER"; source: string } | null {
+    const candidates: Array<{ source: string; value: unknown }> = [
+        { source: "metadata_jabatan", value: item.jabatan || item.jabatan_estate || item.role_jabatan || item.role || item.position || item.job_title },
+        { source: "jabatan", value: context.row?.jabatan || context.row?.jabatan_estate },
+        { source: "task_desc", value: context.adCodeFields?.task_desc || context.adCodeFields?.ad_code_desc },
+        { source: "remarks", value: context.row?.remarks },
+        { source: "adjustment_name", value: context.row?.adjustment_name },
+        { source: "expense_code", value: item.expense_code }
+    ];
+
+    for (const candidate of candidates) {
+        const code = resolveVehicleExpenseCodeFromText(candidate.value);
+        if (code) return { code, source: candidate.source };
+    }
+
+    return null;
+}
+
+function buildDetailItem(
+    detailType: string,
+    item: Record<string, unknown>,
+    context: ManualAdjustmentDetailContext = {}
+): ManualAdjustmentDetailItem {
     const detailItem: ManualAdjustmentDetailItem = {
         detail_type: detailType,
         ...item,
@@ -861,10 +1000,25 @@ function buildDetailItem(detailType: string, item: Record<string, unknown>): Man
         }
     }
 
+    if (normalizeText(detailType).toLowerCase() === "kendaraan") {
+        const normalizedExpense = resolveKendaraanExpenseCode(item, context);
+        if (normalizedExpense) {
+            const rawExpenseCode = normalizeText(item.expense_code);
+            if (rawExpenseCode && rawExpenseCode.toUpperCase() !== normalizedExpense.code) {
+                detailItem.expense_code_raw = rawExpenseCode;
+            }
+            detailItem.expense_code = normalizedExpense.code;
+            detailItem.expense_code_source = normalizedExpense.source;
+        }
+    }
+
     return detailItem;
 }
 
-function buildManualAdjustmentDetailItems(metadata: unknown): ManualAdjustmentDetailItem[] {
+function buildManualAdjustmentDetailItems(
+    metadata: unknown,
+    context: ManualAdjustmentDetailContext = {}
+): ManualAdjustmentDetailItem[] {
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
 
     const data = metadata as Record<string, any>;
@@ -872,10 +1026,10 @@ function buildManualAdjustmentDetailItems(metadata: unknown): ManualAdjustmentDe
 
     if (inputType === "blok,exp") {
         const blokItems = Array.isArray(data.blok_items)
-            ? data.blok_items.map((item: Record<string, unknown>) => buildDetailItem("blok", item))
+            ? data.blok_items.map((item: Record<string, unknown>) => buildDetailItem("blok", item, context))
             : [];
         const expenseItems = data.expense && typeof data.expense === "object"
-            ? [buildDetailItem("exp", data.expense)]
+            ? [buildDetailItem("exp", data.expense, context)]
             : [];
         return [...blokItems, ...expenseItems];
     }
@@ -883,14 +1037,105 @@ function buildManualAdjustmentDetailItems(metadata: unknown): ManualAdjustmentDe
     if (Array.isArray(data.items)) {
         return data.items
             .filter((item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
-            .map((item) => buildDetailItem(inputType, item));
+            .map((item) => buildDetailItem(inputType, item, context));
     }
 
     if ("jumlah" in data || "amount" in data || "expense_code" in data) {
-        return [buildDetailItem(inputType, data)];
+        return [buildDetailItem(inputType, data, context)];
     }
 
     return [];
+}
+
+function omitDetailType(item: ManualAdjustmentDetailItem): Record<string, unknown> {
+    const { detail_type, ...rest } = item;
+    return rest;
+}
+
+function buildNormalizedMetadataItem(
+    originalItem: Record<string, unknown>,
+    detailItem: ManualAdjustmentDetailItem | undefined
+): Record<string, unknown> {
+    if (!detailItem) return { ...originalItem };
+
+    const { detail_type, amount, ...normalizedDetail } = detailItem;
+    const normalizedItem: Record<string, unknown> = {
+        ...originalItem,
+        ...normalizedDetail
+    };
+
+    if (!("jumlah" in originalItem) && !("amount" in originalItem)) {
+        normalizedItem.amount = amount;
+    }
+
+    return normalizedItem;
+}
+
+function buildNormalizedManualAdjustmentMetadata(
+    metadata: unknown,
+    detailItems: ManualAdjustmentDetailItem[]
+): unknown | null {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return metadata ?? null;
+
+    const data = metadata as Record<string, any>;
+    const inputType = String(data.input_type || "detail").trim() || "detail";
+    const normalizedData: Record<string, unknown> = { ...data };
+
+    if (inputType === "blok,exp") {
+        const blokDetails = detailItems.filter((item) => item.detail_type === "blok");
+        normalizedData.blok_items = Array.isArray(data.blok_items)
+            ? data.blok_items.map((item: Record<string, unknown>, index: number) => buildNormalizedMetadataItem(item, blokDetails[index]))
+            : blokDetails.map(omitDetailType);
+        const expenseItem = detailItems.find((item) => item.detail_type === "exp");
+        if (expenseItem) {
+            normalizedData.expense = data.expense && typeof data.expense === "object" && !Array.isArray(data.expense)
+                ? buildNormalizedMetadataItem(data.expense, expenseItem)
+                : omitDetailType(expenseItem);
+        }
+        return normalizedData;
+    }
+
+    if (Array.isArray(data.items)) {
+        normalizedData.items = data.items.map((item: Record<string, unknown>, index: number) => buildNormalizedMetadataItem(item, detailItems[index]));
+        return normalizedData;
+    }
+
+    if (detailItems.length === 1) {
+        return buildNormalizedMetadataItem(normalizedData, detailItems[0]);
+    }
+
+    return normalizedData;
+}
+
+function buildManualAdjustmentResponseMetadataFields(
+    rawMetadataJson: unknown,
+    metadata: unknown | null,
+    metadataParseError: string | null,
+    detailItems: ManualAdjustmentDetailItem[]
+): {
+    metadata_json: string | null;
+    metadata_json_raw?: string | null;
+    metadata: unknown | null;
+    metadata_parse_error: string | null;
+} {
+    if (metadataParseError || metadata == null) {
+        return {
+            metadata_json: rawMetadataJson == null || rawMetadataJson === "" ? null : String(rawMetadataJson),
+            metadata: null,
+            metadata_parse_error: metadataParseError
+        };
+    }
+
+    const normalizedMetadata = buildNormalizedManualAdjustmentMetadata(metadata, detailItems);
+    const normalizedMetadataJson = normalizedMetadata == null ? null : JSON.stringify(normalizedMetadata);
+    const rawMetadataString = rawMetadataJson == null || rawMetadataJson === "" ? null : String(rawMetadataJson);
+
+    return {
+        metadata_json: normalizedMetadataJson,
+        metadata_json_raw: rawMetadataString && normalizedMetadataJson !== rawMetadataString ? rawMetadataString : undefined,
+        metadata: normalizedMetadata,
+        metadata_parse_error: null
+    };
 }
 
 function normalizeSyncStatus(value: unknown): string {
@@ -986,6 +1231,16 @@ export function buildManualAdjustmentApiResponseRows(rows: ManualAdjustment[]): 
     return rows.map((row) => {
         const gangCode = normalizeIdentityValue(row.gang_code) || "UNKNOWN_GANG";
         const estateCode = normalizeIdentityValue(row.division_code) || "UNKNOWN_ESTATE";
+        const parsedMetadata = parseManualAdjustmentMetadataValue(row.metadata_json);
+        const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
+        const detailItems = buildManualAdjustmentDetailItems(parsedMetadata.metadata, { row, adCodeFields });
+        const metadataFields = buildManualAdjustmentResponseMetadataFields(
+            row.metadata_json,
+            parsedMetadata.metadata,
+            parsedMetadata.metadata_parse_error,
+            detailItems
+        );
+
         return {
             ...row,
             emp_code: normalizeIdentityValue(row.emp_code) || "UNKNOWN_EMPLOYEE",
@@ -995,7 +1250,9 @@ export function buildManualAdjustmentApiResponseRows(rows: ManualAdjustment[]): 
             estate: estateCode,
             estate_code: estateCode,
             division_code: deriveDivisionCodeFromGangCode(gangCode) || "UNKNOWN_DIVISION",
-            ...resolveManualAdjustmentResponseAdCodeFields(row)
+            ...metadataFields,
+            detail_items: detailItems,
+            ...adCodeFields
         };
     });
 }
@@ -1039,6 +1296,13 @@ export function buildGroupedManualAdjustmentResponse(rows: ManualAdjustment[]): 
         const employee = employeeMap.get(employeeKey)!;
         const parsedMetadata = parseManualAdjustmentMetadataValue(row.metadata_json);
         const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
+        const detailItems = buildManualAdjustmentDetailItems(parsedMetadata.metadata, { row, adCodeFields });
+        const metadataFields = buildManualAdjustmentResponseMetadataFields(
+            row.metadata_json,
+            parsedMetadata.metadata,
+            parsedMetadata.metadata_parse_error,
+            detailItems
+        );
         const groupedItem: GroupedManualAdjustmentItem = {
             ...row,
             emp_code: empCode,
@@ -1048,10 +1312,9 @@ export function buildGroupedManualAdjustmentResponse(rows: ManualAdjustment[]): 
             estate: estateCode,
             estate_code: estateCode,
             division_code: divisionCode,
+            ...metadataFields,
             ...adCodeFields,
-            metadata: parsedMetadata.metadata,
-            metadata_parse_error: parsedMetadata.metadata_parse_error,
-            detail_items: buildManualAdjustmentDetailItems(parsedMetadata.metadata)
+            detail_items: detailItems
         };
         const amount = toNumericAmount(row.amount);
 
@@ -1078,7 +1341,8 @@ export function buildGroupedManualAdjustmentResponse(rows: ManualAdjustment[]): 
                     division_code: employee.division_code,
                     ad_code: groupedItem.ad_code,
                     ad_code_desc: groupedItem.ad_code_desc,
-                    task_desc: groupedItem.task_desc || groupedItem.ad_code_desc,
+                    ad_desc: groupedItem.ad_desc,
+                    task_desc: groupedItem.task_desc,
                     ...detailItem
                 });
             }
@@ -1261,7 +1525,8 @@ export class ManualAdjustmentService {
             query += ` AND metadata_json IS NOT NULL AND LTRIM(RTRIM(metadata_json)) <> ''`;
         }
 
-        return await db.query<ManualAdjustment>(query, params);
+        const rows = await db.query<ManualAdjustment>(query, params);
+        return await enrichManualAdjustmentRowsWithJabatan(rows);
     }
 
     public async listAdjustmentNameOptions(input: {
@@ -1511,6 +1776,7 @@ export class ManualAdjustmentService {
             const estateCode = normalizeIdentityValue(row.division_code);
             const update = updatePipeDelimitedSyncStatus(row.remarks, targetSyncStatus);
             const amountInfo = resolveManualAdjustmentSyncTargetAmount(row);
+            const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
             const baseResult: ManualAdjustmentSyncStatusRowResult = {
                 id,
                 emp_code: empCode,
@@ -1524,6 +1790,10 @@ export class ManualAdjustmentService {
                 target_amount: amountInfo.targetAmount,
                 metadata_detail_total: amountInfo.metadataDetailTotal,
                 adtrans_amount: null,
+                ad_code: adCodeFields.ad_code,
+                ad_code_desc: adCodeFields.ad_code_desc,
+                ad_desc: adCodeFields.ad_desc,
+                task_desc: adCodeFields.task_desc,
                 old_sync_status: update?.oldSyncStatus || null,
                 new_sync_status: update?.newSyncStatus || null,
                 status: "SKIPPED",
@@ -2040,6 +2310,7 @@ export class ManualAdjustmentService {
 
         return {
             totals: rows,
+            doc_desc_details: buildAdtransDocDescDetails(duplicateRows, normalizedFilters),
             duplicate_report: buildAdtransDuplicateReport(duplicateRows, normalizedFilters)
         };
     }
@@ -2414,14 +2685,19 @@ export class ManualAdjustmentService {
             sourceMap.set(String(row.emp_code || '').trim().toUpperCase(), row);
         }
         const docDetailsByEmpAndCategory = new Map<string, AdtransDocDescDetail[]>();
-        for (const duplicate of adtransResult.duplicate_report?.duplicates || []) {
-            const empCode = String(duplicate.emp_code || '').trim().toUpperCase();
-            const category = String(duplicate.category || '').trim();
-            docDetailsByEmpAndCategory.set(`${empCode}|${category}`, (duplicate.records || []).map((record: any) => ({
-                doc_desc: String(record.doc_desc || '').trim(),
-                doc_id: record.doc_id ? String(record.doc_id).trim() : null,
-                amount: Number(record.amount || 0)
-            })));
+        for (const detail of adtransResult.doc_desc_details || []) {
+            const empCode = String(detail.emp_code || '').trim().toUpperCase();
+            const category = String(detail.category || '').trim();
+            if (!empCode || !category) continue;
+
+            const key = `${empCode}|${category}`;
+            const detailRows = docDetailsByEmpAndCategory.get(key) || [];
+            detailRows.push({
+                doc_desc: String(detail.doc_desc || '').trim(),
+                doc_id: detail.doc_id ? String(detail.doc_id).trim() : null,
+                amount: Number(detail.amount || 0)
+            });
+            docDetailsByEmpAndCategory.set(key, detailRows);
         }
 
         const comparisons: ReverseAdtransComparisonItem[] = [];
