@@ -180,7 +180,7 @@ Jika API key valid, request akan mendapat akses **ADMIN** dengan semua divisions
 
 ## ADCode untuk Manual Adjustment
 
-Manual adjustment kategori `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `PENDAPATAN_LAINNYA` wajib membawa `ad_code`. Hanya `AUTO_BUFFER` yang boleh disimpan tanpa `ad_code`. Untuk automation yang memakai endpoint `adjustment-name-options/by-api-key`, isi `ad_code` dengan `task_desc` dari response; kode raw tetap ada di `task_code`/`base_task_code`.
+Manual adjustment kategori `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `PENDAPATAN_LAINNYA` wajib membawa `ad_code` saat membuat kolom/manual adjustment baru. Hanya `AUTO_BUFFER` yang boleh disimpan tanpa `ad_code`. Endpoint `adjustment-name-options/by-api-key` hanya mengembalikan variasi `adjustment_name`; jangan ambil ADCode dari endpoint itu.
 
 Remarks disimpan dengan format:
 
@@ -333,35 +333,39 @@ curl -s "http://localhost:8002/payroll/manual-adjustment/automation-options/by-a
 
 ### GET `/payroll/manual-adjustment/adjustment-name-options/by-api-key`
 
-Endpoint khusus untuk automation mengambil daftar `adjustment_name` yang boleh dipakai saat input manual adjustment. Ini lebih langsung daripada `automation-options` karena filter memakai `adjustment_type` asli: `PREMI`, `POTONGAN_KOTOR`, dan `POTONGAN_BERSIH`.
+Endpoint khusus untuk automation mengambil variasi `adjustment_name` yang benar-benar sudah ada di `payroll_manual_adjustments`. Endpoint ini **bukan** daftar dari `PR_TASKCODE`. Pakai endpoint ini jika perlu tahu premi/koreksi/potongan apa saja yang dimiliki suatu estate/divisi sumber atau suatu gang berdasarkan data manual adjustment yang tersimpan.
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `adjustment_type` | string | ❌ | Comma separated. Default semua: `PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH`. Alias: `KOREKSI` = `POTONGAN_KOTOR`, `POTONGAN_UPAH_BERSIH` = `POTONGAN_BERSIH`. |
-| `division_code` | string | ❌ | Filter estate/lokasi sumber seperti `AB1`, `P1A`, `P2A`. |
-| `search` | string | ❌ | Cari berdasarkan nama, ADCode, TaskCode, atau TaskDesc. |
-| `limit` | string | ❌ | Maksimal data, default 100, maksimum 200. |
+| `period_month` | string | ❌ | Filter bulan payroll, misalnya `4`. Disarankan dikirim agar variasi sesuai periode input. |
+| `period_year` | string | ❌ | Filter tahun payroll, misalnya `2026`. |
+| `division_code` / `estate` | string | ❌ | Filter estate/lokasi sumber yang tersimpan di DB, misalnya `AB1`, `P1A`, `P2A`. Alias estate seperti `ARB1` ikut dinormalisasi ke `AB1`. |
+| `gang_code` | string | ❌ | Filter gang tertentu, misalnya `G1H`. |
+| `metadata_only` / `has_metadata` | string | ❌ | Jika `true`, hanya hitung variasi dari row yang punya `metadata_json`/detail transaksi baru. |
+| `search` | string | ❌ | Cari berdasarkan `adjustment_name` yang tersimpan. |
+| `limit` | string | ❌ | Maksimal variasi yang dikembalikan, default 200, maksimum 500. |
 
-**Ambil semua nama per tipe:**
+**Ambil semua variasi nama per tipe dalam satu estate:**
 
 ```bash
-curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?period_month=4&period_year=2026&division_code=AB1&adjustment_type=PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
   -H "X-API-Key: ${API_KEY}"
 ```
 
-**Ambil hanya premi:**
+**Ambil variasi premi yang dimiliki satu gang:**
 
 ```bash
-curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=PREMI&limit=200" \
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?period_month=4&period_year=2026&division_code=AB1&gang_code=G1H&adjustment_type=PREMI&metadata_only=true&limit=200" \
   -H "X-API-Key: ${API_KEY}"
 ```
 
-**Ambil potongan upah kotor dan bersih:**
+**Ambil variasi koreksi dan potongan upah bersih yang tersimpan:**
 
 ```bash
-curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?period_month=4&period_year=2026&division_code=AB1&adjustment_type=POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
   -H "X-API-Key: ${API_KEY}"
 ```
 
@@ -370,69 +374,41 @@ curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options
 ```json
 {
   "success": true,
-  "count": 3,
+  "count": 4,
   "adjustment_types": ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
   "adjustment_names_by_type": {
-    "PREMI": ["PREMI PRUNING"],
+    "PREMI": ["PREMI PRUNING", "PREMI TBS"],
     "POTONGAN_KOTOR": ["KOREKSI PANEN"],
     "POTONGAN_BERSIH": ["POTONGAN PINJAMAN"]
   },
   "by_type": {
     "PREMI": [
-      {
-        "category": "premi",
-        "adjustment_type": "PREMI",
-        "adjustment_name": "PREMI PRUNING",
-        "ad_code": "(AL) PREMI PRUNING",
-        "description": "PREMI PRUNING",
-        "task_code": "AL0001AB1",
-        "task_desc": "(AL) PREMI PRUNING",
-        "base_task_code": "AL0001",
-        "loc_code": "AB1"
-      }
+      { "adjustment_type": "PREMI", "adjustment_name": "PREMI PRUNING" },
+      { "adjustment_type": "PREMI", "adjustment_name": "PREMI TBS" }
     ],
     "POTONGAN_KOTOR": [
-      {
-        "category": "koreksi",
-        "adjustment_type": "POTONGAN_KOTOR",
-        "adjustment_name": "KOREKSI PANEN",
-        "ad_code": "(DE) POTONGAN PREMI",
-        "description": "KOREKSI PANEN",
-        "task_code": "DE0004AB1",
-        "task_desc": "(DE) POTONGAN PREMI",
-        "base_task_code": "DE0004",
-        "loc_code": "AB1"
-      }
+      { "adjustment_type": "POTONGAN_KOTOR", "adjustment_name": "KOREKSI PANEN" }
     ],
     "POTONGAN_BERSIH": [
-      {
-        "category": "potongan_upah_bersih",
-        "adjustment_type": "POTONGAN_BERSIH",
-        "adjustment_name": "POTONGAN PINJAMAN",
-        "ad_code": "(DE) POTONGAN PINJAMAN",
-        "description": "POTONGAN PINJAMAN",
-        "task_code": "DE0100AB1",
-        "task_desc": "(DE) POTONGAN PINJAMAN",
-        "base_task_code": "DE0100",
-        "loc_code": "AB1"
-      }
+      { "adjustment_type": "POTONGAN_BERSIH", "adjustment_name": "POTONGAN PINJAMAN" }
     ]
   },
   "data": [
-    { "adjustment_type": "PREMI", "adjustment_name": "PREMI PRUNING", "ad_code": "(AL) PREMI PRUNING" },
-    { "adjustment_type": "POTONGAN_KOTOR", "adjustment_name": "KOREKSI PANEN", "ad_code": "(DE) POTONGAN PREMI" },
-    { "adjustment_type": "POTONGAN_BERSIH", "adjustment_name": "POTONGAN PINJAMAN", "ad_code": "(DE) POTONGAN PINJAMAN" }
+    { "adjustment_type": "PREMI", "adjustment_name": "PREMI PRUNING" },
+    { "adjustment_type": "PREMI", "adjustment_name": "PREMI TBS" },
+    { "adjustment_type": "POTONGAN_KOTOR", "adjustment_name": "KOREKSI PANEN" },
+    { "adjustment_type": "POTONGAN_BERSIH", "adjustment_name": "POTONGAN PINJAMAN" }
   ]
 }
 ```
 
-Gunakan `adjustment_names_by_type` jika hanya butuh list nama. Untuk endpoint ini, field `ad_code` sengaja diisi hanya dari `task_desc` karena automation membutuhkan ADCode display berdasarkan TaskDesc, bukan kode raw seperti `AL0001`/`DE0004`. `task_code`, `base_task_code`, dan `task_desc` tetap dikirim untuk trace sumber.
+Gunakan `adjustment_names_by_type` jika hanya butuh list nama. Query dasarnya sesederhana `SELECT DISTINCT adjustment_name FROM payroll_manual_adjustments WHERE adjustment_type = ... ORDER BY adjustment_name ASC`; endpoint hanya menambahkan filter periode, estate, gang, dan metadata jika dikirim.
 
-Saat agent menyimpan manual adjustment, pakai:
+Saat agent memakai response endpoint ini:
 
 - `adjustment_type` dari response.
-- `adjustment_name = description` dari response.
-- `ad_code`, `task_code`, `task_desc`, dan `base_task_code` dari response.
+- `adjustment_name` dari response.
+- Endpoint ini tidak mengirim `ad_code`, `task_code`, `task_desc`, atau `base_task_code` karena sumbernya hanya variasi nama yang sudah tersimpan di `payroll_manual_adjustments`. Jika proses save membutuhkan ADCode/TaskDesc, ambil dari detail transaksi/row manual adjustment terkait atau endpoint taskcode terpisah.
 - Identitas karyawan wajib dipisahkan: `emp_code` berisi EmpCode PTRJ/Plantware, `nik` berisi NIK/KTP, dan `emp_name` hanya berisi nama karyawan. Jangan pernah mengirim NIK di `emp_name`.
 
 **Payload Save Manual Adjustment:**

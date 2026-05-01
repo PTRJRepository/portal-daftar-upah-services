@@ -39,12 +39,6 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
 const ADJUSTMENT_NAME_OPTION_TYPES = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"] as const;
 type AdjustmentNameOptionType = typeof ADJUSTMENT_NAME_OPTION_TYPES[number];
 
-const ADJUSTMENT_TYPE_CATEGORY_MAP: Record<AdjustmentNameOptionType, string> = {
-    PREMI: "premi",
-    POTONGAN_KOTOR: "koreksi",
-    POTONGAN_BERSIH: "potongan_upah_bersih"
-};
-
 function parseAdjustmentNameOptionTypes(value?: string): { types: AdjustmentNameOptionType[]; invalid: string[] } {
     const aliases: Record<string, AdjustmentNameOptionType> = {
         PREMI: "PREMI",
@@ -294,21 +288,18 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 };
             }
 
-            const { taskCodeOptionService } = await import("../services/taskCodeOptionService");
-            const categories = parsedTypes.types.map((type) => ADJUSTMENT_TYPE_CATEGORY_MAP[type]);
-            const rawOptions = await taskCodeOptionService.searchAutomationAdjustmentOptions({
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const metadataOnly = ["1", "true", "yes", "metadata"].includes(String(query.metadata_only || query.has_metadata || "").trim().toLowerCase());
+            const data = await manualAdjustmentService.listAdjustmentNameOptions({
+                periodMonth: query.period_month ? Number(query.period_month) : undefined,
+                periodYear: query.period_year ? Number(query.period_year) : undefined,
                 search: query.search || undefined,
-                divisionCode: query.division_code || undefined,
+                divisionCode: query.division_code || query.estate || undefined,
+                gangCode: query.gang_code || undefined,
                 limit: query.limit ? Number(query.limit) : undefined,
-                categories
+                adjustmentTypes: parsedTypes.types,
+                metadataOnly
             });
-            const typeSet = new Set(parsedTypes.types);
-            const data = rawOptions
-                .filter((option) => typeSet.has(option.adjustment_type as AdjustmentNameOptionType))
-                .map((option) => ({
-                    ...option,
-                    ad_code: option.task_desc
-                }));
             const byType = Object.fromEntries(parsedTypes.types.map((type) => [
                 type,
                 data.filter((option) => option.adjustment_type === type)
@@ -337,8 +328,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         query: t.Object({
             adjustment_type: t.Optional(t.String()),
             adjustment_types: t.Optional(t.String()),
+            period_month: t.Optional(t.String()),
+            period_year: t.Optional(t.String()),
             search: t.Optional(t.String()),
             division_code: t.Optional(t.String()),
+            estate: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            metadata_only: t.Optional(t.String()),
+            has_metadata: t.Optional(t.String()),
             limit: t.Optional(t.String())
         })
     })

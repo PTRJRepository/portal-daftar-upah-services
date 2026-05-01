@@ -60,6 +60,25 @@ const buildManualAdjustmentApiResponseRows = mock((rows: any[]) => rows.map((row
     ad_code_desc: "PREMI PRUNING"
 })));
 
+const listAdjustmentNameOptions = mock(async () => [
+    {
+        adjustment_type: "PREMI",
+        adjustment_name: "PREMI PRUNING"
+    },
+    {
+        adjustment_type: "PREMI",
+        adjustment_name: "PREMI TBS"
+    },
+    {
+        adjustment_type: "POTONGAN_KOTOR",
+        adjustment_name: "KOREKSI PANEN"
+    },
+    {
+        adjustment_type: "POTONGAN_BERSIH",
+        adjustment_name: "POTONGAN PINJAMAN"
+    }
+]);
+
 const searchAutomationAdjustmentOptions = mock(async () => [
     {
         category: "premi",
@@ -98,7 +117,8 @@ const searchAutomationAdjustmentOptions = mock(async () => [
 
 mock.module("../services/manualAdjustmentService", () => ({
     manualAdjustmentService: {
-        getAdjustments
+        getAdjustments,
+        listAdjustmentNameOptions
     },
     buildManualAdjustmentApiResponseRows,
     buildGroupedManualAdjustmentResponse
@@ -113,6 +133,7 @@ mock.module("../services/taskCodeOptionService", () => ({
 describe("manual adjustment by-api-key route", () => {
     beforeEach(() => {
         getAdjustments.mockClear();
+        listAdjustmentNameOptions.mockClear();
         buildGroupedManualAdjustmentResponse.mockClear();
         buildManualAdjustmentApiResponseRows.mockClear();
         searchAutomationAdjustmentOptions.mockClear();
@@ -177,11 +198,11 @@ describe("manual adjustment by-api-key route", () => {
         expect(buildManualAdjustmentApiResponseRows).toHaveBeenCalledTimes(1);
     });
 
-    it("returns adjustment name options grouped by adjustment type", async () => {
+    it("returns existing manual adjustment name variations grouped by adjustment type", async () => {
         const { payrollRoutes } = await import("./payroll");
 
         const response = await payrollRoutes.handle(new Request(
-            "http://localhost/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200",
+            "http://localhost/payroll/manual-adjustment/adjustment-name-options/by-api-key?period_month=4&period_year=2026&division_code=AB1&gang_code=G1H&adjustment_type=PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200",
             {
                 headers: {
                     "X-API-Key": "test-manual-adjustment-api-key"
@@ -192,25 +213,27 @@ describe("manual adjustment by-api-key route", () => {
 
         expect(response.status).toBe(200);
         expect(body.success).toBe(true);
-        expect(body.count).toBe(3);
+        expect(body.count).toBe(4);
         expect(body.adjustment_types).toEqual(["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"]);
         expect(body.adjustment_names_by_type).toEqual({
-            PREMI: ["PREMI PRUNING"],
+            PREMI: ["PREMI PRUNING", "PREMI TBS"],
             POTONGAN_KOTOR: ["KOREKSI PANEN"],
             POTONGAN_BERSIH: ["POTONGAN PINJAMAN"]
         });
-        expect(body.data.map((option: any) => option.ad_code)).toEqual(body.data.map((option: any) => option.task_desc));
         expect(body.by_type.PREMI[0]).toMatchObject({
             adjustment_type: "PREMI",
-            adjustment_name: "PREMI PRUNING",
-            ad_code: "(AL) PREMI PRUNING",
-            task_desc: "(AL) PREMI PRUNING"
+            adjustment_name: "PREMI PRUNING"
         });
-        expect(searchAutomationAdjustmentOptions).toHaveBeenCalledWith({
+        expect(listAdjustmentNameOptions).toHaveBeenCalledWith({
+            periodMonth: 4,
+            periodYear: 2026,
             search: undefined,
             divisionCode: "AB1",
+            gangCode: "G1H",
             limit: 200,
-            categories: ["premi", "koreksi", "potongan_upah_bersih"]
+            adjustmentTypes: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+            metadataOnly: false
         });
+        expect(searchAutomationAdjustmentOptions).not.toHaveBeenCalled();
     });
 });

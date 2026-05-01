@@ -537,6 +537,11 @@ export type ManualAdjustmentApiResponseRow = Omit<ManualAdjustment, "nik" | "emp
     ad_code_desc: string | null;
 };
 
+export type ManualAdjustmentNameOption = {
+    adjustment_type: string;
+    adjustment_name: string;
+};
+
 function normalizeIdentityValue(value: unknown): string {
     return normalizeText(value).toUpperCase();
 }
@@ -1086,6 +1091,81 @@ export class ManualAdjustmentService {
         }
 
         return await db.query<ManualAdjustment>(query, params);
+    }
+
+    public async listAdjustmentNameOptions(input: {
+        periodMonth?: number;
+        periodYear?: number;
+        divisionCode?: string;
+        gangCode?: string;
+        adjustmentTypes?: string[];
+        search?: string;
+        metadataOnly?: boolean;
+        limit?: number;
+    }): Promise<ManualAdjustmentNameOption[]> {
+        const db = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(db);
+
+        const allowedTypes = new Set(["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"]);
+        const adjustmentTypes = (input.adjustmentTypes || Array.from(allowedTypes))
+            .map((type) => normalizeText(type).toUpperCase())
+            .filter((type) => allowedTypes.has(type));
+        const resolvedTypes = adjustmentTypes.length ? Array.from(new Set(adjustmentTypes)) : Array.from(allowedTypes);
+        const params: any[] = [];
+        const limit = Math.min(Math.max(Number(input.limit) || 200, 1), 500);
+        let query = `
+            SELECT DISTINCT TOP (${limit})
+                RTRIM(LTRIM(adjustment_type)) AS adjustment_type,
+                RTRIM(LTRIM(adjustment_name)) AS adjustment_name
+            FROM dbo.payroll_manual_adjustments
+            WHERE adjustment_type IN (${resolvedTypes.map(() => "?").join(", ")})
+              AND NULLIF(LTRIM(RTRIM(adjustment_name)), '') IS NOT NULL
+        `;
+        params.push(...resolvedTypes);
+
+        if (Number.isInteger(input.periodMonth)) {
+            query += ` AND period_month = ?`;
+            params.push(input.periodMonth);
+        }
+
+        if (Number.isInteger(input.periodYear)) {
+            query += ` AND period_year = ?`;
+            params.push(input.periodYear);
+        }
+
+        if (input.divisionCode) {
+            const divisionCodes = getManualAdjustmentDivisionCodeVariants(input.divisionCode);
+            if (divisionCodes.length === 1) {
+                query += ` AND division_code = ?`;
+                params.push(divisionCodes[0]);
+            } else if (divisionCodes.length > 1) {
+                query += ` AND division_code IN (${divisionCodes.map(() => "?").join(", ")})`;
+                params.push(...divisionCodes);
+            }
+        }
+
+        if (input.gangCode) {
+            query += ` AND UPPER(gang_code) = ?`;
+            params.push(normalizeIdentityValue(input.gangCode));
+        }
+
+        if (input.search) {
+            query += ` AND UPPER(adjustment_name) LIKE ?`;
+            params.push(`%${normalizeText(input.search).toUpperCase()}%`);
+        }
+
+        if (input.metadataOnly) {
+            query += ` AND metadata_json IS NOT NULL AND LTRIM(RTRIM(metadata_json)) <> ''`;
+        }
+
+        query += ` ORDER BY adjustment_type ASC, adjustment_name ASC`;
+
+        return (await db.query<ManualAdjustmentNameOption>(query, params))
+            .map((row) => ({
+                adjustment_type: normalizeText(row.adjustment_type).toUpperCase(),
+                adjustment_name: normalizeStoredAdjustmentName(row.adjustment_name)
+            }))
+            .filter((row) => row.adjustment_type && row.adjustment_name);
     }
 
     /**

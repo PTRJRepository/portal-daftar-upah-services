@@ -983,6 +983,72 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("lists distinct manual adjustment names by division, gang, and type", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI PRUNING"
+                        },
+                        {
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI TBS"
+                        },
+                        {
+                            adjustment_type: "POTONGAN_KOTOR",
+                            adjustment_name: "KOREKSI PANEN"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const options = await manualAdjustmentService.listAdjustmentNameOptions({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                gangCode: "G1H",
+                adjustmentTypes: ["PREMI", "POTONGAN_KOTOR"],
+                limit: 20
+            });
+
+            const selectCall = calls.find((call) => call.sql.includes("FROM dbo.payroll_manual_adjustments"));
+            expect(selectCall?.sql).toContain("SELECT DISTINCT TOP (20)");
+            expect(selectCall?.sql).toContain("adjustment_type IN");
+            expect(selectCall?.sql).toContain("period_month = ?");
+            expect(selectCall?.sql).toContain("period_year = ?");
+            expect(selectCall?.sql).toContain("division_code IN");
+            expect(selectCall?.sql).toContain("UPPER(gang_code) = ?");
+            expect(selectCall?.sql).toContain("ORDER BY adjustment_type ASC, adjustment_name ASC");
+            expect(selectCall?.params).toEqual(["PREMI", "POTONGAN_KOTOR", 4, 2026, "AB1", "ARB1", "G1H"]);
+            expect(options).toEqual([
+                {
+                    adjustment_type: "PREMI",
+                    adjustment_name: "PREMI PRUNING"
+                },
+                {
+                    adjustment_type: "PREMI",
+                    adjustment_name: "PREMI TBS"
+                },
+                {
+                    adjustment_type: "POTONGAN_KOTOR",
+                    adjustment_name: "KOREKSI PANEN"
+                }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("normalizes division_code when deleting a manual adjustment column", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
