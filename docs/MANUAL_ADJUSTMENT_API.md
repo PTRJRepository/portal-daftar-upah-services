@@ -14,6 +14,12 @@ Endpoint yang dipakai:
 POST /payroll/manual-adjustment/sync-status/by-api-key
 ```
 
+Untuk menjalankan update sync-status massal seperti seeder auto-buffer, pakai:
+
+```text
+POST /payroll/manual-adjustment/seed-sync-status/by-api-key
+```
+
 Gunakan endpoint ini setelah input Plantware selesai. Endpoint akan:
 
 - membaca row manual adjustment dari `extend_db_ptrj.dbo.payroll_manual_adjustments`;
@@ -24,6 +30,14 @@ Gunakan endpoint ini setelah input Plantware selesai. Endpoint akan:
 - melewati row yang belum ada di ADTRANS atau baru masuk sebagian detailnya.
 
 Gunakan `dry_run=true` dulu untuk verifikasi. Jika hasilnya sesuai, panggil ulang dengan `dry_run=false`.
+
+Seeder sync-status memproses default:
+
+```text
+PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+```
+
+Seeder tidak memproses `AUTO_BUFFER`. Default `only_if_adtrans_exists=true`, jadi row hanya ditandai `sync:SYNC` jika transaksi sudah ditemukan di `db_ptrj.PR_ADTRANS` / archive dan amount-nya cukup; row partial tetap dilewati dengan `skip_reason: ADTRANS_AMOUNT_PARTIAL`.
 
 Catatan eksekusi awal AB1: pada 2026-05-01 sudah dijalankan untuk `period_month=4`, `period_year=2026`, `division_code=AB1`, `adjustment_type=PREMI`, `only_if_adtrans_exists=true`. Hasil apply: 27 row diubah ke `sync:SYNC`, 102 row belum ditemukan di ADTRANS, dan 2 row dilewati karena `ADTRANS_AMOUNT_PARTIAL`.
 
@@ -1130,6 +1144,130 @@ POST /backend/upah/payroll/manual-adjustment/seed-auto-buffer
 
 ---
 
+## Manual Adjustment Sync Status Seeder
+
+Seeder ini untuk update status `sync:` pada remarks manual adjustment secara massal setelah browser automation/input Plantware selesai. Ini mirip auto-buffer seeder dari sisi cara jalan, tetapi tidak membuat row baru; hanya mengubah segmen `sync:` pada `remarks`.
+
+### Endpoint
+
+```text
+POST /payroll/manual-adjustment/seed-sync-status/by-api-key
+```
+
+atau route authenticated:
+
+```text
+POST /payroll/manual-adjustment/seed-sync-status
+```
+
+via proxy:
+
+```text
+POST /backend/upah/payroll/manual-adjustment/seed-sync-status/by-api-key
+POST /backend/upah/payroll/manual-adjustment/seed-sync-status
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `period_month` | number | Yes | Bulan kalender/`PhyMonth`. |
+| `period_year` | number | Yes | Tahun kalender/`PhyYear`. |
+| `division_code` / `estate` | string | No | Batasi estate/divisi seperti `AB1`, `IJL`, `P1A`. Jika kosong, proses semua row yang masuk limit. |
+| `gang_code` | string | No | Batasi gang tertentu. |
+| `emp_code` | string | No | Batasi satu employee. |
+| `adjustment_type` | string | No | Comma-separated type. Default semua manual: `PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH`. |
+| `adjustment_types` | string[] | No | Alternatif array untuk `adjustment_type`. |
+| `adjustment_name` | string | No | Batasi nama adjustment spesifik, misalnya `PREMI TBS` atau `KOREKSI PANEN`. |
+| `sync_status` | string | No | Status target, default `SYNC`. |
+| `only_if_adtrans_exists` | boolean | No | Default `true`. Jangan ubah menjadi `false` kecuali memang ingin force update tanpa verifikasi `PR_ADTRANS`. |
+| `dry_run` | boolean | No | Default `false`. Pakai `true` untuk preview tanpa update DB. |
+| `limit` | number | No | Batas row yang diproses, default dari service 1000, maksimum 5000. |
+| `created_by` / `updated_by` | string | No | User pencatat update. |
+
+### Cara Pakai Aman
+
+1. Jalankan dry-run dulu:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "dry_run": true
+  }' | jq '.data | {matched_count, updated_count, skipped_count, partial_count}'
+```
+
+2. Jika hasilnya benar, apply:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "dry_run": false,
+    "created_by": "agent_sync"
+  }' | jq '.data | {matched_count, updated_count, skipped_count, partial_count}'
+```
+
+3. Untuk type tertentu:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "IJL",
+    "adjustment_type": "PREMI",
+    "adjustment_name": "PREMI TBS",
+    "dry_run": true
+  }' | jq '.data.rows[] | {id, emp_code, adjustment_name, status, skip_reason, old_sync_status, new_sync_status}'
+```
+
+### Response Ringkas
+
+```json
+{
+  "success": true,
+  "message": "Manual adjustment sync-status seeder checked 10 rows and updated 6",
+  "data": {
+    "seeder": "manual_adjustment_sync_status",
+    "adjustment_types": ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+    "period_month": 4,
+    "period_year": 2026,
+    "target_sync_status": "SYNC",
+    "only_if_adtrans_exists": true,
+    "dry_run": false,
+    "matched_count": 10,
+    "eligible_count": 8,
+    "adtrans_matched_count": 7,
+    "updated_count": 6,
+    "unchanged_count": 1,
+    "skipped_count": 3,
+    "partial_count": 1,
+    "rows": []
+  }
+}
+```
+
+`rows[].skip_reason` penting untuk debugging:
+
+| `skip_reason` | Arti |
+|----------------|------|
+| `ADTRANS_NOT_FOUND` | Belum ada transaksi match di Plantware. Jangan tandai sync. |
+| `ADTRANS_AMOUNT_PARTIAL` | Baru sebagian detail masuk Plantware. Tunggu semua detail masuk. |
+| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya segmen `sync:` sehingga tidak diubah. |
+
+---
+
 ## Remarks Format for Auto Buffer
 
 Setiap auto buffer entry memiliki remarks dengan format konsisten:
@@ -1210,6 +1348,12 @@ curl -X POST "http://10.0.0.128/backend/upah/payroll/manual-adjustment/seed-auto
   -H "X-API-Key: ${API_KEY}" \
   -d '{"period_month":4,"period_year":2026,"division_code":"AB1"}'
 
+# Sync-status seeder via API key
+curl -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{"period_month":4,"period_year":2026,"division_code":"AB1","dry_run":true}'
+
 # ===== GET DATA =====
 # Ambil data adjustment via proxy
 curl -s "http://localhost/backend/upah/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=AB1" \
@@ -1222,6 +1366,8 @@ curl -s "http://localhost/backend/upah/payroll/manual-adjustment/by-api-key?peri
 |-------------|------------|
 | `/payroll/manual-adjustment/by-api-key` | `/backend/upah/payroll/manual-adjustment/by-api-key` |
 | `/payroll/manual-adjustment/seed-auto-buffer` | `/backend/upah/payroll/manual-adjustment/seed-auto-buffer` |
+| `/payroll/manual-adjustment/seed-sync-status` | `/backend/upah/payroll/manual-adjustment/seed-sync-status` |
+| `/payroll/manual-adjustment/seed-sync-status/by-api-key` | `/backend/upah/payroll/manual-adjustment/seed-sync-status/by-api-key` |
 
 ---
 
@@ -1867,6 +2013,47 @@ Endpoint membaca data melalui SQL Gateway/API query dengan koneksi database yang
 
 > **Penting — aturan periode:** query ini menggunakan `PhyMonth` dan `PhyYear`, bukan `AccMonth`/`AccYear`. `period_month` dikirim sebagai filter `PhyMonth`, dan `period_year` dikirim sebagai filter `PhyYear`. Field `PhyMonth` dan `PhyYear` adalah real month/year sesuai kalender.
 
+#### Cara Mengecek Duplikat Menggunakan Endpoint
+
+Gunakan endpoint ini, bukan query SQL manual:
+
+```text
+POST /payroll/manual-adjustment/check-adtrans/by-api-key
+```
+
+Header wajib:
+
+```http
+Content-Type: application/json
+X-API-Key: <API_KEY>
+```
+
+Hasil duplikat ada di:
+
+```text
+data.duplicate_report
+```
+
+Field penting untuk cleanup:
+
+| Field | Arti |
+|-------|------|
+| `duplicate_count` | Jumlah grup duplikat yang ditemukan. |
+| `duplicates[].emp_code` | Employee PTRJ/Plantware yang memiliki transaksi duplikat. |
+| `duplicates[].doc_desc` | Nama transaksi di `PR_ADTRANS.DocDesc`, misalnya `PREMI TBS`. |
+| `duplicates[].amount` | Total amount dari `PR_ADTRANSLN` untuk transaksi itu. |
+| `duplicates[].keep_doc_id` | `DocID` terbaru yang direkomendasikan tetap disimpan. |
+| `duplicates[].delete_doc_ids` | `DocID` lama yang direkomendasikan untuk dicek/dihapus. |
+| `duplicates[].records` | Detail semua record pembentuk grup, lengkap dengan action `KEEP_NEWEST` atau `DELETE_OLD`. |
+
+Aturan duplicate endpoint:
+
+```text
+EmpCode + category + DocDesc + Amount
+```
+
+`DocID` **bukan** kunci duplicate. `DocID` hanya identitas record untuk menentukan mana yang disimpan dan mana yang lama.
+
 #### Request Body
 
 Cek berdasarkan list employee tertentu:
@@ -1891,15 +2078,43 @@ Cek langsung semua employee dalam satu divisi:
 }
 ```
 
+Cek duplicate berdasarkan `adjustment_type` tanpa menulis `filters`:
+
+```json
+{
+  "period_month": 4,
+  "period_year": 2026,
+  "division_code": "IJL",
+  "adjustment_type": "PREMI"
+}
+```
+
+Cek duplicate untuk premi/koreksi spesifik:
+
+```json
+{
+  "period_month": 4,
+  "period_year": 2026,
+  "division_code": "IJL",
+  "adjustment_type": "PREMI",
+  "adjustment_name": "PREMI TBS"
+}
+```
+
 | Field | Type | Required | Keterangan |
 |-------|------|----------|------------|
 | `period_month` | number | Yes | Bulan kalender yang akan dicek. Dipakai sebagai `PhyMonth`. |
 | `period_year` | number | Yes | Tahun kalender yang akan dicek. Dipakai sebagai `PhyYear`. |
 | `emp_codes` | string[] | Conditional | List `EmpCode` yang akan dicek langsung ke `PR_ADTRANS` dan archive. Wajib jika `division_code` tidak dikirim. |
 | `division_code` | string | Conditional | Filter semua employee dalam satu divisi berdasarkan `PR_ADTRANS.LocCode`. Bisa kirim kode Plantware 3 karakter seperti `P2A`, `AB1`, `ARA`, `ARC`, `DME`, `IJL`, atau alias seperti `PG2A`/`2A` yang akan dinormalisasi ke `P2A`. Wajib jika `emp_codes` kosong/tidak dikirim. |
-| `filters` | string[] | Yes | List keyword komponen yang akan dicocokkan ke pola `DocDesc`. |
+| `filters` | string[] | Conditional | List keyword komponen yang akan dicocokkan ke pola `DocDesc`. Wajib jika `adjustment_type`, `adjustment_name`, dan `doc_desc` tidak dikirim. |
+| `adjustment_type` / `adjustment_types` | string/string[] | Conditional | Alternatif dari `filters`. Mapping: `PREMI` -> `premi`, `POTONGAN_KOTOR`/`KOREKSI` -> `koreksi`, `POTONGAN_BERSIH` -> `potongan`, `SPSI` -> `spsi`, `JABATAN` -> `jabatan`, `MASA_KERJA` -> `masa kerja`. |
+| `adjustment_name` / `adjustment_names` | string/string[] | Optional | Filter nama spesifik yang dicocokkan ke `DocDesc`, misalnya `PREMI TBS`, `PREMI INSENTIF PANEN`, atau `KOREKSI PANEN`. Bisa comma-separated. |
+| `doc_desc` / `doc_descs` | string/string[] | Optional | Alias teknis untuk filter spesifik `DocDesc`. Gunakan jika ingin mencari teks `DocDesc` langsung, bukan nama adjustment. |
 
 Kirim salah satu atau keduanya: `emp_codes` dan/atau `division_code`. Jika keduanya dikirim, scope query mencakup employee dalam `emp_codes` **atau** record dengan `LocCode = normalized division_code`.
+
+Kirim minimal salah satu filter transaksi: `filters`, `adjustment_type`, `adjustment_name`, atau `doc_desc`. Jika hanya `adjustment_name`/`doc_desc` dikirim, endpoint akan mencoba infer kategori dari awalan/isi nama: `PREMI...`, `KOREKSI...`, `POT...`, `SPSI`, `JABATAN`, atau `MASA KERJA`.
 
 Normalisasi `division_code` untuk `LocCode`:
 
@@ -1954,14 +2169,39 @@ curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key"
     "division_code": "P2A",
     "filters": ["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]
   }' | jq '.data.duplicate_report'
+
+# Cek duplicate hanya untuk PREMI TBS di IJL
+curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "IJL",
+    "adjustment_type": "PREMI",
+    "adjustment_name": "PREMI TBS"
+  }' | jq '.data.duplicate_report'
+
+# Cek duplicate hanya untuk koreksi tertentu
+curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/check-adtrans/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "IJL",
+    "adjustment_type": "POTONGAN_KOTOR",
+    "adjustment_name": "KOREKSI PANEN"
+  }' | jq '.data.duplicate_report'
 ```
 
 #### Success Response
 
-Response berisi dua bagian utama:
+Response berisi tiga bagian utama:
 
 - `data.totals`: hasil agregasi `SUM(Amount)` per `emp_code` untuk setiap filter yang diminta.
-- `data.duplicate_report`: daftar employee + kategori yang memiliki lebih dari satu record `PR_ADTRANS` pada periode/scope yang sama.
+- `data.doc_desc_details`: detail baris pembentuk nilai source dari `PR_ADTRANS`/archive. Ini berisi semua baris yang match filter, termasuk yang tidak duplikat.
+- `data.duplicate_report`: daftar employee + kategori + `DocDesc` + `Amount` yang memiliki lebih dari satu record isi transaksi yang sama pada periode/scope yang sama.
 
 ```json
 {
@@ -1984,6 +2224,22 @@ Response berisi dua bagian utama:
         "premi": 87500
       }
     ],
+    "doc_desc_details": [
+      {
+        "emp_code": "C0028",
+        "category": "spsi",
+        "doc_desc": "POTONGAN SPSI",
+        "doc_id": "ADP2A26041177",
+        "amount": 4000
+      },
+      {
+        "emp_code": "C0028",
+        "category": "spsi",
+        "doc_desc": "POTONGAN SPSI",
+        "doc_id": "ADP2A26041438",
+        "amount": 4000
+      }
+    ],
     "duplicate_report": {
       "duplicate_count": 1,
       "duplicates": [
@@ -1991,6 +2247,8 @@ Response berisi dua bagian utama:
           "emp_code": "C0028",
           "emp_name": "ASBI AL GHIFARI ( YUNENGSIH",
           "category": "spsi",
+          "doc_desc": "POTONGAN SPSI",
+          "amount": 4000,
           "record_count": 2,
           "keep_id": "674653",
           "keep_doc_id": "ADP2A26041438",
@@ -2026,10 +2284,16 @@ Response berisi dua bagian utama:
 Duplicate dihitung per kombinasi:
 
 ```text
-emp_code + normalized filter/category
+emp_code + normalized filter/category + normalized DocDesc + normalized Amount
 ```
 
-Contoh: employee `C0028` dengan dua record `DocDesc` yang match `spsi` akan muncul sebagai satu item duplicate kategori `spsi`.
+`DocID` bukan kunci duplikat. `DocID` hanya identitas record untuk menentukan `keep_doc_id` dan `delete_doc_ids`.
+
+Contoh: employee `L0073` memiliki dua record `DocDesc = PREMI TBS` dengan `Amount = 1046398`, maka masuk duplicate kategori `premi`. Jika employee yang sama memiliki `PREMI TBS` amount berbeda, itu tidak digabung sebagai duplicate yang sama.
+
+Khusus `filter = premi`, `duplicate_report` hanya menganggap duplicate cleanup untuk `DocDesc` yang diawali `PREMI`, misalnya `PREMI TBS` atau `PREMI INSENTIF PANEN`. `DocDesc` seperti `INSENTIF PANEN` tetap bisa muncul di agregasi/check detail jika match pattern premi, tetapi tidak masuk rekomendasi duplicate cleanup premi karena tidak diawali `PREMI`.
+
+Jika `adjustment_name` atau `doc_desc` dikirim, `doc_desc_details` dan `duplicate_report` hanya berisi `DocDesc` yang mengandung teks spesifik tersebut. Contoh `adjustment_name = "PREMI TBS"` tidak akan mengembalikan duplicate `PREMI INSENTIF PANEN`, walaupun sama-sama kategori `premi`.
 
 Aturan rekomendasi hapus:
 

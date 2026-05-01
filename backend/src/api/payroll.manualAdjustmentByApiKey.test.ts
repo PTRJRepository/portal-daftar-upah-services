@@ -4,13 +4,19 @@ process.env.API_KEY_BYPASS = "test-manual-adjustment-api-key";
 process.env.LOG_TO_FILE = "false";
 
 const actualManualAdjustmentServiceModule = await import("../services/manualAdjustmentService");
+const actualManualAdjustmentSyncStatusSeederModule = await import("../services/manualAdjustmentSyncStatusSeederService");
 const actualTaskCodeOptionServiceModule = await import("../services/taskCodeOptionService");
 const manualAdjustmentService = actualManualAdjustmentServiceModule.manualAdjustmentService as any;
+const manualAdjustmentSyncStatusSeederService = actualManualAdjustmentSyncStatusSeederModule.manualAdjustmentSyncStatusSeederService as any;
 const taskCodeOptionService = actualTaskCodeOptionServiceModule.taskCodeOptionService as any;
 const originalManualAdjustmentMethods = {
     getAdjustments: manualAdjustmentService.getAdjustments,
     listAdjustmentNameOptions: manualAdjustmentService.listAdjustmentNameOptions,
-    updateManualAdjustmentSyncStatus: manualAdjustmentService.updateManualAdjustmentSyncStatus
+    updateManualAdjustmentSyncStatus: manualAdjustmentService.updateManualAdjustmentSyncStatus,
+    checkAdtransDirectly: manualAdjustmentService.checkAdtransDirectly
+};
+const originalManualAdjustmentSyncStatusSeederMethods = {
+    seedPeriod: manualAdjustmentSyncStatusSeederService.seedPeriod
 };
 const originalTaskCodeOptionMethods = {
     searchAutomationAdjustmentOptions: taskCodeOptionService.searchAutomationAdjustmentOptions
@@ -77,6 +83,33 @@ const updateManualAdjustmentSyncStatus = mock(async () => ({
     ]
 }));
 
+const checkAdtransDirectly = mock(async () => ({
+    totals: [],
+    doc_desc_details: [],
+    duplicate_report: {
+        duplicate_count: 0,
+        duplicates: []
+    }
+}));
+
+const seedSyncStatusPeriod = mock(async () => ({
+    seeder: "manual_adjustment_sync_status",
+    period_month: 4,
+    period_year: 2026,
+    adjustment_types: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+    target_sync_status: "SYNC",
+    only_if_adtrans_exists: true,
+    dry_run: false,
+    matched_count: 10,
+    eligible_count: 8,
+    adtrans_matched_count: 7,
+    updated_count: 6,
+    unchanged_count: 1,
+    skipped_count: 3,
+    partial_count: 1,
+    rows: []
+}));
+
 const searchAutomationAdjustmentOptions = mock(async () => [
     {
         category: "premi",
@@ -116,6 +149,8 @@ const searchAutomationAdjustmentOptions = mock(async () => [
 manualAdjustmentService.getAdjustments = getAdjustments;
 manualAdjustmentService.listAdjustmentNameOptions = listAdjustmentNameOptions;
 manualAdjustmentService.updateManualAdjustmentSyncStatus = updateManualAdjustmentSyncStatus;
+manualAdjustmentService.checkAdtransDirectly = checkAdtransDirectly;
+manualAdjustmentSyncStatusSeederService.seedPeriod = seedSyncStatusPeriod;
 taskCodeOptionService.searchAutomationAdjustmentOptions = searchAutomationAdjustmentOptions;
 
 describe("manual adjustment by-api-key route", () => {
@@ -123,6 +158,8 @@ describe("manual adjustment by-api-key route", () => {
         manualAdjustmentService.getAdjustments = originalManualAdjustmentMethods.getAdjustments;
         manualAdjustmentService.listAdjustmentNameOptions = originalManualAdjustmentMethods.listAdjustmentNameOptions;
         manualAdjustmentService.updateManualAdjustmentSyncStatus = originalManualAdjustmentMethods.updateManualAdjustmentSyncStatus;
+        manualAdjustmentService.checkAdtransDirectly = originalManualAdjustmentMethods.checkAdtransDirectly;
+        manualAdjustmentSyncStatusSeederService.seedPeriod = originalManualAdjustmentSyncStatusSeederMethods.seedPeriod;
         taskCodeOptionService.searchAutomationAdjustmentOptions = originalTaskCodeOptionMethods.searchAutomationAdjustmentOptions;
     });
 
@@ -131,6 +168,8 @@ describe("manual adjustment by-api-key route", () => {
         listAdjustmentNameOptions.mockClear();
         searchAutomationAdjustmentOptions.mockClear();
         updateManualAdjustmentSyncStatus.mockClear();
+        checkAdtransDirectly.mockClear();
+        seedSyncStatusPeriod.mockClear();
     });
 
     it("passes metadata_only to the service and returns grouped metadata flag", async () => {
@@ -277,6 +316,85 @@ describe("manual adjustment by-api-key route", () => {
             updatedBy: "agent_sync",
             onlyIfAdtransExists: true,
             dryRun: false,
+            limit: undefined
+        });
+    });
+
+    it("passes adjustment type and specific adjustment name to check-adtrans duplicate endpoint", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/check-adtrans/by-api-key",
+            {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    period_month: 4,
+                    period_year: 2026,
+                    division_code: "IJL",
+                    adjustment_type: "PREMI",
+                    adjustment_name: "PREMI TBS"
+                })
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(checkAdtransDirectly).toHaveBeenCalledWith(
+            4,
+            2026,
+            [],
+            [],
+            "IJL",
+            {
+                adjustmentTypes: ["PREMI"],
+                adjustmentNames: ["PREMI TBS"],
+                docDescs: []
+            }
+        );
+    });
+
+    it("runs manual adjustment sync status seeder through API key route", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/seed-sync-status/by-api-key",
+            {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    period_month: 4,
+                    period_year: 2026,
+                    division_code: "AB1",
+                    created_by: "agent_sync"
+                })
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.updated_count).toBe(6);
+        expect(seedSyncStatusPeriod).toHaveBeenCalledWith({
+            period_month: 4,
+            period_year: 2026,
+            division_code: "AB1",
+            gang_code: undefined,
+            emp_code: undefined,
+            adjustment_types: undefined,
+            adjustment_name: undefined,
+            ids: undefined,
+            sync_status: "SYNC",
+            created_by: "agent_sync",
+            only_if_adtrans_exists: true,
+            dry_run: false,
             limit: undefined
         });
     });

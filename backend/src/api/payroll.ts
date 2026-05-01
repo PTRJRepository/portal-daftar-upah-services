@@ -65,6 +65,14 @@ function parseAdjustmentNameOptionTypes(value?: string): { types: AdjustmentName
     return { types, invalid };
 }
 
+function parseStringArrayInput(value: unknown): string[] {
+    const values = Array.isArray(value) ? value : value == null ? [] : [value];
+    return values
+        .flatMap((item) => String(item || "").split(","))
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
 export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .derive(async ({ headers }) => {
         try {
@@ -1071,7 +1079,20 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             const data = body as any;
-            const { period_month, period_year, emp_codes = [], filters, division_code } = data;
+            const { period_month, period_year, emp_codes = [], division_code } = data;
+            const filters = parseStringArrayInput(data.filters);
+            const adjustmentTypes = [
+                ...parseStringArrayInput(data.adjustment_type),
+                ...parseStringArrayInput(data.adjustment_types)
+            ];
+            const adjustmentNames = [
+                ...parseStringArrayInput(data.adjustment_name),
+                ...parseStringArrayInput(data.adjustment_names)
+            ];
+            const docDescs = [
+                ...parseStringArrayInput(data.doc_desc),
+                ...parseStringArrayInput(data.doc_descs)
+            ];
 
             if (!period_month || !period_year) {
                 set.status = 400;
@@ -1083,9 +1104,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { success: false, message: "emp_codes array or division_code is required" };
             }
 
-            if (!Array.isArray(filters) || filters.length === 0) {
+            if (filters.length === 0 && adjustmentTypes.length === 0 && adjustmentNames.length === 0 && docDescs.length === 0) {
                 set.status = 400;
-                return { success: false, message: "filters array is required (e.g. ['spsi', 'masa kerja', 'jabatan'])" };
+                return { success: false, message: "filters, adjustment_type, adjustment_name, or doc_desc is required" };
             }
 
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
@@ -1094,7 +1115,12 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 Number(period_year),
                 emp_codes,
                 filters,
-                division_code
+                division_code,
+                {
+                    adjustmentTypes,
+                    adjustmentNames,
+                    docDescs
+                }
             );
 
             return {
@@ -1112,7 +1138,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_month: t.Number(),
             period_year: t.Number(),
             emp_codes: t.Optional(t.Array(t.String())),
-            filters: t.Array(t.String()),
+            filters: t.Optional(t.Array(t.String())),
+            adjustment_type: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+            adjustment_types: t.Optional(t.Array(t.String())),
+            adjustment_name: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+            adjustment_names: t.Optional(t.Array(t.String())),
+            doc_desc: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+            doc_descs: t.Optional(t.Array(t.String())),
             division_code: t.Optional(t.String())
         })
     })
@@ -1464,6 +1496,71 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         })
     })
 
+    .post("/manual-adjustment/seed-sync-status/by-api-key", async ({ body, headers, set }) => {
+        try {
+            if (!hasValidApiKeyBypass(headers as Record<string, string | undefined>)) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized: invalid x-api-key" };
+            }
+
+            const payload = body as any;
+            const { manualAdjustmentSyncStatusSeederService } = await import("../services/manualAdjustmentSyncStatusSeederService");
+            const { cacheService } = await import("../services/cacheService");
+            const result = await manualAdjustmentSyncStatusSeederService.seedPeriod({
+                period_month: payload.period_month,
+                period_year: payload.period_year,
+                division_code: payload.division_code || payload.estate || undefined,
+                gang_code: payload.gang_code || undefined,
+                emp_code: payload.emp_code || undefined,
+                adjustment_types: Array.isArray(payload.adjustment_types)
+                    ? payload.adjustment_types
+                    : payload.adjustment_type
+                        ? String(payload.adjustment_type).split(",")
+                        : undefined,
+                adjustment_name: payload.adjustment_name || undefined,
+                ids: Array.isArray(payload.ids) ? payload.ids : undefined,
+                sync_status: payload.sync_status || "SYNC",
+                created_by: payload.created_by || payload.updated_by || "sync_status_seeder_api",
+                only_if_adtrans_exists: payload.only_if_adtrans_exists !== false,
+                dry_run: payload.dry_run === true,
+                limit: payload.limit ? Number(payload.limit) : undefined
+            });
+
+            if (!result.dry_run && result.updated_count > 0) {
+                cacheService.clearByPattern(`:${payload.period_month}:${payload.period_year}`);
+            }
+
+            return {
+                success: true,
+                message: `Manual adjustment sync-status seeder checked ${result.matched_count} rows and updated ${result.updated_count}`,
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/seed-sync-status/by-api-key error:", e);
+            set.status = 500;
+            return { success: false, error: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.Optional(t.String()),
+            estate: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            emp_code: t.Optional(t.String()),
+            adjustment_type: t.Optional(t.String()),
+            adjustment_types: t.Optional(t.Array(t.String())),
+            adjustment_name: t.Optional(t.String()),
+            ids: t.Optional(t.Array(t.Number())),
+            sync_status: t.Optional(t.String()),
+            created_by: t.Optional(t.String()),
+            updated_by: t.Optional(t.String()),
+            only_if_adtrans_exists: t.Optional(t.Boolean()),
+            dry_run: t.Optional(t.Boolean()),
+            limit: t.Optional(t.Number())
+        })
+    })
+
     .post("/manual-adjustment/seed-auto-buffer", async ({ body, currentUser, set }) => {
         try {
             const { autoBufferManualAdjustmentSeederService } = await import("../services/autoBufferManualAdjustmentSeederService");
@@ -1505,6 +1602,66 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             snapshot_version: t.Optional(t.Number()),
             replace_existing: t.Optional(t.Boolean()),
             value_priority_mode: t.Optional(t.String())
+        })
+    })
+
+    .post("/manual-adjustment/seed-sync-status", async ({ body, currentUser, set }) => {
+        try {
+            const { manualAdjustmentSyncStatusSeederService } = await import("../services/manualAdjustmentSyncStatusSeederService");
+            const { cacheService } = await import("../services/cacheService");
+            const payload = body as any;
+
+            const result = await manualAdjustmentSyncStatusSeederService.seedPeriod({
+                period_month: payload.period_month,
+                period_year: payload.period_year,
+                division_code: payload.division_code || payload.estate || undefined,
+                gang_code: payload.gang_code || undefined,
+                emp_code: payload.emp_code || undefined,
+                adjustment_types: Array.isArray(payload.adjustment_types)
+                    ? payload.adjustment_types
+                    : payload.adjustment_type
+                        ? String(payload.adjustment_type).split(",")
+                        : undefined,
+                adjustment_name: payload.adjustment_name || undefined,
+                ids: Array.isArray(payload.ids) ? payload.ids : undefined,
+                sync_status: payload.sync_status || "SYNC",
+                created_by: payload.created_by || currentUser?.username || "sync_status_seeder",
+                only_if_adtrans_exists: payload.only_if_adtrans_exists !== false,
+                dry_run: payload.dry_run === true,
+                limit: payload.limit ? Number(payload.limit) : undefined
+            });
+
+            if (!result.dry_run && result.updated_count > 0) {
+                cacheService.clearByPattern(`:${payload.period_month}:${payload.period_year}`);
+            }
+
+            return {
+                success: true,
+                message: "Manual adjustment sync status seeder selesai",
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/seed-sync-status error:", e);
+            set.status = 500;
+            return { success: false, error: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.Optional(t.String()),
+            estate: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            emp_code: t.Optional(t.String()),
+            adjustment_type: t.Optional(t.String()),
+            adjustment_types: t.Optional(t.Array(t.String())),
+            adjustment_name: t.Optional(t.String()),
+            ids: t.Optional(t.Array(t.Number())),
+            sync_status: t.Optional(t.String()),
+            created_by: t.Optional(t.String()),
+            only_if_adtrans_exists: t.Optional(t.Boolean()),
+            dry_run: t.Optional(t.Boolean()),
+            limit: t.Optional(t.Number())
         })
     })
     // --- Locked Report: Raw Tree (Alias for Proxy/Frontend Compat) ---

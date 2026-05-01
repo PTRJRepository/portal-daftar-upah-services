@@ -67,6 +67,12 @@ vi.mock('./PayrollScrollChapterBar', () => ({
     }
 }));
 
+const findFirstCellHtml = (html, field) => {
+    const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = html.match(new RegExp(`<td\\b(?=[^>]*data-field="${escapedField}")[^>]*>[\\s\\S]*?<\\/td>`));
+    return match?.[0] || '';
+};
+
 describe('CustomPayrollTable render', () => {
     it('keeps the payroll table scroll container from chaining scroll to the page', () => {
         const css = readFileSync('src/styles/CustomPayrollTable.css', 'utf8');
@@ -313,6 +319,7 @@ describe('CustomPayrollTable render', () => {
         );
 
         expect(html).toContain('PRUNING');
+        expect(html).toContain('650.000');
         expect(html).toContain('title="Lihat detail pekerjaan"');
         expect(html).toContain('Detail');
     });
@@ -330,6 +337,9 @@ describe('CustomPayrollTable render', () => {
             gang_code: 'D1H',
             emp_name: 'Test Employee',
             total_premi: 0,
+            value_sync_frame: {
+                premi_pruning: 'red'
+            },
             manual_adjustment_metadata: {
                 premi_pruning: {
                     input_type: 'blok',
@@ -350,7 +360,10 @@ describe('CustomPayrollTable render', () => {
             />
         );
 
+        const cellHtml = findFirstCellHtml(html, 'premi_pruning');
         expect(html).toContain('PRUNING');
+        expect(cellHtml).toContain('650.000');
+        expect(cellHtml).toContain('cell-sync-red');
         expect(html).toContain('title="Lihat detail pekerjaan"');
         expect(html).toContain('Detail');
     });
@@ -528,6 +541,7 @@ describe('CustomPayrollTable render', () => {
         );
 
         expect(html).toContain('KOR. PANEN');
+        expect(html).toContain('50.000');
         expect(html).toContain('title="Lihat detail koreksi"');
         expect(html).toContain('Detail');
     });
@@ -545,6 +559,9 @@ describe('CustomPayrollTable render', () => {
             gang_code: 'D1H',
             emp_name: 'Test Employee',
             potongan_upah_kotor_total: 0,
+            value_sync_frame: {
+                koreksi_panen: 'green'
+            },
             manual_adjustment_metadata: {
                 koreksi_panen: {
                     input_type: 'blok',
@@ -565,7 +582,10 @@ describe('CustomPayrollTable render', () => {
             />
         );
 
+        const cellHtml = findFirstCellHtml(html, 'koreksi_panen');
         expect(html).toContain('KOR. PANEN');
+        expect(cellHtml).toContain('50.000');
+        expect(cellHtml).toContain('cell-sync-green');
         expect(html).toContain('title="Lihat detail koreksi"');
         expect(html).toContain('Detail');
     });

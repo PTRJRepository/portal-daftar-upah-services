@@ -57,6 +57,19 @@ type AdtransDocDescDetailWithCategory = ManualAdjustmentSyncAdtransDetail & {
     category: string;
 };
 
+export interface AdtransCheckOptions {
+    adjustmentTypes?: string[];
+    adjustmentNames?: string[];
+    docDescs?: string[];
+}
+
+type NormalizedAdtransCheckOptions = {
+    adjustmentTypes: string[];
+    adjustmentNames: string[];
+    docDescs: string[];
+    docDescFilters: string[];
+};
+
 export interface AdtransComparisonItem {
     emp_code: string;
     stored_emp_identifier?: string | null;
@@ -181,6 +194,85 @@ function normalizeAdtransDuplicateAmount(value: unknown): string {
     return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
 }
 
+function normalizeStringList(values?: unknown): string[] {
+    const rawValues = Array.isArray(values) ? values : values == null ? [] : [values];
+    return rawValues
+        .flatMap((value) => String(value || "").split(","))
+        .map((value) => normalizeText(value))
+        .filter(Boolean);
+}
+
+function normalizeAdtransCheckOptions(options?: AdtransCheckOptions): NormalizedAdtransCheckOptions {
+    const adjustmentTypes = normalizeStringList(options?.adjustmentTypes).map((value) => value.toUpperCase());
+    const adjustmentNames = normalizeStringList(options?.adjustmentNames);
+    const docDescs = normalizeStringList(options?.docDescs);
+    const docDescFilters = Array.from(new Set([...adjustmentNames, ...docDescs].map(normalizeAdtransDuplicateDocDesc).filter(Boolean)));
+
+    return {
+        adjustmentTypes,
+        adjustmentNames,
+        docDescs,
+        docDescFilters
+    };
+}
+
+function mapAdjustmentTypeToAdtransFilters(adjustmentType: string): string[] {
+    const normalized = normalizeText(adjustmentType).toUpperCase();
+    const aliases: Record<string, string[]> = {
+        PREMI: ["premi"],
+        KOREKSI: ["koreksi"],
+        POTONGAN_KOTOR: ["koreksi"],
+        POTONGAN_UPAH_KOTOR: ["koreksi"],
+        POTONGAN_BERSIH: ["potongan"],
+        POTONGAN_UPAH_BERSIH: ["potongan"],
+        SPSI: ["spsi"],
+        AUTO_SPSI: ["spsi"],
+        JABATAN: ["jabatan"],
+        AUTO_JABATAN: ["jabatan"],
+        AUTO_TUNJANGAN_JABATAN: ["jabatan"],
+        MASA_KERJA: ["masa kerja"],
+        AUTO_MASA_KERJA: ["masa kerja"]
+    };
+
+    return aliases[normalized] || (normalized ? [normalizeAdtransFilter(normalized)] : []);
+}
+
+function inferAdtransFiltersFromDocDescFilters(docDescFilters: string[]): string[] {
+    const filters: string[] = [];
+
+    for (const docDesc of docDescFilters) {
+        if (/^PREMI(\s|$)/.test(docDesc)) filters.push("premi");
+        else if (docDesc.includes("KOREKSI")) filters.push("koreksi");
+        else if (/^POT(\s|ONGAN|\b)/.test(docDesc)) filters.push("potongan");
+        else if (docDesc.includes("SPSI")) filters.push("spsi");
+        else if (docDesc.includes("JABATAN")) filters.push("jabatan");
+        else if (docDesc.includes("MASA") && docDesc.includes("KERJA")) filters.push("masa kerja");
+    }
+
+    return Array.from(new Set(filters));
+}
+
+function resolveAdtransCheckFilters(filters: string[] = [], options?: NormalizedAdtransCheckOptions): string[] {
+    const fromFilters = normalizeStringList(filters).map(normalizeAdtransFilter).filter(Boolean);
+    const fromTypes = (options?.adjustmentTypes || []).flatMap(mapAdjustmentTypeToAdtransFilters).map(normalizeAdtransFilter).filter(Boolean);
+    const fromDocDesc = inferAdtransFiltersFromDocDescFilters(options?.docDescFilters || []);
+    const resolved = fromFilters.length ? fromFilters : [...fromTypes, ...fromDocDesc];
+
+    return Array.from(new Set(resolved));
+}
+
+function buildSpecificDocDescSqlPatterns(options: NormalizedAdtransCheckOptions): string[] {
+    return options.docDescFilters.map((value) => `%${value}%`);
+}
+
+function matchesSpecificAdtransDocDesc(docDesc: string, options?: NormalizedAdtransCheckOptions): boolean {
+    const filters = options?.docDescFilters || [];
+    if (filters.length === 0) return true;
+
+    const normalizedDocDesc = normalizeAdtransDuplicateDocDesc(docDesc);
+    return filters.some((filter) => normalizedDocDesc.includes(filter));
+}
+
 function matchesAdtransDuplicateFilter(docDesc: string, filter: string): boolean {
     const category = normalizeAdtransFilter(filter);
     const normalizedDocDesc = normalizeAdtransDuplicateDocDesc(docDesc);
@@ -194,13 +286,15 @@ function matchesAdtransDuplicateFilter(docDesc: string, filter: string): boolean
 
 function buildAdtransDocDescDetails(
     rows: AdtransDuplicateSourceRow[],
-    filters: string[]
+    filters: string[],
+    options?: NormalizedAdtransCheckOptions
 ): AdtransDocDescDetailWithCategory[] {
     const details: AdtransDocDescDetailWithCategory[] = [];
 
     for (const row of rows) {
         for (const filter of filters) {
             if (!matchesAdtransFilter(row.doc_desc || '', filter)) continue;
+            if (!matchesSpecificAdtransDocDesc(row.doc_desc || '', options)) continue;
 
             details.push({
                 emp_code: normalizeIdentityValue(row.emp_code),
@@ -415,12 +509,19 @@ export async function resolveManualAdjustmentPresetMapping(data: ManualAdjustmen
     };
 }
 
-export function buildAdtransDuplicateReport(rows: AdtransDuplicateSourceRow[], filters: string[]) {
+export function buildAdtransDuplicateReport(
+    rows: AdtransDuplicateSourceRow[],
+    filters: string[],
+    options?: AdtransCheckOptions
+) {
     const groups = new Map<string, AdtransDuplicateSourceRow[]>();
+    const normalizedOptions = normalizeAdtransCheckOptions(options);
+    const normalizedFilters = resolveAdtransCheckFilters(filters, normalizedOptions);
 
     for (const row of rows) {
-        for (const filter of filters) {
+        for (const filter of normalizedFilters) {
             if (!matchesAdtransDuplicateFilter(row.doc_desc || '', filter)) continue;
+            if (!matchesSpecificAdtransDocDesc(row.doc_desc || '', normalizedOptions)) continue;
 
             const category = normalizeAdtransFilter(filter);
             const key = [
@@ -2179,12 +2280,15 @@ export class ManualAdjustmentService {
         periodMonth: number,
         periodYear: number,
         empCodes: string[] = [],
-        filters: string[],
-        divisionCode?: string
+        filters: string[] = [],
+        divisionCode?: string,
+        options?: AdtransCheckOptions
     ): Promise<any> {
         const dbMain = Database.getInstance(); // db_ptrj
+        const normalizedOptions = normalizeAdtransCheckOptions(options);
+        const normalizedFilters = resolveAdtransCheckFilters(filters, normalizedOptions);
 
-        if (!filters || filters.length === 0) {
+        if (normalizedFilters.length === 0) {
             return [];
         }
 
@@ -2209,10 +2313,14 @@ export class ManualAdjustmentService {
         }
 
         const scopeSql = `(${scopeClauses.join(' OR ')})`;
-        const normalizedFilters = filters.map(normalizeAdtransFilter);
         const caseStatements = normalizedFilters.map((filterKey) => {
             return `SUM(CASE WHEN ${buildAdtransSqlCondition('DocDesc', filterKey)} THEN Amount ELSE 0 END) as [${filterKey}]`;
         }).join(", ");
+        const specificDocDescPatterns = buildSpecificDocDescSqlPatterns(normalizedOptions);
+        const specificDocDescConditions = specificDocDescPatterns
+            .map(() => 'UPPER(t.DocDesc) LIKE ?')
+            .join(' OR ');
+        const specificDocDescWhereSql = specificDocDescConditions ? ` AND (${specificDocDescConditions})` : '';
 
         // IMPORTANT: diambil dari phymonth dan phyyear itu adalah real monthnya sesuai kalender
         const adtransQuery = `
@@ -2229,6 +2337,7 @@ export class ManualAdjustmentService {
                 WHERE ${scopeSql} 
                   AND t.PhyMonth = ? 
                   AND t.PhyYear = ?
+                  ${specificDocDescWhereSql}
 
                 UNION ALL
 
@@ -2241,6 +2350,7 @@ export class ManualAdjustmentService {
                 WHERE ${scopeSql} 
                   AND t.PhyMonth = ? 
                   AND t.PhyYear = ?
+                  ${specificDocDescWhereSql}
             ) src
             GROUP BY emp_code
         `;
@@ -2266,6 +2376,7 @@ export class ManualAdjustmentService {
               AND t.PhyMonth = ?
               AND t.PhyYear = ?
               AND (${duplicateDocDescConditions})
+              ${specificDocDescWhereSql}
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
 
             UNION ALL
@@ -2284,6 +2395,7 @@ export class ManualAdjustmentService {
               AND t.PhyMonth = ?
               AND t.PhyYear = ?
               AND (${duplicateDocDescConditions})
+              ${specificDocDescWhereSql}
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
         `;
 
@@ -2292,26 +2404,30 @@ export class ManualAdjustmentService {
                 ...scopeParams,
                 periodMonth,
                 periodYear,
+                ...specificDocDescPatterns,
                 ...scopeParams,
                 periodMonth,
-                periodYear
+                periodYear,
+                ...specificDocDescPatterns
             ]),
             dbMain.query<AdtransDuplicateSourceRow>(duplicateQuery, [
                 ...scopeParams,
                 periodMonth,
                 periodYear,
                 ...patternParams,
+                ...specificDocDescPatterns,
                 ...scopeParams,
                 periodMonth,
                 periodYear,
-                ...patternParams
+                ...patternParams,
+                ...specificDocDescPatterns
             ])
         ]);
 
         return {
             totals: rows,
-            doc_desc_details: buildAdtransDocDescDetails(duplicateRows, normalizedFilters),
-            duplicate_report: buildAdtransDuplicateReport(duplicateRows, normalizedFilters)
+            doc_desc_details: buildAdtransDocDescDetails(duplicateRows, normalizedFilters, normalizedOptions),
+            duplicate_report: buildAdtransDuplicateReport(duplicateRows, normalizedFilters, normalizedOptions)
         };
     }
 

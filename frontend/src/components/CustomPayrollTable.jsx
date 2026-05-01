@@ -1413,9 +1413,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     const getManualCellDisplayAmount = ({ row, field, edit, fallbackAmount = 0 }) => {
         if (edit?.value !== undefined) return Number(edit.value) || 0;
+        const rowAmount = Number(row?.[field] ?? fallbackAmount) || 0;
+        if (rowAmount !== 0) return rowAmount;
         const storedMetadata = parseMetadataObjectValue(row?.manual_adjustment_metadata?.[field]);
+        if (storedMetadata?.amount !== undefined) return Number(storedMetadata.amount) || 0;
         if (storedMetadata?.total_amount !== undefined) return Number(storedMetadata.total_amount) || 0;
-        return Number(row?.[field] ?? fallbackAmount) || 0;
+        return rowAmount;
     };
 
     const hasManualCellData = ({ row, field, edit, displayAmount }) => {
@@ -2980,7 +2983,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const editKey = `${empCode}-${field}`;
                             const isEdited = !!editedCells[editKey];
                             const edit = editedCells[editKey];
-                            const displayVal = isEditMode ? (edit?.value ?? val) : val;
+                            const displayVal = getManualCellDisplayAmount({ row, field, edit: isEditMode ? edit : null, fallbackAmount: val });
                             const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
                             const resolvedPremium = resolvePremiumDefinitionForAdjustment({
                                 label,
@@ -3132,7 +3135,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             if (detailButton) {
                                 return (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                        <span>{val === 0 ? '-' : formatNumber(val)}</span>
+                                        <span>{displayVal === 0 ? '-' : formatNumber(displayVal)}</span>
                                         {mismatch && (
                                             <span
                                                 title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
@@ -3146,8 +3149,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 );
                             }
 
-                            if (val === 0) return '-';
-                            return formatNumber(val);
+                            if (displayVal === 0) return '-';
+                            return formatNumber(displayVal);
                         }
                     });
                 });
@@ -3327,7 +3330,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     const empCode = row.emp_code || row.nik;
                     const editKey = `${empCode}-${field}`;
                     const edit = editedCells[editKey];
-                    const displayVal = isEditMode ? (edit?.value ?? val) : val;
+                    const displayVal = getManualCellDisplayAmount({ row, field, edit: isEditMode ? edit : null, fallbackAmount: val });
                     const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_KOTOR');
                     const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
                     const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn, defaultInputType: KOREKSI_DEFAULT_INPUT_TYPE });
@@ -3463,7 +3466,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         if (detailButton) {
                             return (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                    <span>{val === 0 ? '-' : formatNumber(val)}</span>
+                                    <span>{displayVal === 0 ? '-' : formatNumber(displayVal)}</span>
                                     {mismatch && (
                                         <span
                                             title={`Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}`}
@@ -3476,7 +3479,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 </div>
                             );
                         }
-                        return val === 0 ? '-' : formatNumber(val);
+                        return displayVal === 0 ? '-' : formatNumber(displayVal);
                     }
                 });
             }
@@ -3618,6 +3621,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     className: 'text-right',
                     render: (row) => {
                         const val = row[field] || 0;
+                        const displayAmount = getManualCellDisplayAmount({ row, field, fallbackAmount: val });
                         if (isEditMode && row.type === 'employee') {
                             const empCode = row.emp_code || row.nik;
                             const editKey = `${empCode}-${field}`;
@@ -3704,8 +3708,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 </div>
                             );
                         }
-                        if (val === 0) return '-';
-                        return formatNumber(val);
+                        if (displayAmount === 0) return '-';
+                        return formatNumber(displayAmount);
                     }
                 });
             }

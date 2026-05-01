@@ -1927,6 +1927,8 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 emp_code: "A0001",
                 emp_name: "BUDI",
                 category: "spsi",
+                doc_desc: "POTONGAN SPSI",
+                amount: 4000,
                 record_count: 2,
                 keep_id: 12,
                 keep_doc_id: "DOC-NEW",
@@ -1977,6 +1979,63 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         ]);
     });
 
+    it("filters duplicate premi report by specific adjustment name", () => {
+        const report = buildAdtransDuplicateReport([
+            { id: 101, doc_id: "DOC-A1", doc_date: "2026-04-30", doc_desc: "PREMI INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 102, doc_id: "DOC-B1", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 },
+            { id: 201, doc_id: "DOC-A2", doc_date: "2026-04-30", doc_desc: "PREMI INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 202, doc_id: "DOC-B2", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 }
+        ], ["premi"], { adjustmentNames: ["PREMI TBS"] } as any);
+
+        expect(report.duplicates).toHaveLength(1);
+        expect(report.duplicates[0]).toMatchObject({
+            emp_code: "L0073",
+            category: "premi",
+            doc_desc: "PREMI TBS",
+            amount: 1046398,
+            keep_doc_id: "DOC-B2",
+            delete_doc_ids: ["DOC-B1"]
+        });
+    });
+
+    it("filters duplicate koreksi report by specific adjustment name", () => {
+        const report = buildAdtransDuplicateReport([
+            { id: 1, doc_id: "DOC-K1", doc_date: "2026-04-30", doc_desc: "KOREKSI PANEN", emp_code: "A0001", emp_name: "BUDI", amount: -2000 },
+            { id: 2, doc_id: "DOC-A1", doc_date: "2026-04-30", doc_desc: "KOREKSI ALAT", emp_code: "A0001", emp_name: "BUDI", amount: -5000 },
+            { id: 3, doc_id: "DOC-K2", doc_date: "2026-04-30", doc_desc: "KOREKSI PANEN", emp_code: "A0001", emp_name: "BUDI", amount: -2000 },
+            { id: 4, doc_id: "DOC-A2", doc_date: "2026-04-30", doc_desc: "KOREKSI ALAT", emp_code: "A0001", emp_name: "BUDI", amount: -5000 }
+        ], ["koreksi"], { adjustmentNames: ["KOREKSI PANEN"] } as any);
+
+        expect(report.duplicates).toHaveLength(1);
+        expect(report.duplicates[0]).toMatchObject({
+            emp_code: "A0001",
+            category: "koreksi",
+            doc_desc: "KOREKSI PANEN",
+            amount: -2000,
+            keep_doc_id: "DOC-K2",
+            delete_doc_ids: ["DOC-K1"]
+        });
+    });
+
+    it("only treats premi duplicates as duplicate cleanup rows when DocDesc starts with PREMI", () => {
+        const report = buildAdtransDuplicateReport([
+            { id: 101, doc_id: "DOC-A1", doc_date: "2026-04-30", doc_desc: "INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 201, doc_id: "DOC-A2", doc_date: "2026-04-30", doc_desc: "INSENTIF PANEN", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 150000 },
+            { id: 102, doc_id: "DOC-B1", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 },
+            { id: 202, doc_id: "DOC-B2", doc_date: "2026-04-30", doc_desc: "PREMI TBS", emp_code: "L0073", emp_name: "BAHARUDIN", amount: 1046398 }
+        ], ["premi"]);
+
+        expect(report.duplicate_count).toBe(1);
+        expect(report.duplicates[0]).toMatchObject({
+            emp_code: "L0073",
+            category: "premi",
+            doc_desc: "PREMI TBS",
+            amount: 1046398,
+            keep_doc_id: "DOC-B2",
+            delete_doc_ids: ["DOC-B1"]
+        });
+    });
+
     it("maps ADTRANS DocDesc variants to comparison categories", () => {
         const report = buildAdtransDuplicateReport([
             { id: 1, doc_id: "DOC-SPSI", doc_date: "2026-04-01", doc_desc: "POTONGAN SPSI", emp_code: "A0001", emp_name: "BUDI", amount: 4000 },
@@ -2016,6 +2075,43 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 
+    it("uses adjustment_type and adjustment_name as check-adtrans duplicate filters when filters are omitted", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const result = await manualAdjustmentService.checkAdtransDirectly(
+                4,
+                2026,
+                [],
+                [],
+                "IJL",
+                { adjustmentTypes: ["PREMI"], adjustmentNames: ["PREMI TBS"] } as any
+            );
+
+            expect(result).toEqual({
+                totals: [],
+                doc_desc_details: [],
+                duplicate_report: {
+                    duplicate_count: 0,
+                    duplicates: []
+                }
+            });
+            expect(calls[0].sql).toContain("LIKE '%PREMI%'");
+            expect(calls[1].params).toContain("%PREMI TBS%");
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("queries by normalized division LocCode when emp_codes is omitted", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -2033,6 +2129,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
 
             expect(result).toEqual({
                 totals: [],
+                doc_desc_details: [],
                 duplicate_report: {
                     duplicate_count: 0,
                     duplicates: []
