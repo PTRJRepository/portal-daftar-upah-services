@@ -25,6 +25,7 @@ import { calculateMasaKerjaDisplay, deriveInitialSpsiMember } from "../utils/pay
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { PayrollCalculator } from "./payroll/components/PayrollCalculator";
 import { applyManualAdjustmentsToEmployee } from "./payroll/manualAdjustments/manualAdjustmentApplier";
+import type { ManualAdjustmentFieldSyncMeta } from "./payroll/manualAdjustments/manualAdjustmentApplier";
 import { toManualAdjustmentFieldName } from "./payroll/manualAdjustments/manualAdjustmentNaming";
 import { payrollAutoBufferService, resolveSyncFrameColor } from "./payroll/payrollAutoBufferService";
 import { divisionConfigService } from "./config/DivisionConfigService";
@@ -37,25 +38,27 @@ import {
 
 const CATEGORY = "DataExtractor";
 
-export type PayrollValuePriorityMode = "smart" | "db_ptrj_only" | "manual_buffer_only";
+export type PayrollValuePriorityMode = "db_ptrj_only" | "non_db_ptrj";
 
-function normalizePayrollValuePriorityMode(value?: string | null): PayrollValuePriorityMode {
+export function normalizePayrollValuePriorityMode(value?: string | null): PayrollValuePriorityMode {
     const normalized = String(value || "").trim().toLowerCase();
     if (normalized === "db_ptrj_only") return "db_ptrj_only";
-    if (normalized === "manual_buffer_only") return "manual_buffer_only";
-    return "smart";
+    return "non_db_ptrj";
 }
 
 export interface ManualAdjustmentSourcePolicy {
     applyAmounts: boolean;
     fetchRowsForMetadata: boolean;
+    manualBufferOnly: boolean;
 }
 
 export function resolveManualAdjustmentSourcePolicy(value?: string | null): ManualAdjustmentSourcePolicy {
     const valuePriorityMode = normalizePayrollValuePriorityMode(value);
+    const useNonDbPtrjSources = valuePriorityMode === "non_db_ptrj";
     return {
         applyAmounts: valuePriorityMode !== "db_ptrj_only",
-        fetchRowsForMetadata: true
+        fetchRowsForMetadata: true,
+        manualBufferOnly: useNonDbPtrjSources
     };
 }
 
@@ -123,6 +126,7 @@ export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityI
 
 type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
 const DETAIL_TOTAL_MISMATCH_PREMI_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
+type PayrollValueSourceCompareMap = Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
 
 function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetadataType | null {
     const normalized = String(value || '').trim().toUpperCase();
@@ -170,6 +174,94 @@ export function attachManualAdjustmentMetadata(
                 diff: detailTotal - amount,
                 reason: 'Total detail terbaru berbeda dari amount lama. Untuk PREMI PRUNING/RAKING, total detail terbaru dipakai saat simpan.'
             };
+        }
+    }
+}
+
+function normalizeManualCompareFieldIdentity(value: unknown): string {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function stripManualCompareFieldPrefix(value: string): string {
+    return value
+        .replace(/^potongan_lainnya_/, '')
+        .replace(/^potongan_/, '')
+        .replace(/^koreksi_/, '')
+        .replace(/^premi_/, '');
+}
+
+function manualCompareFieldMatches(sourceKey: string, targetFieldName: string, adjustmentType: string): boolean {
+    const source = normalizeManualCompareFieldIdentity(sourceKey);
+    const target = normalizeManualCompareFieldIdentity(targetFieldName);
+    if (!source || !target) return false;
+    if (source === target) return true;
+
+    const typePrefix = adjustmentType === 'PREMI'
+        ? 'premi_'
+        : adjustmentType === 'POTONGAN_KOTOR'
+            ? 'koreksi_'
+            : 'potongan_lainnya_';
+    if (normalizeManualCompareFieldIdentity(`${typePrefix}${source}`) === target) return true;
+
+    return stripManualCompareFieldPrefix(source) === stripManualCompareFieldPrefix(target);
+}
+
+function toManualCompareAmount(value: unknown, adjustmentType: string): number {
+    const amount = Number(value) || 0;
+    return adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH'
+        ? Math.abs(amount)
+        : amount;
+}
+
+export function resolveManualAdjustmentDbPtrjCompareAmount(
+    syncMeta: Pick<ManualAdjustmentFieldSyncMeta, 'fieldName' | 'adjustmentType' | 'previousAmount'>,
+    dbPremiSource: Record<string, number> = {},
+    dbPotonganSource: Record<string, number> = {}
+): number {
+    const source = syncMeta.adjustmentType === 'PREMI' ? dbPremiSource : dbPotonganSource;
+    let matchedAmount = 0;
+    let matched = false;
+    for (const [key, value] of Object.entries(source || {})) {
+        if (manualCompareFieldMatches(key, syncMeta.fieldName, syncMeta.adjustmentType)) {
+            matchedAmount += toManualCompareAmount(value, syncMeta.adjustmentType);
+            matched = true;
+        }
+    }
+
+    if (matched) return matchedAmount;
+    return toManualCompareAmount(syncMeta.previousAmount, syncMeta.adjustmentType);
+}
+
+export function attachManualAdjustmentValueSourceComparison(
+    valueSyncFrame: Record<string, "red" | "green">,
+    valueSourceCompare: PayrollValueSourceCompareMap,
+    syncMeta: ManualAdjustmentFieldSyncMeta,
+    dbPtrjAmount: number = toManualCompareAmount(syncMeta.previousAmount, syncMeta.adjustmentType)
+): void {
+    const syncColor = resolveSyncFrameColor(syncMeta.finalAmount, dbPtrjAmount);
+    const compare = {
+        db_ptrj: dbPtrjAmount,
+        active: syncMeta.finalAmount
+    };
+
+    valueSyncFrame[syncMeta.fieldName] = syncColor;
+    valueSourceCompare[syncMeta.fieldName] = compare;
+
+    if (syncMeta.adjustmentType === 'PREMI' && !syncMeta.fieldName.startsWith('premi_')) {
+        const alias = `premi_${syncMeta.fieldName}`;
+        valueSyncFrame[alias] = syncColor;
+        valueSourceCompare[alias] = compare;
+    }
+
+    if (syncMeta.adjustmentType !== 'PREMI') {
+        const keyUpper = syncMeta.fieldName.toUpperCase();
+        if (!keyUpper.startsWith('KOREKSI') && !syncMeta.fieldName.startsWith('potongan_')) {
+            const alias = `potongan_${syncMeta.fieldName}`;
+            valueSyncFrame[alias] = syncColor;
+            valueSourceCompare[alias] = compare;
         }
     }
 }
@@ -459,7 +551,7 @@ export class DataExtractorService {
         const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
         const allowManualAdjustments = manualAdjustmentPolicy.applyAmounts;
         const fetchManualAdjustmentRows = manualAdjustmentPolicy.fetchRowsForMetadata;
-        const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
+        const manualBufferOnlyMode = manualAdjustmentPolicy.manualBufferOnly;
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const nextMonth = month === 12 ? 1 : month + 1;
@@ -499,7 +591,7 @@ export class DataExtractorService {
 
         // [OPTIMIZATION] Cache check
         const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode, useHistoryDb);
-        const useCache = !specificEmpCode && valuePriorityMode === "smart";
+        const useCache = false;
         if (useCache) {
             const cached = cacheService.get<any>(cacheKey);
             if (cached) {
@@ -517,7 +609,8 @@ export class DataExtractorService {
             shouldFetchHistory = false;
         }
 
-        if (shouldFetchHistory && valuePriorityMode === "smart") {
+        const shouldReadHistorySnapshotForSourceMode = valuePriorityMode === "db_ptrj_only";
+        if (shouldFetchHistory && shouldReadHistorySnapshotForSourceMode) {
             try {
                 const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
                     month, year, gangCode, divisionCode, specificEmpCode
@@ -1364,19 +1457,12 @@ export class DataExtractorService {
 
             total_premi += manualApplied.totalPremiDelta;
             for (const syncMeta of manualApplied.fieldSyncMeta) {
-                const syncColor = resolveSyncFrameColor(syncMeta.finalAmount, syncMeta.previousAmount);
-                valueSyncFrame[syncMeta.fieldName] = syncColor;
-
-                if (syncMeta.adjustmentType === 'PREMI' && !syncMeta.fieldName.startsWith('premi_')) {
-                    valueSyncFrame[`premi_${syncMeta.fieldName}`] = syncColor;
-                }
-
-                if (syncMeta.adjustmentType !== 'PREMI') {
-                    const keyUpper = syncMeta.fieldName.toUpperCase();
-                    if (!keyUpper.startsWith('KOREKSI') && !syncMeta.fieldName.startsWith('potongan_')) {
-                        valueSyncFrame[`potongan_${syncMeta.fieldName}`] = syncColor;
-                    }
-                }
+                attachManualAdjustmentValueSourceComparison(
+                    valueSyncFrame,
+                    valueSourceCompare,
+                    syncMeta,
+                    resolveManualAdjustmentDbPtrjCompareAmount(syncMeta, dbEmpPremiSource, dbEmpPotonganSource)
+                );
             }
 
             const pot_pph21 = Math.abs(empPotongan["PPH21"] || 0);
@@ -3558,7 +3644,7 @@ export class DataExtractorService {
         const useAutoBuffer = valuePriorityMode !== "db_ptrj_only";
         const allowManualAdjustments = manualAdjustmentPolicy.applyAmounts;
         const fetchManualAdjustmentRows = manualAdjustmentPolicy.fetchRowsForMetadata;
-        const manualBufferOnlyMode = valuePriorityMode === "manual_buffer_only";
+        const manualBufferOnlyMode = manualAdjustmentPolicy.manualBufferOnly;
         const startTime = Date.now();
         const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
         const nextMonth = month === 12 ? 1 : month + 1;
@@ -3613,7 +3699,8 @@ export class DataExtractorService {
             shouldFetchHistory = false;
         }
 
-        if (shouldFetchHistory && valuePriorityMode === "smart") {
+        const shouldReadHistorySnapshotForSourceMode = valuePriorityMode === "db_ptrj_only";
+        if (shouldFetchHistory && shouldReadHistorySnapshotForSourceMode) {
             const historyResult = await this.extractPayrollData(
                 month,
                 year,
@@ -4411,19 +4498,12 @@ export class DataExtractorService {
 
                 total_premi += manualApplied.totalPremiDelta;
                 for (const syncMeta of manualApplied.fieldSyncMeta) {
-                    const syncColor = resolveSyncFrameColor(syncMeta.finalAmount, syncMeta.previousAmount);
-                    valueSyncFrame[syncMeta.fieldName] = syncColor;
-
-                    if (syncMeta.adjustmentType === 'PREMI' && !syncMeta.fieldName.startsWith('premi_')) {
-                        valueSyncFrame[`premi_${syncMeta.fieldName}`] = syncColor;
-                    }
-
-                    if (syncMeta.adjustmentType !== 'PREMI') {
-                        const keyUpper = syncMeta.fieldName.toUpperCase();
-                        if (!keyUpper.startsWith('KOREKSI') && !syncMeta.fieldName.startsWith('potongan_')) {
-                            valueSyncFrame[`potongan_${syncMeta.fieldName}`] = syncColor;
-                        }
-                    }
+                    attachManualAdjustmentValueSourceComparison(
+                        valueSyncFrame,
+                        emp.value_source_compare ||= {},
+                        syncMeta,
+                        resolveManualAdjustmentDbPtrjCompareAmount(syncMeta, dbEmpPremiSource, dbEmpPotonganSource)
+                    );
                 }
             }
             attachManualAdjustmentMetadata(emp, empAdjustments);

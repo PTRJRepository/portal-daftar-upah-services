@@ -19,13 +19,12 @@ const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
 const normalizeValuePriorityMode = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
-  if (normalized === 'manual_buffer_only') return 'manual_buffer_only';
-  return 'smart';
+  return 'non_db_ptrj';
 };
 
 const VALUE_PRIORITY_MODE_META = {
-  smart: {
-    label: 'Smart: Adjustment + Buffer prioritas',
+  non_db_ptrj: {
+    label: 'Non DB_PTRJ: Auto Buffer + Manual Adjustment',
     color: '#16a34a',
     ringColor: '#86efac',
     haloColor: 'rgba(22, 163, 74, 0.18)'
@@ -35,12 +34,6 @@ const VALUE_PRIORITY_MODE_META = {
     color: '#2563eb',
     ringColor: '#93c5fd',
     haloColor: 'rgba(37, 99, 235, 0.18)'
-  },
-  manual_buffer_only: {
-    label: 'Adjustment + Buffer saja',
-    color: '#dc2626',
-    ringColor: '#fecaca',
-    haloColor: 'rgba(220, 38, 38, 0.18)'
   }
 };
 
@@ -118,13 +111,13 @@ const OperationalReportWrapper = () => {
   const [hrSearchNik, setHrSearchNik] = useState('');
   const [headerValuePriorityMode, setHeaderValuePriorityMode] = useState(() => {
     try {
-      if (typeof window === 'undefined') return 'smart';
+      if (typeof window === 'undefined') return 'non_db_ptrj';
       return normalizeValuePriorityMode(localStorage.getItem(VALUE_PRIORITY_MODE_STORAGE_KEY));
     } catch {
-      return 'smart';
+      return 'non_db_ptrj';
     }
   });
-  const headerValuePriorityMeta = VALUE_PRIORITY_MODE_META[headerValuePriorityMode] || VALUE_PRIORITY_MODE_META.smart;
+  const headerValuePriorityMeta = VALUE_PRIORITY_MODE_META[headerValuePriorityMode] || VALUE_PRIORITY_MODE_META.non_db_ptrj;
 
   // Employee sorting state
   const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'

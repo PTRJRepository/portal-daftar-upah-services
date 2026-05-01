@@ -11,6 +11,7 @@ import {
     checkAggregationHealth,
     seedAggregation,
     seedAutoBufferManualAdjustments,
+    seedManualAdjustmentSyncStatus,
     fetchAggregationSummary,
     fetchAggregationDivisions,
     fetchAggregationPeriods,
@@ -50,6 +51,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
     const [isRunning, setIsRunning] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isAutoBufferSeeding, setIsAutoBufferSeeding] = useState(false);
+    const [isManualSyncSeeding, setIsManualSyncSeeding] = useState(false);
     const [isHistoryRunning, setIsHistoryRunning] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState('checking');
     const [historyConnectionStatus, setHistoryConnectionStatus] = useState('checking');
@@ -178,7 +180,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
     // Run seeder
     const handleRunSeeder = async () => {
-        if (isRunning || isAutoBufferSeeding) return;
+        if (isRunning || isAutoBufferSeeding || isManualSyncSeeding) return;
         if (connectionStatus !== 'connected') {
             addLog('❌ Database not connected. Cannot run seeder.', 'error');
             return;
@@ -222,7 +224,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
     // Seed auto buffer values into manual adjustment table (AUTO_BUFFER)
     const handleSeedAutoBuffer = async () => {
-        if (isAutoBufferSeeding || isRunning || isSyncing || isHistoryRunning || isPtkpRunning) return;
+        if (isAutoBufferSeeding || isManualSyncSeeding || isRunning || isSyncing || isHistoryRunning || isPtkpRunning) return;
         if (connectionStatus !== 'connected') {
             addLog('ERROR: Database not connected. Cannot run auto buffer seeder.', 'error');
             return;
@@ -314,9 +316,112 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
         }
     };
 
+    // Update sync: status for manual adjustment rows after matching PR_ADTRANS is found.
+    const handleSeedManualSyncStatus = async () => {
+        if (isManualSyncSeeding || isAutoBufferSeeding || isRunning || isSyncing || isHistoryRunning || isPtkpRunning) return;
+        if (connectionStatus !== 'connected') {
+            addLog('ERROR: Database not connected. Cannot run manual adjustment sync status seeder.', 'error');
+            return;
+        }
+
+        const targetDivisions = division === 'ALL'
+            ? divisions.filter((item) => item && item !== 'ALL')
+            : [division];
+
+        if (targetDivisions.length === 0) {
+            addLog('ERROR: No target division available for manual adjustment sync status seeder.', 'error');
+            return;
+        }
+
+        const scopeLabel = division === 'ALL'
+            ? `ALL divisions (${targetDivisions.length})`
+            : division;
+        const confirmMsg = `Update sync status remarks for PREMI, KOREKSI/POTONGAN_KOTOR, and POTONGAN_BERSIH in ${scopeLabel} period ${formatMonthName(month)} ${year}?\n\nOnly rows matched to PR_ADTRANS will be updated.`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setIsManualSyncSeeding(true);
+        addLog('='.repeat(40), 'info');
+        addLog('Starting Manual Adjustment Sync Status seeder...');
+        addLog(`Period: ${formatMonthName(month)} ${year}`);
+        addLog(`Scope: ${scopeLabel}`);
+        addLog('Types: PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH');
+
+        let successCount = 0;
+        let failedCount = 0;
+        const aggregate = {
+            matched_count: 0,
+            eligible_count: 0,
+            adtrans_matched_count: 0,
+            updated_count: 0,
+            unchanged_count: 0,
+            skipped_count: 0,
+            partial_count: 0
+        };
+
+        try {
+            for (const divisionCode of targetDivisions) {
+                addLog(`Updating sync status for division ${divisionCode}...`, 'info');
+                try {
+                    const result = await seedManualAdjustmentSyncStatus(token, {
+                        period_month: month,
+                        period_year: year,
+                        division_code: divisionCode,
+                        adjustment_types: ['PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH'],
+                        sync_status: 'SYNC',
+                        only_if_adtrans_exists: true,
+                        dry_run: false,
+                        created_by: user?.username || 'seeder_ui'
+                    });
+
+                    if (!result?.success) {
+                        failedCount += 1;
+                        addLog(`${divisionCode}: ${result?.error || 'Sync status seeder failed'}`, 'error');
+                        continue;
+                    }
+
+                    const data = result.data || {};
+                    successCount += 1;
+                    aggregate.matched_count += Number(data.matched_count || 0);
+                    aggregate.eligible_count += Number(data.eligible_count || 0);
+                    aggregate.adtrans_matched_count += Number(data.adtrans_matched_count || 0);
+                    aggregate.updated_count += Number(data.updated_count || 0);
+                    aggregate.unchanged_count += Number(data.unchanged_count || 0);
+                    aggregate.skipped_count += Number(data.skipped_count || 0);
+                    aggregate.partial_count += Number(data.partial_count || 0);
+
+                    addLog(
+                        `${divisionCode}: matched=${Number(data.matched_count || 0)}, updated=${Number(data.updated_count || 0)}, skipped=${Number(data.skipped_count || 0)}, partial=${Number(data.partial_count || 0)}`,
+                        'success'
+                    );
+                } catch (error) {
+                    failedCount += 1;
+                    const message = error?.response?.data?.error || error?.message || 'Sync status seeder failed';
+                    addLog(`${divisionCode}: ${message}`, 'error');
+                }
+            }
+
+            addLog('='.repeat(40), 'info');
+            if (failedCount === 0) {
+                addLog('Manual adjustment sync status seeding completed.', 'success');
+            } else {
+                addLog(`Manual adjustment sync status seeding completed with ${failedCount} failure(s).`, 'warn');
+            }
+            addLog(`Success divisions: ${successCount}/${targetDivisions.length}`);
+            addLog(`Total matched rows: ${aggregate.matched_count}`);
+            addLog(`Total eligible rows: ${aggregate.eligible_count}`);
+            addLog(`Total ADTRANS matched: ${aggregate.adtrans_matched_count}`);
+            addLog(`Total updated: ${aggregate.updated_count}`);
+            addLog(`Total unchanged: ${aggregate.unchanged_count}`);
+            addLog(`Total skipped: ${aggregate.skipped_count}`);
+            addLog(`Total partial: ${aggregate.partial_count}`);
+        } finally {
+            setIsManualSyncSeeding(false);
+        }
+    };
+
     // Run spreadsheet sync
     const handleSyncSpreadsheet = async () => {
-        if (isSyncing || isRunning || isAutoBufferSeeding) return;
+        if (isSyncing || isRunning || isAutoBufferSeeding || isManualSyncSeeding) return;
 
         setIsSyncing(true);
         addLog('='.repeat(40), 'info');
@@ -398,7 +503,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
     // Run history seeder (terpisah dari aggregation seeder)
     const handleRunHistorySeeder = async () => {
-        if (isHistoryRunning || isAutoBufferSeeding) return;
+        if (isHistoryRunning || isAutoBufferSeeding || isManualSyncSeeding) return;
 
         // Check authentication first
         if (!token) {
@@ -677,7 +782,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         <select
                             value={division}
                             onChange={(e) => setDivision(e.target.value)}
-                            disabled={isRunning || isAutoBufferSeeding}
+                            disabled={isRunning || isAutoBufferSeeding || isManualSyncSeeding}
                         >
                             {divisions.map(d => (
                                 <option key={d} value={d}>{d}</option>
@@ -691,7 +796,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         <select
                             value={month}
                             onChange={(e) => setMonth(parseInt(e.target.value))}
-                            disabled={isRunning || isAutoBufferSeeding}
+                            disabled={isRunning || isAutoBufferSeeding || isManualSyncSeeding}
                         >
                             {monthOptions.map(m => (
                                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -705,7 +810,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         <select
                             value={year}
                             onChange={(e) => setYear(parseInt(e.target.value))}
-                            disabled={isRunning || isAutoBufferSeeding}
+                            disabled={isRunning || isAutoBufferSeeding || isManualSyncSeeding}
                         >
                             {yearOptions.map(y => (
                                 <option key={y} value={y}>{y}</option>
@@ -719,7 +824,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         <select
                             value={syncType}
                             onChange={(e) => setSyncType(e.target.value)}
-                            disabled={isRunning || isSyncing || isAutoBufferSeeding}
+                            disabled={isRunning || isSyncing || isAutoBufferSeeding || isManualSyncSeeding}
                         >
                             <option value="DAFTAR_UPAH">Daftar Upah</option>
                             <option value="OTHER_REPORT" disabled>Laporan Lain (Coming Soon)</option>
@@ -731,7 +836,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                     {/* Action Buttons */}
                     <button
                         onClick={handleRunSeeder}
-                        disabled={isRunning || isAutoBufferSeeding || connectionStatus !== 'connected'}
+                        disabled={isRunning || isAutoBufferSeeding || isManualSyncSeeding || connectionStatus !== 'connected'}
                         className="agg-btn agg-btn-primary"
                     >
                         {isRunning ? '⏳ Running...' : '🚀 Run Seeder'}
@@ -739,7 +844,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
                     <button
                         onClick={handleSeedAutoBuffer}
-                        disabled={isRunning || isSyncing || isHistoryRunning || isAutoBufferSeeding || connectionStatus !== 'connected'}
+                        disabled={isRunning || isSyncing || isHistoryRunning || isAutoBufferSeeding || isManualSyncSeeding || connectionStatus !== 'connected'}
                         className="agg-btn"
                         style={{ backgroundColor: '#f59e0b', borderColor: '#d97706', color: 'white', marginTop: '8px' }}
                     >
@@ -747,8 +852,17 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                     </button>
 
                     <button
+                        onClick={handleSeedManualSyncStatus}
+                        disabled={isRunning || isSyncing || isHistoryRunning || isAutoBufferSeeding || isManualSyncSeeding || connectionStatus !== 'connected'}
+                        className="agg-btn"
+                        style={{ backgroundColor: '#2563eb', borderColor: '#1d4ed8', color: 'white', marginTop: '8px' }}
+                    >
+                        {isManualSyncSeeding ? 'Updating Sync Status...' : 'Seed Sync Status Manual Adj'}
+                    </button>
+
+                    <button
                         onClick={handleSyncSpreadsheet}
-                        disabled={isRunning || isSyncing || isAutoBufferSeeding || connectionStatus !== 'connected'}
+                        disabled={isRunning || isSyncing || isAutoBufferSeeding || isManualSyncSeeding || connectionStatus !== 'connected'}
                         className="agg-btn agg-btn-success"
                         style={{ backgroundColor: '#10b981', borderColor: '#059669', color: 'white', marginTop: '8px' }}
                     >
@@ -757,7 +871,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
                     <button
                         onClick={handleCheckStatus}
-                        disabled={isRunning || isSyncing || isAutoBufferSeeding}
+                        disabled={isRunning || isSyncing || isAutoBufferSeeding || isManualSyncSeeding}
                         className="agg-btn agg-btn-secondary"
                     >
                         🔍 Check Status
@@ -765,7 +879,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
                     <button
                         onClick={handleViewSummary}
-                        disabled={isRunning || isAutoBufferSeeding}
+                        disabled={isRunning || isAutoBufferSeeding || isManualSyncSeeding}
                         className="agg-btn agg-btn-secondary"
                     >
                         📈 View Summary
@@ -780,7 +894,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         <select
                             value={historySeederType}
                             onChange={(e) => setHistorySeederType(e.target.value)}
-                            disabled={isHistoryRunning || isRunning || isAutoBufferSeeding}
+                            disabled={isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding}
                         >
                             <option value="PAYROLL">Payroll & Transactions (Master/Detail)</option>
                             <option value="EMPLOYEE_HR">Data Karyawan (HR Employee)</option>
@@ -860,7 +974,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
                     <button
                         onClick={handleRunHistorySeeder}
-                        disabled={isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
+                        disabled={isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
                         className="agg-btn"
                         style={{
                             backgroundColor: '#8b5cf6',
@@ -901,7 +1015,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                             onClick={handlePreviewPtkp}
-                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
                                 flex: 1,
@@ -916,7 +1030,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
 
                         <button
                             onClick={handleRunPtkpUpdate}
-                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || historyConnectionStatus !== 'connected'}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
                                 flex: 2,

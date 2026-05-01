@@ -224,7 +224,7 @@ export class AutoBufferManualAdjustmentSeederService {
         const gangCode = normalizeString(input.gang_code || "ALL").toUpperCase() || "ALL";
         const useHistoryDb = input.use_history_db === true;
         const snapshotVersion = input.snapshot_version == null ? null : Math.floor(toNumber(input.snapshot_version));
-        const valuePriorityMode = normalizeString(input.value_priority_mode) || "smart";
+        const valuePriorityMode = normalizeString(input.value_priority_mode) || "non_db_ptrj";
         const createdBy = normalizeString(input.created_by) || "system";
 
         if (periodMonth < 1 || periodMonth > 12) {

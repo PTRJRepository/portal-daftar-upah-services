@@ -203,7 +203,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             expect(result.deleted_existing).toBe(2);
             expect(result.inserted).toBe(3);
             expect(result.updated).toBe(0);
-            expect(extractorCalls[0]?.[12]).toBe("smart");
+            expect(extractorCalls[0]?.[12]).toBe("non_db_ptrj");
 
             expect(queryOneCalls.length).toBe(1);
 

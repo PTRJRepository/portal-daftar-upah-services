@@ -152,8 +152,7 @@ const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
 const normalizeValuePriorityMode = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
-    if (normalized === 'manual_buffer_only') return 'manual_buffer_only';
-    return 'smart';
+    return 'non_db_ptrj';
 };
 
 const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
@@ -304,10 +303,10 @@ const parseMetadataObjectValue = (value) => {
 
 const resolveInitialValuePriorityMode = () => {
     try {
-        if (typeof window === 'undefined') return 'smart';
+        if (typeof window === 'undefined') return 'non_db_ptrj';
         return normalizeValuePriorityMode(localStorage.getItem(VALUE_PRIORITY_MODE_STORAGE_KEY));
     } catch {
-        return 'smart';
+        return 'non_db_ptrj';
     }
 };
 
@@ -2073,7 +2072,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 use_history_db: !!useHistoryDb,
                 snapshot_version: snapshotVersion ?? undefined,
                 replace_existing: true,
-                value_priority_mode: valuePriorityMode || 'smart'
+                value_priority_mode: valuePriorityMode || 'non_db_ptrj'
             };
 
             let responseJson;
@@ -2113,7 +2112,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         } finally {
             setIsSeedingAutoBuffer(false);
         }
-    }, [token, division, month, year, gangCode, useHistoryDb, snapshotVersion, triggerPayrollRefresh]);
+    }, [token, division, month, year, gangCode, useHistoryDb, snapshotVersion, valuePriorityMode, triggerPayrollRefresh]);
 
     /**
      * processRawData: Transform raw API data → display rows with PROGRESSIVE rendering.

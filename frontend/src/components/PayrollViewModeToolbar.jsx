@@ -5,11 +5,32 @@ const MODE_OPTIONS = [
     { id: 'detail', label: 'Semua' }
 ];
 
+const SOURCE_MODE_OPTIONS = [
+    {
+        id: 'non_db_ptrj',
+        label: 'Non DB_PTRJ',
+        state: 'Auto Buffer + Manual Adj',
+        title: 'Tunjangan auto-buffer dan premi/koreksi/potongan dari manual adjustment. Lembur tetap dari db_ptrj dan dihitung lewat lembur calculator.'
+    },
+    {
+        id: 'db_ptrj_only',
+        label: 'DB_PTRJ Only',
+        state: 'Nilai asli PTRJ',
+        title: 'Tampilkan nilai asli dari db_ptrj pada kolom yang sama.'
+    }
+];
+
+const normalizeSourceMode = (value) => (
+    String(value || '').trim().toLowerCase() === 'db_ptrj_only'
+        ? 'db_ptrj_only'
+        : 'non_db_ptrj'
+);
+
 export default function PayrollViewModeToolbar({
     mode = 'simple',
     focusLens = false,
     taxExpanded = false,
-    valuePriorityMode = 'smart',
+    valuePriorityMode = 'non_db_ptrj',
     isSeedingAutoBuffer = false,
     onModeChange = () => {},
     onFocusLensChange = () => {},
@@ -17,6 +38,8 @@ export default function PayrollViewModeToolbar({
     onValuePriorityModeChange = () => {},
     onSeedAutoBuffer = () => {}
 }) {
+    const sourceMode = normalizeSourceMode(valuePriorityMode);
+
     return (
         <div className="payroll-view-toolbar" role="toolbar" aria-label="Pengaturan tampilan tabel payroll">
             <div className="payroll-view-toolbar__section">
@@ -54,20 +77,21 @@ export default function PayrollViewModeToolbar({
 
             <div className="payroll-view-toolbar__section">
                 <span className="payroll-view-toolbar__label">Sumber Nilai</span>
-                <button
-                    type="button"
-                    className={`payroll-view-toolbar__button payroll-view-toolbar__button--dbptrj ${valuePriorityMode === 'db_ptrj_only' ? 'is-active' : ''}`}
-                    aria-pressed={valuePriorityMode === 'db_ptrj_only'}
-                    title={valuePriorityMode === 'db_ptrj_only' ? 'Kembali ke Auto Buffer: manual adjustment/auto buffer diprioritaskan' : 'Tampilkan nilai asli dari db_ptrj pada kolom yang sama'}
-                    onClick={() => onValuePriorityModeChange(valuePriorityMode === 'db_ptrj_only' ? 'smart' : 'db_ptrj_only')}
-                >
-                    <span className="payroll-view-toolbar__button-copy">
-                        {valuePriorityMode === 'db_ptrj_only' ? 'DB_PTRJ Aktif' : 'Auto Buffer Aktif'}
-                    </span>
-                    <span className="payroll-view-toolbar__button-state">
-                        {valuePriorityMode === 'db_ptrj_only' ? 'Klik: Auto Buffer' : 'Klik: DB_PTRJ'}
-                    </span>
-                </button>
+                <div className="payroll-view-toolbar__group" role="group" aria-label="Sumber nilai payroll">
+                    {SOURCE_MODE_OPTIONS.map((option) => (
+                        <button
+                            key={option.id}
+                            type="button"
+                            className={`payroll-view-toolbar__button payroll-view-toolbar__button--source payroll-view-toolbar__button--source-${option.id} ${sourceMode === option.id ? 'is-active' : ''}`}
+                            aria-pressed={sourceMode === option.id}
+                            title={option.title}
+                            onClick={() => onValuePriorityModeChange(option.id)}
+                        >
+                            <span className="payroll-view-toolbar__button-copy">{option.label}</span>
+                            <span className="payroll-view-toolbar__button-state">{option.state}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="payroll-view-toolbar__section">

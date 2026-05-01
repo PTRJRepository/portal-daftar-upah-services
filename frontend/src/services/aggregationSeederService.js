@@ -65,6 +65,18 @@ export async function seedAutoBufferManualAdjustments(token, payload) {
 }
 
 /**
+ * Update sync status for manual adjustments after Plantware input is verified in PR_ADTRANS.
+ */
+export async function seedManualAdjustmentSyncStatus(token, payload) {
+    const response = await axios.post('payroll/manual-adjustment/seed-sync-status', payload, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+    return response.data;
+}
+
+/**
  * Fetch aggregation history
  */
 export async function fetchAggregationHistory(token, month = null, year = null, division = null) {

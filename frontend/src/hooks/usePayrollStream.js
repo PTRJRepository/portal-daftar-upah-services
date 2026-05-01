@@ -33,7 +33,7 @@ import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
  *
  * @returns {Object} stream state
  */
-export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, valuePriorityMode = 'smart', snapshotVersion, refreshTrigger = 0, enabled }) {
+export function usePayrollStream({ token, division, month, year, gangPrefix, gangCode, useHistoryDb, valuePriorityMode = 'non_db_ptrj', snapshotVersion, refreshTrigger = 0, enabled }) {
     const effectiveGangPrefix = resolveEffectiveGangPrefix(gangCode, gangPrefix, division);
 
     // State for gangs - array that grows progressively

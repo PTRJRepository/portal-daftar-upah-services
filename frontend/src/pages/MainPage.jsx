@@ -114,7 +114,7 @@ export default function MainPage({ lockedDiv = null }) {
 
   // Edit Mode State (New)
   const [isEditMode, setIsEditMode] = useState(false)
-  const [valuePriorityMode, setValuePriorityMode] = useState('smart')
+  const [valuePriorityMode, setValuePriorityMode] = useState('non_db_ptrj')
 
   // Period Slider Mode State (enabled by default)
   const [usePeriodSlider, setUsePeriodSlider] = useState(true)

@@ -975,7 +975,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const skipHarvest = true;
 
             // [DEBUG] Log input parameters
-            console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} valuePriorityMode=${valuePriorityMode || 'smart'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
+            console.log(`[PayrollRoutes] /report/division-raw-tree | div=${divisionCode} month=${month} year=${year} gangPrefix=${gangPrefix || 'none'} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} DB_PROFILE=${Config.DB_PROFILE} useHistory=${useHistoryDb} RUN_MODE=${Config.RUN_MODE}`);
 
             const result = await dataExtractorService.extractPayrollData(
                 month,
@@ -1751,7 +1751,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [OPTIMIZATION] Skip heavy bunches data (tandan) for the main table view
             const skipHarvest = true;
 
-            console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} valuePriorityMode=${valuePriorityMode || 'smart'} useHistory=${useHistoryDb}`);
+        console.log(`[PayrollRoutes] /locked/report/raw-tree | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} gangPrefix=${gangPrefix} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} useHistory=${useHistoryDb}`);
 
             const result = await dataExtractorService.extractPayrollData(
                 month,
@@ -2561,7 +2561,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
         }
 
-        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'smart'} useHistory=${useHistoryDb}`);
+        console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
         let cancelled = false;

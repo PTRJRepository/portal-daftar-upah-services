@@ -128,8 +128,7 @@ function getTotalColumnStyle(field) {
 function resolveValuePriorityModeLabel(mode) {
     const normalized = String(mode || '').trim().toLowerCase();
     if (normalized === 'db_ptrj_only') return 'DB PTRJ Saja';
-    if (normalized === 'manual_buffer_only') return 'Adjustment + Buffer Saja';
-    return 'Smart (Adjustment + Buffer Prioritas)';
+    return 'Non DB_PTRJ (Auto Buffer + Manual Adjustment)';
 }
 
 /**
@@ -489,7 +488,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     }];
 
     // === GENERATE FILE ===
-    const sourceModeToken = String(meta?.valuePriorityMode || 'smart').trim().toLowerCase() || 'smart';
+    const sourceModeToken = String(meta?.valuePriorityMode || 'non_db_ptrj').trim().toLowerCase() || 'non_db_ptrj';
     const fileName = `Daftar_Upah_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}_SRC-${sourceModeToken}.xlsx`;
 
     const buffer = await workbook.xlsx.writeBuffer();
