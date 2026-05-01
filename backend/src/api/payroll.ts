@@ -36,6 +36,41 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
     return resolveUserFromHeaders(headers, authService, { allowSystemToken: true });
 }
 
+const ADJUSTMENT_NAME_OPTION_TYPES = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"] as const;
+type AdjustmentNameOptionType = typeof ADJUSTMENT_NAME_OPTION_TYPES[number];
+
+const ADJUSTMENT_TYPE_CATEGORY_MAP: Record<AdjustmentNameOptionType, string> = {
+    PREMI: "premi",
+    POTONGAN_KOTOR: "koreksi",
+    POTONGAN_BERSIH: "potongan_upah_bersih"
+};
+
+function parseAdjustmentNameOptionTypes(value?: string): { types: AdjustmentNameOptionType[]; invalid: string[] } {
+    const aliases: Record<string, AdjustmentNameOptionType> = {
+        PREMI: "PREMI",
+        KOREKSI: "POTONGAN_KOTOR",
+        POTONGAN_KOTOR: "POTONGAN_KOTOR",
+        POTONGAN_UPAH_KOTOR: "POTONGAN_KOTOR",
+        POTONGAN_BERSIH: "POTONGAN_BERSIH",
+        POTONGAN_UPAH_BERSIH: "POTONGAN_BERSIH"
+    };
+    const rawTypes = String(value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+    if (rawTypes.length === 0) return { types: [...ADJUSTMENT_NAME_OPTION_TYPES], invalid: [] };
+
+    const invalid: string[] = [];
+    const types: AdjustmentNameOptionType[] = [];
+    for (const rawType of rawTypes) {
+        const resolved = aliases[rawType];
+        if (!resolved) {
+            invalid.push(rawType);
+            continue;
+        }
+        if (!types.includes(resolved)) types.push(resolved);
+    }
+
+    return { types, invalid };
+}
+
 export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .derive(async ({ headers }) => {
         try {
@@ -242,6 +277,71 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             categories: t.Optional(t.String())
         })
     })
+    .get("/manual-adjustment/adjustment-name-options/by-api-key", async ({ query, headers, set }) => {
+        try {
+            if (!hasValidApiKeyBypass(headers as Record<string, string | undefined>)) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized: invalid x-api-key" };
+            }
+
+            const parsedTypes = parseAdjustmentNameOptionTypes(query.adjustment_type || query.adjustment_types);
+            if (parsedTypes.invalid.length > 0) {
+                set.status = 400;
+                return {
+                    success: false,
+                    error: `adjustment_type tidak valid: ${parsedTypes.invalid.join(", ")}`,
+                    allowed_adjustment_types: [...ADJUSTMENT_NAME_OPTION_TYPES]
+                };
+            }
+
+            const { taskCodeOptionService } = await import("../services/taskCodeOptionService");
+            const categories = parsedTypes.types.map((type) => ADJUSTMENT_TYPE_CATEGORY_MAP[type]);
+            const rawOptions = await taskCodeOptionService.searchAutomationAdjustmentOptions({
+                search: query.search || undefined,
+                divisionCode: query.division_code || undefined,
+                limit: query.limit ? Number(query.limit) : undefined,
+                categories
+            });
+            const typeSet = new Set(parsedTypes.types);
+            const data = rawOptions
+                .filter((option) => typeSet.has(option.adjustment_type as AdjustmentNameOptionType))
+                .map((option) => ({
+                    ...option,
+                    ad_code: option.task_desc
+                }));
+            const byType = Object.fromEntries(parsedTypes.types.map((type) => [
+                type,
+                data.filter((option) => option.adjustment_type === type)
+            ]));
+            const adjustmentNamesByType = Object.fromEntries(parsedTypes.types.map((type) => [
+                type,
+                Array.from(new Set(data
+                    .filter((option) => option.adjustment_type === type)
+                    .map((option) => option.adjustment_name)))
+            ]));
+
+            return {
+                success: true,
+                count: data.length,
+                adjustment_types: parsedTypes.types,
+                by_type: byType,
+                adjustment_names_by_type: adjustmentNamesByType,
+                data
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/adjustment-name-options/by-api-key error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            adjustment_type: t.Optional(t.String()),
+            adjustment_types: t.Optional(t.String()),
+            search: t.Optional(t.String()),
+            division_code: t.Optional(t.String()),
+            limit: t.Optional(t.String())
+        })
+    })
     // --- Manual Adjustment Presets ---
     .get("/manual-adjustment-presets", async ({ query, set }) => {
         try {
@@ -403,7 +503,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { success: false, error: "period_year tidak valid" };
             }
 
-            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const {
+                manualAdjustmentService,
+                buildManualAdjustmentApiResponseRows
+            } = await import("../services/manualAdjustmentService");
+            const metadataOnly = ["1", "true", "yes", "metadata"].includes(String(query.metadata_only || query.has_metadata || "").trim().toLowerCase());
             const rows = await manualAdjustmentService.getAdjustments(
                 periodMonth,
                 periodYear,
@@ -411,7 +515,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 query.emp_code || undefined,
                 query.division_code || undefined,
                 query.adjustment_type || undefined,
-                query.adjustment_name || undefined
+                query.adjustment_name || undefined,
+                metadataOnly
             );
 
             return { success: true, count: rows.length, data: rows };
@@ -428,7 +533,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             emp_code: t.Optional(t.String()),
             division_code: t.Optional(t.String()),
             adjustment_type: t.Optional(t.String()),
-            adjustment_name: t.Optional(t.String())
+            adjustment_name: t.Optional(t.String()),
+            metadata_only: t.Optional(t.String()),
+            has_metadata: t.Optional(t.String())
         })
     })
     .post("/manual-adjustment", async ({ body, currentUser, set }) => {
@@ -565,7 +672,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 return { success: false, error: "period_year tidak valid" };
             }
 
-            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const {
+                manualAdjustmentService,
+                buildManualAdjustmentApiResponseRows
+            } = await import("../services/manualAdjustmentService");
+            const metadataOnly = ["1", "true", "yes", "metadata"].includes(String(query.metadata_only || query.has_metadata || "").trim().toLowerCase());
             const rows = await manualAdjustmentService.getAdjustments(
                 periodMonth,
                 periodYear,
@@ -573,13 +684,29 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 query.emp_code || undefined,
                 query.division_code || undefined,
                 query.adjustment_type || undefined,
-                query.adjustment_name || undefined
+                query.adjustment_name || undefined,
+                metadataOnly
             );
+
+            if (String(query.view || "").trim().toLowerCase() === "grouped") {
+                const { buildGroupedManualAdjustmentResponse } = await import("../services/manualAdjustmentService");
+                const grouped = buildGroupedManualAdjustmentResponse(rows);
+                return {
+                    success: true,
+                    view: "grouped",
+                    metadata_only: metadataOnly,
+                    count: rows.length,
+                    summary: grouped.summary,
+                    data: grouped.divisions
+                };
+            }
 
             return {
                 success: true,
+                view: "flat",
+                metadata_only: metadataOnly,
                 count: rows.length,
-                data: rows
+                data: buildManualAdjustmentApiResponseRows(rows)
             };
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment/by-api-key GET error:", e);
@@ -594,7 +721,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             emp_code: t.Optional(t.String()),
             division_code: t.Optional(t.String()),
             adjustment_type: t.Optional(t.String()),
-            adjustment_name: t.Optional(t.String())
+            adjustment_name: t.Optional(t.String()),
+            view: t.Optional(t.String()),
+            metadata_only: t.Optional(t.String()),
+            has_metadata: t.Optional(t.String())
         })
     })
     .post("/manual-adjustment/by-api-key", async ({ body, headers, set }) => {
@@ -1097,6 +1227,178 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             filters: t.Optional(t.Array(t.String())),
             sync_mode: t.Optional(t.String()),
             created_by: t.Optional(t.String())
+        })
+    })
+
+    // ─── Verification Endpoints ─────────────────────────────────────────────
+
+    /**
+     * @route POST /payroll/verify/full-by-api-key
+     * @description Full verification across ALL data sources (PR_ADTRANS, PR_TASKREGLN, HR_PAYROLL, HR_EMPLOYEE, manual adjustments).
+     * @access Public (with X-API-Key)
+     */
+    .post("/verify/full-by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, error: "Invalid API key" };
+            }
+
+            const { payrollVerificationService } = await import("../services/payrollVerificationService");
+            const result = await payrollVerificationService.verifyFullPayroll(
+                Number(body.period_month),
+                Number(body.period_year),
+                String(body.division_code),
+                body.gang_code || undefined,
+                body.emp_codes?.length ? body.emp_codes : undefined,
+                body.source_filter?.length ? body.source_filter : undefined
+            );
+
+            return { success: true, data: result };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] verify/full error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            gang_code: t.Optional(t.String()),
+            emp_codes: t.Optional(t.Array(t.String())),
+            source_filter: t.Optional(t.Array(t.String()))
+        })
+    })
+
+    /**
+     * @route POST /payroll/verify/granular-adtrans/by-api-key
+     * @description Granular per-DocDesc verification for PR_ADTRANS.
+     * @access Public (with X-API-Key)
+     */
+    .post("/verify/granular-adtrans/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, error: "Invalid API key" };
+            }
+
+            const { manualAdjustmentVerificationService } = await import("../services/manualAdjustmentVerificationService");
+            const result = await manualAdjustmentVerificationService.verifyGranularAdtrans(
+                Number(body.period_month),
+                Number(body.period_year),
+                String(body.division_code),
+                body.adjustment_types || ["PREMI", "POTONGAN_KOTOR", "AUTO_BUFFER"],
+                body.emp_codes?.length ? body.emp_codes : undefined,
+                body.include_doc_desc_details !== false
+            );
+
+            return { success: true, data: result };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] verify/granular-adtrans error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            adjustment_types: t.Optional(t.Array(t.String())),
+            emp_codes: t.Optional(t.Array(t.String())),
+            include_doc_desc_details: t.Optional(t.Boolean())
+        })
+    })
+
+    /**
+     * @route POST /payroll/verify/consistency/by-api-key
+     * @description Check adjustment_name = DocDesc consistency between extend_db_ptrj and db_ptrj.
+     * @access Public (with X-API-Key)
+     */
+    .post("/verify/consistency/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, error: "Invalid API key" };
+            }
+
+            const { manualAdjustmentVerificationService } = await import("../services/manualAdjustmentVerificationService");
+            const result = await manualAdjustmentVerificationService.verifyAdjustmentNameConsistency(
+                Number(body.period_month),
+                Number(body.period_year),
+                String(body.division_code),
+                (body.check_scope as "all" | "auto_buffer" | "manual") || "all"
+            );
+
+            return { success: true, data: result };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] verify/consistency error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.String(),
+            check_scope: t.Optional(t.String())
+        })
+    })
+
+    /**
+     * @route POST /payroll/manual-adjustment/save-verified/by-api-key
+     * @description Save manual adjustment with verification against db_ptrj.
+     *              verify_mode: "warn" (default) | "strict" | "skip"
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/save-verified/by-api-key", async ({ body, headers, set }) => {
+        try {
+            const apiKey = headers["x-api-key"] || headers["X-API-Key"];
+            if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+                set.status = 401;
+                return { success: false, error: "Invalid API key" };
+            }
+
+            const { manualAdjustmentVerificationService } = await import("../services/manualAdjustmentVerificationService");
+            const result = await manualAdjustmentVerificationService.saveVerifiedAdjustment(
+                body,
+                "api_key_user",
+                (body.verify_mode as "warn" | "strict" | "skip") || "warn"
+            );
+
+            if (result.verification?.status === "MISMATCH" && body.verify_mode === "strict") {
+                set.status = 409;
+                return { success: false, error: "VERIFICATION_FAILED", verification: result.verification };
+            }
+
+            return { success: true, id: result.id, action: result.action, verification: result.verification };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/save-verified error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            emp_code: t.String(),
+            nik: t.Optional(t.String()),
+            emp_name: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            division_code: t.String(),
+            adjustment_type: t.String(),
+            adjustment_name: t.String(),
+            amount: t.Number(),
+            ad_code: t.Optional(t.String()),
+            task_code: t.Optional(t.String()),
+            base_task_code: t.Optional(t.String()),
+            task_desc: t.Optional(t.String()),
+            remarks: t.Optional(t.String()),
+            metadata_json: t.Optional(t.String()),
+            verify_mode: t.Optional(t.String())
         })
     })
 

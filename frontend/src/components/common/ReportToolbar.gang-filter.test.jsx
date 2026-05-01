@@ -56,4 +56,51 @@ describe('ReportToolbar gang filter', () => {
         });
         container.remove();
     });
+
+    it('keeps group switching available while table controls are loading', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const handleGangPrefixChange = vi.fn();
+        const handleGangChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <ReportToolbar
+                    division="PG1A"
+                    divisions={[]}
+                    month={4}
+                    year={2026}
+                    gangCode="ALL"
+                    gangs={[
+                        { gang_code: 'A1H', description: 'Group 1' },
+                        { gang_code: 'A2H', description: 'Group 2' }
+                    ]}
+                    gangPrefix="1"
+                    onGangPrefixChange={handleGangPrefixChange}
+                    onGangChange={handleGangChange}
+                    onMonthYearChange={() => {}}
+                    disableControls={true}
+                />
+            );
+        });
+
+        const selects = container.querySelectorAll('select');
+        const groupSelect = selects[0];
+
+        expect(groupSelect.disabled).toBe(false);
+
+        await act(async () => {
+            groupSelect.value = '2';
+            groupSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        expect(handleGangPrefixChange).toHaveBeenCalledWith('2');
+        expect(handleGangChange).toHaveBeenCalledWith('ALL');
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+    });
 });

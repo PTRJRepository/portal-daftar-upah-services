@@ -48,6 +48,13 @@
     "input_type": "kendaraan",
     "is_active": true
   },
+   {
+    "adjustment_name": "PREMI ANGKUT",
+    "ad_code": "(AL3PT2305P1A) (AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+    "input_type": "kendaraan",
+    "is_active": true
+  },
   {
     "adjustment_name": "PREMI TBS",
     "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",

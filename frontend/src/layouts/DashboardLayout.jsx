@@ -6,7 +6,8 @@ import { getBasePath } from '../utils/prodModeUtils';
 import {
     Home, FileText, BarChart2, DollarSign, TrendingUp, Users,
     Settings, ChevronRight, LogOut, ShieldCheck,
-    PieChart, Menu, X, Database, CalendarDays, ChevronDown, ChevronUp
+    PieChart, Menu, X, Database, CalendarDays, ChevronDown, ChevronUp,
+    CheckCircle
 } from 'lucide-react';
 
 // ─── Design System: Corporate Utility ────────────────────────────────────────
@@ -338,6 +339,7 @@ const DashboardLayout = () => {
             { to: '/analysis', icon: TrendingUp, label: 'Analisa Lembur & Premi', description: 'Lembur dan premi detail', indent: true },
             { to: '/executive', icon: BarChart2, label: 'Executive Analysis', description: 'Analisis eksekutif', indent: true },
             { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak', indent: true },
+            { to: '/data-verification', icon: CheckCircle, label: 'Data Verification', description: 'Verifikasi konsistensi data', indent: true },
         ]},
     ];
 

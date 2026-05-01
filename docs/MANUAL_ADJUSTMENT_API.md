@@ -91,6 +91,8 @@ curl -X POST "http://10.0.0.110:8001/v1/query" \
 | `division_code` | string | ❌ | Filter per division |
 | `adjustment_type` | string | ❌ | Filter per type: `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, `PENDAPATAN_LAINNYA`, `AUTO_BUFFER`, `MANUAL` (alias = semua kecuali AUTO_BUFFER). Mendukung comma-separated, e.g. `PREMI,POTONGAN_KOTOR` |
 | `adjustment_name` | string | ❌ | Filter per nama (partial match) |
+| `view` | string | ❌ | Format response. Default `flat`. Pakai `grouped` untuk response siap auto input: division -> gang -> employee -> premiums/adjustments. |
+| `metadata_only` | string | ❌ | Jika `true`, hanya ambil row yang memiliki `metadata_json`. Ini disarankan untuk data premi detail terbaru; row tanpa metadata adalah format lama. |
 
 **`adjustment_type` Values:**
 
@@ -178,13 +180,43 @@ Jika API key valid, request akan mendapat akses **ADMIN** dengan semua divisions
 
 ## ADCode untuk Manual Adjustment
 
-Manual adjustment kategori `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `PENDAPATAN_LAINNYA` wajib membawa `ad_code`. Hanya `AUTO_BUFFER` yang boleh disimpan tanpa `ad_code`.
+Manual adjustment kategori `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `PENDAPATAN_LAINNYA` wajib membawa `ad_code`. Hanya `AUTO_BUFFER` yang boleh disimpan tanpa `ad_code`. Untuk automation yang memakai endpoint `adjustment-name-options/by-api-key`, isi `ad_code` dengan `task_desc` dari response; kode raw tetap ada di `task_code`/`base_task_code`.
 
 Remarks disimpan dengan format:
 
 ```text
 AD CODE: <adcode> - <taskdesc>
 ```
+
+Parser response mendukung format remarks lama/automation berikut untuk mengisi `ad_code` dan `ad_code_desc` saat kolom structured (`ad_code`, `task_code`, `base_task_code`, `task_desc`) masih kosong:
+
+```text
+<adjustment_name> | <adcode> - <taskdesc> | <amount> | sync:<status> | match:<status>
+<adjustment_name> | <taskdesc> - <taskdesc> | <amount> | sync:<status> | match:<status>
+```
+
+Jika segmen ADCode/TaskDesc diawali `(AL)` atau `(DE)`, parser memperlakukannya sebagai **TaskDesc display**, bukan kode ADCode pendek. Contoh:
+
+```text
+PREMI TBS | (AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING) - (AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING) | 423363 | sync:MANUAL | match:MANUAL
+```
+
+Parser akan menghasilkan:
+
+```json
+{
+  "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+  "ad_code_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)"
+}
+```
+
+**Catatan parsing remarks:**
+
+- Tanda minus dalam TaskDesc seperti `HARVESTING LABOUR - HARVESTING` tidak dianggap sebagai pemisah ADCode.
+- Pemisah TaskDesc display hanya valid jika setelah ` - ` ada awalan `(AL)` atau `(DE)`.
+- Parser remarks bekerja secara berurutan: jika kolom structured (`ad_code`, `task_code`, `base_task_code`, `task_desc`) sudah terisi, nilainya digunakan langsung; baru kemudian fallback ke parse remarks.
+- Format `AD CODE: <adcode> - <taskdesc>` di remarks juga tetap didukung untuk backward compatibility.
+- Format `AD CODE: <taskdesc>` (tanpa kode pendek) juga didukung untuk remarks yang hanya menyimpan TaskDesc display saja.
 
 Daftar ADCode diambil dari cache JSON `backend/data/taskcode_mapping_db_ptrj.json` yang bersumber dari `PR_TASKCODE` dengan filter:
 
@@ -260,7 +292,7 @@ curl -s "http://localhost:8002/payroll/manual-adjustment/automation-options/by-a
 ```json
 {
   "success": true,
-  "count": 3,
+  "count": 2,
   "data": [
     {
       "category": "premi",
@@ -299,6 +331,103 @@ curl -s "http://localhost:8002/payroll/manual-adjustment/automation-options/by-a
 }
 ```
 
+### GET `/payroll/manual-adjustment/adjustment-name-options/by-api-key`
+
+Endpoint khusus untuk automation mengambil daftar `adjustment_name` yang boleh dipakai saat input manual adjustment. Ini lebih langsung daripada `automation-options` karena filter memakai `adjustment_type` asli: `PREMI`, `POTONGAN_KOTOR`, dan `POTONGAN_BERSIH`.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `adjustment_type` | string | ❌ | Comma separated. Default semua: `PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH`. Alias: `KOREKSI` = `POTONGAN_KOTOR`, `POTONGAN_UPAH_BERSIH` = `POTONGAN_BERSIH`. |
+| `division_code` | string | ❌ | Filter estate/lokasi sumber seperti `AB1`, `P1A`, `P2A`. |
+| `search` | string | ❌ | Cari berdasarkan nama, ADCode, TaskCode, atau TaskDesc. |
+| `limit` | string | ❌ | Maksimal data, default 100, maksimum 200. |
+
+**Ambil semua nama per tipe:**
+
+```bash
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+**Ambil hanya premi:**
+
+```bash
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=PREMI&limit=200" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+**Ambil potongan upah kotor dan bersih:**
+
+```bash
+curl -s "http://localhost:8002/payroll/manual-adjustment/adjustment-name-options/by-api-key?division_code=AB1&adjustment_type=POTONGAN_KOTOR,POTONGAN_BERSIH&limit=200" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 3,
+  "adjustment_types": ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+  "adjustment_names_by_type": {
+    "PREMI": ["PREMI PRUNING"],
+    "POTONGAN_KOTOR": ["KOREKSI PANEN"],
+    "POTONGAN_BERSIH": ["POTONGAN PINJAMAN"]
+  },
+  "by_type": {
+    "PREMI": [
+      {
+        "category": "premi",
+        "adjustment_type": "PREMI",
+        "adjustment_name": "PREMI PRUNING",
+        "ad_code": "(AL) PREMI PRUNING",
+        "description": "PREMI PRUNING",
+        "task_code": "AL0001AB1",
+        "task_desc": "(AL) PREMI PRUNING",
+        "base_task_code": "AL0001",
+        "loc_code": "AB1"
+      }
+    ],
+    "POTONGAN_KOTOR": [
+      {
+        "category": "koreksi",
+        "adjustment_type": "POTONGAN_KOTOR",
+        "adjustment_name": "KOREKSI PANEN",
+        "ad_code": "(DE) POTONGAN PREMI",
+        "description": "KOREKSI PANEN",
+        "task_code": "DE0004AB1",
+        "task_desc": "(DE) POTONGAN PREMI",
+        "base_task_code": "DE0004",
+        "loc_code": "AB1"
+      }
+    ],
+    "POTONGAN_BERSIH": [
+      {
+        "category": "potongan_upah_bersih",
+        "adjustment_type": "POTONGAN_BERSIH",
+        "adjustment_name": "POTONGAN PINJAMAN",
+        "ad_code": "(DE) POTONGAN PINJAMAN",
+        "description": "POTONGAN PINJAMAN",
+        "task_code": "DE0100AB1",
+        "task_desc": "(DE) POTONGAN PINJAMAN",
+        "base_task_code": "DE0100",
+        "loc_code": "AB1"
+      }
+    ]
+  },
+  "data": [
+    { "adjustment_type": "PREMI", "adjustment_name": "PREMI PRUNING", "ad_code": "(AL) PREMI PRUNING" },
+    { "adjustment_type": "POTONGAN_KOTOR", "adjustment_name": "KOREKSI PANEN", "ad_code": "(DE) POTONGAN PREMI" },
+    { "adjustment_type": "POTONGAN_BERSIH", "adjustment_name": "POTONGAN PINJAMAN", "ad_code": "(DE) POTONGAN PINJAMAN" }
+  ]
+}
+```
+
+Gunakan `adjustment_names_by_type` jika hanya butuh list nama. Untuk endpoint ini, field `ad_code` sengaja diisi hanya dari `task_desc` karena automation membutuhkan ADCode display berdasarkan TaskDesc, bukan kode raw seperti `AL0001`/`DE0004`. `task_code`, `base_task_code`, dan `task_desc` tetap dikirim untuk trace sumber.
+
 Saat agent menyimpan manual adjustment, pakai:
 
 - `adjustment_type` dari response.
@@ -320,10 +449,11 @@ Saat agent menyimpan manual adjustment, pakai:
   "adjustment_type": "PREMI",
   "adjustment_name": "PREMI MANUAL",
   "amount": 100000,
-  "ad_code": "AL0001",
-  "task_code": "AL0001",
+  "ad_code": "(AL) BENEFIT IN KIND - ACCOMMODATION",
+  "task_code": "AL0001AB1",
+  "base_task_code": "AL0001",
   "task_desc": "(AL) BENEFIT IN KIND - ACCOMMODATION",
-  "remarks": "AD CODE: AL0001 - (AL) BENEFIT IN KIND - ACCOMMODATION"
+  "remarks": "AD CODE: (AL) BENEFIT IN KIND - ACCOMMODATION"
 }
 ```
 
@@ -366,6 +496,8 @@ Alias yang didukung: `P1A/PG1A/1A`, `P1B/PG1B/1B`, `P2A/PG2A/2A`,
 | `division_code` | string | ❌ | Filter per division |
 | `adjustment_type` | string | ❌ | Filter per type: `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, `PENDAPATAN_LAINNYA`, `AUTO_BUFFER`, `MANUAL` (alias = semua kecuali AUTO_BUFFER). Mendukung comma-separated, e.g. `PREMI,POTONGAN_KOTOR` |
 | `adjustment_name` | string | ❌ | Filter per nama (partial match) |
+| `view` | string | ❌ | Format response. Default `flat`. Pakai `grouped` untuk response siap auto input: division -> gang -> employee -> premiums/adjustments. |
+| `metadata_only` | string | ❌ | Jika `true`, hanya ambil row yang memiliki `metadata_json`. Ini disarankan untuk data premi detail terbaru; row tanpa metadata adalah format lama. Alias: `has_metadata=true`. |
 
 **Response Fields Penting untuk Agent:**
 
@@ -375,11 +507,15 @@ Alias yang didukung: `P1A/PG1A/1A`, `P1B/PG1B/1B`, `P2A/PG2A/2A`,
 | `emp_name` | Nama karyawan dari `HR_EMPLOYEE.EmpName` jika tersedia. Field ini bukan NIK. |
 | `nik` | NIK/KTP karyawan dari `HR_EMPLOYEE.NewICNo` jika tersedia. |
 | `gang_code` | Gang/asistensi asal row manual adjustment. Field ini wajib dipakai agent saat menampilkan atau mengelompokkan detail karyawan. |
-| `division_code` | Kode divisi yang tersimpan di row. Setelah normalisasi filter, response bisa berisi campuran 3-kode dan 4-kode, misalnya `P2A` dan `PG2A`. |
+| `estate` / `estate_code` | Kode estate/lokasi yang sebelumnya tersimpan sebagai `division_code` di DB, misalnya `AB1`, `P2A`, atau `PG2A`. |
+| `division_code` | Kode divisi turunan dari `gang_code`: ambil 2 karakter awal gang lalu pisahkan spasi. Contoh `C2H` menjadi `C 2`, `G1H` menjadi `G 1`. |
 | `adjustment_type` | Kategori row: `AUTO_BUFFER`, `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, atau `PENDAPATAN_LAINNYA`. |
 | `adjustment_name` | Nama adjustment/kolom. |
-| `amount` | Nominal adjustment. |
+| `ad_code` | ADCode terpisah. Diambil dari kolom `ad_code`/`base_task_code`/`task_code`; jika kosong akan diparse dari `remarks`, misalnya `AD CODE: AL0001 - ...` atau `PREMI | AL3PM0601P1A - ...`. |
+| `ad_code_desc` | Deskripsi ADCode terpisah dari `task_desc` atau hasil parse `remarks`. |
+| `amount` | Total nominal row adjustment di `payroll_manual_adjustments`. Untuk row yang punya `metadata_json`, field ini adalah agregat/total row, bukan detail transaksi tunggal. Jangan pakai field ini sebagai sumber auto input per subblok. |
 | `remarks` | Catatan sinkronisasi/manual edit, termasuk ADCode jika ada. |
+| `metadata_json` | JSON string detail input jika ada, misalnya detail `blok`, `exp`, `kendaraan`, atau `blok,exp`. Inilah sumber detail transaksi terbaru. |
 
 **Terminologi identitas karyawan di codebase ini:**
 
@@ -392,6 +528,244 @@ Alias yang didukung: `P1A/PG1A/1A`, `P1B/PG1B/1B`, `P2A/PG2A/2A`,
 Catatan penting: saat menyimpan manual adjustment, backend me-resolve input `emp_code`/`nik` ke identitas HR lalu menyimpan `emp_code`, `nik`, dan `emp_name`. Namun kode `saveAdjustment()` masih memprioritaskan `emp_name` dari request sebelum nama hasil resolve HR. Jadi jika caller/agent mengirim NIK numeric di field `emp_name`, nilai itu bisa ikut tersimpan sebagai `emp_name`. Secara konsep data, itu salah isi payload; `emp_name` seharusnya nama dari `HR_EMPLOYEE.EmpName`, sementara NIK harus dikirim di field `nik`.
 
 Catatan: endpoint data manual adjustment (`/manual-adjustment/by-api-key` dan `/manual-adjustment`) selalu mengembalikan `gang_code` pada setiap row data karyawan. Endpoint master opsi seperti `taskcode-options`, `automation-options`, dan `manual-adjustment-presets` bukan data karyawan, sehingga tidak memiliki `gang_code`.
+
+#### `view=grouped` untuk Auto Input per Employee
+
+Pakai `view=grouped` jika agent perlu menginput ulang/otomasi per nama orang. Response akan mengelompokkan data dari atas ke bawah:
+
+```text
+estate -> gang -> employee -> premiums/adjustments -> detail transaksi
+```
+
+Filter tetap sama seperti response flat. Query parameter `division_code` tetap berarti estate/lokasi sumber seperti `AB1`; pada response, `estate` menyimpan `AB1`, sedangkan `division_code` adalah hasil turunan dari `gang_code`.
+
+Untuk auto input premi detail terbaru, gunakan:
+
+```text
+view=grouped&adjustment_type=PREMI&metadata_only=true
+```
+
+`metadata_only=true` membuang row lama yang tidak punya `metadata_json`. Alias yang sama: `has_metadata=true`.
+
+**Kontrak penting untuk auto input detail transaksi:**
+
+- Gunakan `employee.premium_transactions[]` sebagai sumber utama auto input. Satu item di array ini = satu detail transaksi dari `metadata_json`, misalnya satu subblok, satu kendaraan, atau satu expense.
+- Jangan memakai `premiums[].amount`, `adjustments[].amount`, atau row flat `amount` sebagai detail transaksi. Field itu adalah total row di DB. Contoh `PREMI PRUNING` amount `504900` bisa berasal dari beberapa subblok di metadata.
+- Untuk metadata `input_type = "blok"`, nilai per detail diambil dari `metadata_json.items[].jumlah`, lalu endpoint menampilkannya sebagai `premium_transactions[].jumlah` dan `premium_transactions[].amount`.
+- Untuk field subblok, endpoint menormalisasi simbol: `subblok` hanya berisi huruf dan angka. Contoh `P09/01-A` menjadi `P0901A`. Jika nilai asli mengandung simbol, nilai aslinya tetap tersedia di `subblok_raw`.
+- Untuk data lama tanpa `metadata_json`, endpoint tidak punya subblok/detail transaksi. Pakai `metadata_only=true` supaya automation hanya memproses data detail terbaru.
+- Tree preview yang benar tidak berhenti di baris `Division | Gang | Employee | Type | Name | Amount`. Row seperti `AB1 | G1H | AHMAD DARYONO | PREMI | PREMI PRUNING | 504900` adalah total row; detail subbloknya harus dibaca dari `premium_transactions[]` atau `premiums[].detail_items[]`.
+
+**Urutan auto input yang disarankan:**
+
+```text
+for each estate in data:
+  for each gang in estate.gangs:
+    for each employee in gang.employees:
+      for each tx in employee.premium_transactions:
+        input employee tx.adjustment_name tx.subblok/tx.expense_code/tx.kendaraan tx.amount
+```
+
+**Filter umum:**
+
+```text
+# Satu divisi, semua gang
+period_month=4&period_year=2026&division_code=AB1&adjustment_type=PREMI&metadata_only=true&view=grouped
+
+# Satu gang
+period_month=4&period_year=2026&division_code=AB1&gang_code=G1H&adjustment_type=PREMI&metadata_only=true&view=grouped
+
+# Satu employee
+period_month=4&period_year=2026&emp_code=A0001&adjustment_type=PREMI&metadata_only=true&view=grouped
+```
+
+**Example Request:**
+
+```bash
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=AB1&adjustment_type=PREMI&metadata_only=true&view=grouped" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+**Response Shape:**
+
+```json
+{
+  "success": true,
+  "view": "grouped",
+  "metadata_only": true,
+  "count": 1,
+  "summary": {
+    "division_count": 1,
+    "gang_count": 1,
+    "employee_count": 1,
+    "adjustment_count": 1
+  },
+  "data": [
+    {
+      "estate": "AB1",
+      "estate_code": "AB1",
+      "employee_count": 1,
+      "gang_count": 1,
+      "adjustment_count": 1,
+      "premium_count": 1,
+      "total_amount": 504900,
+      "premium_total": 504900,
+      "gangs": [
+        {
+          "gang_code": "G1H",
+          "estate": "AB1",
+          "estate_code": "AB1",
+          "division_code": "G 1",
+          "employee_count": 1,
+          "adjustment_count": 1,
+          "premium_count": 1,
+          "employees": [
+            {
+              "emp_code": "A0001",
+              "nik": "1902050504860001",
+              "emp_name": "AHMAD DARYONO",
+              "gang_code": "G1H",
+              "estate": "AB1",
+              "estate_code": "AB1",
+              "division_code": "G 1",
+              "adjustment_count": 1,
+              "premium_count": 1,
+              "total_amount": 504900,
+              "premium_total": 504900,
+              "premium_transactions": [
+                {
+                  "transaction_index": 1,
+                  "adjustment_id": 1,
+                  "adjustment_type": "PREMI",
+                  "adjustment_name": "PREMI PRUNING",
+                  "emp_code": "A0001",
+                  "nik": "1902050504860001",
+                  "emp_name": "AHMAD DARYONO",
+                  "gang_code": "G1H",
+                  "estate": "AB1",
+                  "estate_code": "AB1",
+                  "division_code": "G 1",
+                  "ad_code": "AL3PM0601P1A",
+                  "ad_code_desc": "PREMI PRUNING",
+                  "detail_type": "blok",
+                  "subblok": "P0901",
+                  "subblok_raw": "P09/01",
+                  "jumlah": 304000,
+                  "amount": 304000
+                },
+                {
+                  "transaction_index": 2,
+                  "adjustment_id": 1,
+                  "adjustment_type": "PREMI",
+                  "adjustment_name": "PREMI PRUNING",
+                  "emp_code": "A0001",
+                  "nik": "1902050504860001",
+                  "emp_name": "AHMAD DARYONO",
+                  "gang_code": "G1H",
+                  "estate": "AB1",
+                  "estate_code": "AB1",
+                  "division_code": "G 1",
+                  "ad_code": "AL3PM0601P1A",
+                  "ad_code_desc": "PREMI PRUNING",
+                  "detail_type": "blok",
+                  "subblok": "P0902",
+                  "subblok_raw": "P09/02",
+                  "jumlah": 200900,
+                  "amount": 200900
+                }
+              ],
+              "premiums": [
+                {
+                  "id": 1,
+                  "adjustment_type": "PREMI",
+                  "adjustment_name": "PREMI PRUNING",
+                  "ad_code": "AL3PM0601P1A",
+                  "ad_code_desc": "PREMI PRUNING",
+                  "amount": 504900,
+                  "metadata_json": "{\"input_type\":\"blok\",\"items\":[{\"subblok\":\"P09/01\",\"gang_code\":\"G1H\",\"jumlah\":304000},{\"subblok\":\"P09/02\",\"gang_code\":\"G1H\",\"jumlah\":200900}],\"total_amount\":504900}",
+                  "metadata": {
+                    "input_type": "blok",
+                    "items": [
+                      { "subblok": "P09/01", "gang_code": "G1H", "jumlah": 304000 },
+                      { "subblok": "P09/02", "gang_code": "G1H", "jumlah": 200900 }
+                    ],
+                    "total_amount": 504900
+                  },
+                  "metadata_parse_error": null,
+                  "detail_items": [
+                    {
+                      "detail_type": "blok",
+                      "subblok": "P0901",
+                      "subblok_raw": "P09/01",
+                      "gang_code": "G1H",
+                      "jumlah": 304000,
+                      "amount": 304000
+                    },
+                    {
+                      "detail_type": "blok",
+                      "subblok": "P0902",
+                      "subblok_raw": "P09/02",
+                      "gang_code": "G1H",
+                      "jumlah": 200900,
+                      "amount": 200900
+                    }
+                  ]
+                }
+              ],
+              "adjustments": [
+                {
+                  "id": 1,
+                  "adjustment_type": "PREMI",
+                  "adjustment_name": "PREMI PRUNING",
+                  "ad_code": "AL3PM0601P1A",
+                  "ad_code_desc": "PREMI PRUNING",
+                  "amount": 504900,
+                  "metadata_parse_error": null,
+                  "detail_items": [
+                    { "detail_type": "blok", "subblok": "P0901", "subblok_raw": "P09/01", "gang_code": "G1H", "jumlah": 304000, "amount": 304000 },
+                    { "detail_type": "blok", "subblok": "P0902", "subblok_raw": "P09/02", "gang_code": "G1H", "jumlah": 200900, "amount": 200900 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Catatan response grouped:
+
+- `premium_transactions` adalah daftar datar per detail transaksi dari seluruh premi employee tersebut. Ini field utama untuk auto input per subblok/kendaraan/expense.
+- `premium_transactions[].amount` adalah nominal detail transaksi, sama dengan `jumlah` pada metadata jika metadata memakai field `jumlah`.
+- `estate` / `estate_code` adalah estate/lokasi seperti `AB1`; jangan dibaca sebagai division Plantware.
+- `division_code` di response adalah turunan dari `gang_code`, misalnya `C2H -> C 2` dan `G1H -> G 1`.
+- `ad_code` dan `ad_code_desc` sudah dipisahkan dari `remarks`; automation tidak perlu parse string remarks lagi.
+- `premiums` hanya berisi row `adjustment_type = "PREMI"` milik employee tersebut. `premiums[].amount` tetap total row.
+- `adjustments` berisi semua row adjustment employee tersebut sesuai filter request. Jika request `adjustment_type=PREMI`, isinya sama dengan row premi.
+- `metadata_json` tetap ditampilkan sebagai raw JSON string dari DB.
+- `metadata` adalah hasil parse `metadata_json` agar agent tidak perlu parse manual.
+- `detail_items` adalah bentuk datar dari detail transaksi di `metadata`, tersedia di setiap row premium/adjustment.
+- Row tanpa `metadata_json` dianggap data lama. Pakai `metadata_only=true` untuk fokus ke data detail terbaru saja.
+
+**Bentuk metadata yang dipecah menjadi detail transaksi:**
+
+| `metadata.input_type` | Sumber detail | Field nominal detail | Output di grouped response |
+|-----------------------|---------------|----------------------|----------------------------|
+| `blok` | `metadata.items[]` | `jumlah` atau `amount` | `premium_transactions[]` dengan `detail_type: "blok"`, `subblok` alphanumeric, `subblok_raw` jika asalnya mengandung simbol, `gang_code`, `jumlah`, `amount` |
+| `kendaraan` | `metadata.items[]` | `jumlah` atau `amount` | `premium_transactions[]` dengan `detail_type: "kendaraan"` plus field item kendaraan dari metadata |
+| `exp` | object metadata langsung atau `expense` | `amount`, `jumlah`, atau `total_amount` | `premium_transactions[]` dengan `detail_type: "exp"` plus field expense dari metadata |
+| `blok,exp` | `metadata.blok_items[]` + `metadata.expense` | `jumlah` atau `amount` | Gabungan detail `blok` dan `exp` dalam satu `premium_transactions[]` employee |
+
+Halaman testing lokal untuk endpoint ini tersedia di:
+
+```text
+Browser Automation/manual-adjustment-grouped-tester.html
+```
+
+Halaman tersebut menyediakan dropdown sederhana untuk `view`, `division_code`, `gang_code`, `adjustment_type`, periode, dan field optional lain. Tree preview harus menampilkan employee lalu dropdown/detail subblok dari `metadata_json` (`premium_transactions[]`/`detail_items[]`), bukan hanya total row `amount`.
 
 **Example:**
 

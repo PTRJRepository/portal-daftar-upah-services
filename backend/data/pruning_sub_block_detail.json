@@ -567,6 +567,645 @@
           }
         ]
       }
+      {
+        [
+  {
+    "Estate": "ARA",
+    "Gangs": [
+      {
+        "Gang": "F2H",
+        "Details": [
+          {
+            "Empcode": "F0290",
+            "Employee": "HERWAN JAYADI",
+            "SubBlok": "P0816",
+            "Amount": 57200
+          },
+          {
+            "Empcode": "F0290",
+            "Employee": "HERWAN JAYADI",
+            "SubBlok": "P0815",
+            "Amount": 119900
+          },
+          {
+            "Empcode": "F0290",
+            "Employee": "HERWAN JAYADI",
+            "SubBlok": "P0814",
+            "Amount": 114950
+          },
+          {
+            "Empcode": "F0290",
+            "Employee": "HERWAN JAYADI",
+            "SubBlok": "P0813",
+            "Amount": 116050
+          },
+          {
+            "Empcode": "F0329",
+            "Employee": "NURMAN",
+            "SubBlok": "P0816",
+            "Amount": 56100
+          },
+          {
+            "Empcode": "F0329",
+            "Employee": "NURMAN",
+            "SubBlok": "P0815",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0329",
+            "Employee": "NURMAN",
+            "SubBlok": "P0814",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0329",
+            "Employee": "NURMAN",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0202",
+            "Employee": "OPAN ZENDATO",
+            "SubBlok": "P0816",
+            "Amount": 49500
+          },
+          {
+            "Empcode": "F0202",
+            "Employee": "OPAN ZENDATO",
+            "SubBlok": "P0815",
+            "Amount": 119900
+          },
+          {
+            "Empcode": "F0202",
+            "Employee": "OPAN ZENDATO",
+            "SubBlok": "P0814",
+            "Amount": 118250
+          },
+          {
+            "Empcode": "F0202",
+            "Employee": "OPAN ZENDATO",
+            "SubBlok": "P0813",
+            "Amount": 119350
+          },
+          {
+            "Empcode": "F0155",
+            "Employee": "RUSLAN",
+            "SubBlok": "P0816",
+            "Amount": 57200
+          },
+          {
+            "Empcode": "F0155",
+            "Employee": "RUSLAN",
+            "SubBlok": "P0815",
+            "Amount": 118800
+          },
+          {
+            "Empcode": "F0155",
+            "Employee": "RUSLAN",
+            "SubBlok": "P0814",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0155",
+            "Employee": "RUSLAN",
+            "SubBlok": "P0813",
+            "Amount": 119900
+          },
+          {
+            "Empcode": "F0327",
+            "Employee": "UMAR",
+            "SubBlok": "P0816",
+            "Amount": 94600
+          },
+          {
+            "Empcode": "F0327",
+            "Employee": "UMAR",
+            "SubBlok": "P0815",
+            "Amount": 111100
+          },
+          {
+            "Empcode": "F0327",
+            "Employee": "UMAR",
+            "SubBlok": "P0814",
+            "Amount": 233750
+          },
+          {
+            "Empcode": "F0327",
+            "Employee": "UMAR",
+            "SubBlok": "P0813",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0395",
+            "Employee": "HAMDI",
+            "SubBlok": "P0816",
+            "Amount": 22000
+          },
+          {
+            "Empcode": "F0395",
+            "Employee": "HAMDI",
+            "SubBlok": "P0815",
+            "Amount": 105600
+          },
+          {
+            "Empcode": "F0395",
+            "Employee": "HAMDI",
+            "SubBlok": "P0814",
+            "Amount": 104500
+          },
+          {
+            "Empcode": "F0395",
+            "Employee": "HAMDI",
+            "SubBlok": "P0813",
+            "Amount": 117150
+          },
+          {
+            "Empcode": "F0410",
+            "Employee": "JONOK SASAK",
+            "SubBlok": "P0816",
+            "Amount": 22000
+          },
+          {
+            "Empcode": "F0410",
+            "Employee": "JONOK SASAK",
+            "SubBlok": "P0815",
+            "Amount": 151800
+          },
+          {
+            "Empcode": "F0410",
+            "Employee": "JONOK SASAK",
+            "SubBlok": "P0814",
+            "Amount": 158400
+          },
+          {
+            "Empcode": "F0410",
+            "Employee": "JONOK SASAK",
+            "SubBlok": "P0813",
+            "Amount": 167200
+          },
+          {
+            "Empcode": "F0427",
+            "Employee": "ALNIARDO GUNAWAN",
+            "SubBlok": "P0816",
+            "Amount": 57200
+          },
+          {
+            "Empcode": "F0427",
+            "Employee": "ALNIARDO GUNAWAN",
+            "SubBlok": "P0815",
+            "Amount": 114950
+          },
+          {
+            "Empcode": "F0427",
+            "Employee": "ALNIARDO GUNAWAN",
+            "SubBlok": "P0814",
+            "Amount": 110000
+          },
+          {
+            "Empcode": "F0427",
+            "Employee": "ALNIARDO GUNAWAN",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0426",
+            "Employee": "SUMARTO",
+            "SubBlok": "P0816",
+            "Amount": 61600
+          },
+          {
+            "Empcode": "F0426",
+            "Employee": "SUMARTO",
+            "SubBlok": "P0815",
+            "Amount": 154000
+          },
+          {
+            "Empcode": "F0426",
+            "Employee": "SUMARTO",
+            "SubBlok": "P0814",
+            "Amount": 155650
+          },
+          {
+            "Empcode": "F0426",
+            "Employee": "SUMARTO",
+            "SubBlok": "P0813",
+            "Amount": 144650
+          },
+          {
+            "Empcode": "F0429",
+            "Employee": "JEKI",
+            "SubBlok": "P0816",
+            "Amount": 121000
+          },
+          {
+            "Empcode": "F0429",
+            "Employee": "JEKI",
+            "SubBlok": "P0815",
+            "Amount": 229350
+          },
+          {
+            "Empcode": "F0429",
+            "Employee": "JEKI",
+            "SubBlok": "P0814",
+            "Amount": 229900
+          },
+          {
+            "Empcode": "F0429",
+            "Employee": "JEKI",
+            "SubBlok": "P0813",
+            "Amount": 225500
+          },
+          {
+            "Empcode": "F0422",
+            "Employee": "MUHIR",
+            "SubBlok": "P0816",
+            "Amount": 31900
+          },
+          {
+            "Empcode": "F0422",
+            "Employee": "MUHIR",
+            "SubBlok": "P0815",
+            "Amount": 106150
+          },
+          {
+            "Empcode": "F0422",
+            "Employee": "MUHIR",
+            "SubBlok": "P0814",
+            "Amount": 111650
+          },
+          {
+            "Empcode": "F0422",
+            "Employee": "MUHIR",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0434",
+            "Employee": "SOFIAN HADI",
+            "SubBlok": "P0816",
+            "Amount": 29700
+          },
+          {
+            "Empcode": "F0434",
+            "Employee": "SOFIAN HADI",
+            "SubBlok": "P0815",
+            "Amount": 117700
+          },
+          {
+            "Empcode": "F0434",
+            "Employee": "SOFIAN HADI",
+            "SubBlok": "P0814",
+            "Amount": 116050
+          },
+          {
+            "Empcode": "F0434",
+            "Employee": "SOFIAN HADI",
+            "SubBlok": "P0813",
+            "Amount": 116050
+          },
+          {
+            "Empcode": "F0453",
+            "Employee": "MIRZA JORDI ERINANDA",
+            "SubBlok": "P0816",
+            "Amount": 56100
+          },
+          {
+            "Empcode": "F0453",
+            "Employee": "MIRZA JORDI ERINANDA",
+            "SubBlok": "P0815",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0453",
+            "Employee": "MIRZA JORDI ERINANDA",
+            "SubBlok": "P0814",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0453",
+            "Employee": "MIRZA JORDI ERINANDA",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0460",
+            "Employee": "ERIK ROLLAN BENARDI",
+            "SubBlok": "P0816",
+            "Amount": 60500
+          },
+          {
+            "Empcode": "F0460",
+            "Employee": "ERIK ROLLAN BENARDI",
+            "SubBlok": "P0815",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0460",
+            "Employee": "ERIK ROLLAN BENARDI",
+            "SubBlok": "P0814",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0460",
+            "Employee": "ERIK ROLLAN BENARDI",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0466",
+            "Employee": "ATMIKA",
+            "SubBlok": "P0816",
+            "Amount": 60500
+          },
+          {
+            "Empcode": "F0466",
+            "Employee": "ATMIKA",
+            "SubBlok": "P0815",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0466",
+            "Employee": "ATMIKA",
+            "SubBlok": "P0814",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0466",
+            "Employee": "ATMIKA",
+            "SubBlok": "P0813",
+            "Amount": 117700
+          },
+          {
+            "Empcode": "F0467",
+            "Employee": "ADE KHRISMANA",
+            "SubBlok": "P0816",
+            "Amount": 60500
+          },
+          {
+            "Empcode": "F0467",
+            "Employee": "ADE KHRISMANA",
+            "SubBlok": "P0815",
+            "Amount": 114950
+          },
+          {
+            "Empcode": "F0467",
+            "Employee": "ADE KHRISMANA",
+            "SubBlok": "P0814",
+            "Amount": 114950
+          },
+          {
+            "Empcode": "F0467",
+            "Employee": "ADE KHRISMANA",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0226",
+            "Employee": "SADARMAN GEA",
+            "SubBlok": "P0816",
+            "Amount": 27500
+          },
+          {
+            "Empcode": "F0226",
+            "Employee": "SADARMAN GEA",
+            "SubBlok": "P0815",
+            "Amount": 112750
+          },
+          {
+            "Empcode": "F0226",
+            "Employee": "SADARMAN GEA",
+            "SubBlok": "P0814",
+            "Amount": 113300
+          },
+          {
+            "Empcode": "F0226",
+            "Employee": "SADARMAN GEA",
+            "SubBlok": "P0813",
+            "Amount": 116600
+          },
+          {
+            "Empcode": "F0478",
+            "Employee": "ABDUL HAFIZ",
+            "SubBlok": "P0816",
+            "Amount": 52250
+          },
+          {
+            "Empcode": "F0478",
+            "Employee": "ABDUL HAFIZ",
+            "SubBlok": "P0815",
+            "Amount": 112750
+          },
+          {
+            "Empcode": "F0478",
+            "Employee": "ABDUL HAFIZ",
+            "SubBlok": "P0814",
+            "Amount": 104500
+          },
+          {
+            "Empcode": "F0478",
+            "Employee": "ABDUL HAFIZ",
+            "SubBlok": "P0813",
+            "Amount": 113300
+          },
+          {
+            "Empcode": "F0493",
+            "Employee": "DANI",
+            "SubBlok": "P0816",
+            "Amount": 57750
+          },
+          {
+            "Empcode": "F0493",
+            "Employee": "DANI",
+            "SubBlok": "P0815",
+            "Amount": 112750
+          },
+          {
+            "Empcode": "F0493",
+            "Employee": "DANI",
+            "SubBlok": "P0814",
+            "Amount": 111650
+          },
+          {
+            "Empcode": "F0493",
+            "Employee": "DANI",
+            "SubBlok": "P0813",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0492",
+            "Employee": "EKA SAPUTRA JAYA",
+            "SubBlok": "P0816",
+            "Amount": 27500
+          },
+          {
+            "Empcode": "F0492",
+            "Employee": "EKA SAPUTRA JAYA",
+            "SubBlok": "P0815",
+            "Amount": 112750
+          },
+          {
+            "Empcode": "F0492",
+            "Employee": "EKA SAPUTRA JAYA",
+            "SubBlok": "P0814",
+            "Amount": 112750
+          },
+          {
+            "Empcode": "F0492",
+            "Employee": "EKA SAPUTRA JAYA",
+            "SubBlok": "P0813",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0499",
+            "Employee": "RIDWAN",
+            "SubBlok": "P0816",
+            "Amount": 57200
+          },
+          {
+            "Empcode": "F0499",
+            "Employee": "RIDWAN",
+            "SubBlok": "P0815",
+            "Amount": 114400
+          },
+          {
+            "Empcode": "F0499",
+            "Employee": "RIDWAN",
+            "SubBlok": "P0814",
+            "Amount": 110000
+          },
+          {
+            "Empcode": "F0499",
+            "Employee": "RIDWAN",
+            "SubBlok": "P0813",
+            "Amount": 115500
+          },
+          {
+            "Empcode": "F0504",
+            "Employee": "REZA SEPTIAN",
+            "SubBlok": "P0816",
+            "Amount": null
+          },
+          {
+            "Empcode": "F0504",
+            "Employee": "REZA SEPTIAN",
+            "SubBlok": "P0815",
+            "Amount": null
+          },
+          {
+            "Empcode": "F0504",
+            "Employee": "REZA SEPTIAN",
+            "SubBlok": "P0814",
+            "Amount": null
+          },
+          {
+            "Empcode": "F0504",
+            "Employee": "REZA SEPTIAN",
+            "SubBlok": "P0813",
+            "Amount": null
+          },
+          {
+            "Empcode": "F0513",
+            "Employee": "DEDE IBNU HADI",
+            "SubBlok": "P0816",
+            "Amount": 55000
+          },
+          {
+            "Empcode": "F0513",
+            "Employee": "DEDE IBNU HADI",
+            "SubBlok": "P0815",
+            "Amount": 114950
+          },
+          {
+            "Empcode": "F0513",
+            "Employee": "DEDE IBNU HADI",
+            "SubBlok": "P0814",
+            "Amount": 104500
+          },
+          {
+            "Empcode": "F0513",
+            "Employee": "DEDE IBNU HADI",
+            "SubBlok": "P0813",
+            "Amount": 113300
+          },
+          {
+            "Empcode": "F0512",
+            "Employee": "JUMIDIN",
+            "SubBlok": "P0816",
+            "Amount": 77000
+          },
+          {
+            "Empcode": "F0512",
+            "Employee": "JUMIDIN",
+            "SubBlok": "P0815",
+            "Amount": 182050
+          },
+          {
+            "Empcode": "F0512",
+            "Employee": "JUMIDIN",
+            "SubBlok": "P0814",
+            "Amount": 176000
+          },
+          {
+            "Empcode": "F0512",
+            "Employee": "JUMIDIN",
+            "SubBlok": "P0813",
+            "Amount": 168300
+          },
+          {
+            "Empcode": "F0517",
+            "Employee": "HERU WANDI",
+            "SubBlok": "P0816",
+            "Amount": 22000
+          },
+          {
+            "Empcode": "F0517",
+            "Employee": "HERU WANDI",
+            "SubBlok": "P0815",
+            "Amount": 104500
+          },
+          {
+            "Empcode": "F0517",
+            "Employee": "HERU WANDI",
+            "SubBlok": "P0814",
+            "Amount": 104500
+          },
+          {
+            "Empcode": "F0517",
+            "Employee": "HERU WANDI",
+            "SubBlok": "P0813",
+            "Amount": 118800
+          },
+          {
+            "Empcode": "F0519",
+            "Employee": "ARIA HADINATA",
+            "SubBlok": "P0816",
+            "Amount": 37400
+          },
+          {
+            "Empcode": "F0519",
+            "Employee": "ARIA HADINATA",
+            "SubBlok": "P0815",
+            "Amount": 112200
+          },
+          {
+            "Empcode": "F0519",
+            "Employee": "ARIA HADINATA",
+            "SubBlok": "P0814",
+            "Amount": 113300
+          },
+          {
+            "Empcode": "F0519",
+            "Employee": "ARIA HADINATA",
+            "SubBlok": "P0813",
+            "Amount": 110000
+          }
+        ]
+      }
+    ]
+  }
+]
+      }
+
     ]
   },
   {

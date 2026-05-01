@@ -27,6 +27,22 @@ describe("manualAdjustmentRemarkParser", () => {
         });
     });
 
+    it("infers alphanumeric ADCode variants from remarks", () => {
+        expect(inferManualAdjustmentAdCodeFromRemarks("PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 125000")).toEqual({
+            adCode: "AL3PM0601P1A",
+            adCodeDesc: "PRUNING MANUAL"
+        });
+    });
+
+    it("infers TaskDesc display values from pipe-formatted remarks without raw ADCode", () => {
+        const taskDesc = "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)";
+
+        expect(inferManualAdjustmentAdCodeFromRemarks(`PREMI TBS | ${taskDesc} - ${taskDesc} | 423363 | sync:MANUAL | match:MANUAL`)).toEqual({
+            adCode: taskDesc,
+            adCodeDesc: taskDesc
+        });
+    });
+
     it("returns null values when remarks do not contain an ADCode", () => {
         expect(inferManualAdjustmentAdCodeFromRemarks("manual note without code")).toEqual({
             adCode: null,
@@ -75,5 +91,22 @@ describe("parsePipeDelimitedRemarks", () => {
         expect(result.adCode).toBe("AL0001");
         expect(result.amount).toBeNull();
         expect(result.syncStatus).toBeNull();
+    });
+
+    it("parses alphanumeric ADCode variants", () => {
+        const result = parsePipeDelimitedRemarks("PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 125000");
+        expect(result.adCode).toBe("AL3PM0601P1A");
+        expect(result.adCodeDesc).toBe("PRUNING MANUAL");
+    });
+
+    it("parses TaskDesc display values that contain internal hyphens", () => {
+        const taskDesc = "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)";
+        const result = parsePipeDelimitedRemarks(`PREMI TBS | ${taskDesc} - ${taskDesc} | 423363 | sync:MANUAL | match:MANUAL`);
+
+        expect(result.adCode).toBe(taskDesc);
+        expect(result.adCodeDesc).toBe(taskDesc);
+        expect(result.amount).toBe(423363);
+        expect(result.syncStatus).toBe("MANUAL");
+        expect(result.matchStatus).toBe("MANUAL");
     });
 });

@@ -369,7 +369,7 @@ export default function ReportToolbar({
                             // When group changes (regardless of selecting SEMUA GROUP or a specific group), reset gang to ALL
                             onGangChange && onGangChange('ALL');
                         }}
-                        disabled={disableControls || !division}
+                        disabled={!division}
                         onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)' }}
                         onBlur={(e) => { e.target.style.borderColor = effectiveGangPrefix ? '#3b82f6' : '#cbd5e1'; e.target.style.boxShadow = 'none' }}
                     >

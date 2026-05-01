@@ -4,6 +4,8 @@ import { taskCodeOptionService } from "./taskCodeOptionService";
 import { manualAdjustmentPresetService } from "./manualAdjustmentPresetService";
 import {
     buildAdtransDuplicateReport,
+    buildManualAdjustmentApiResponseRows,
+    buildGroupedManualAdjustmentResponse,
     buildManualAdjustmentRemarks,
     manualAdjustmentRequiresAdCode,
     manualAdjustmentService
@@ -958,6 +960,29 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("can fetch only adjustments that have metadata_json", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "AB1", "PREMI", undefined, true);
+
+            expect(calls[0].sql).toContain("metadata_json IS NOT NULL");
+            expect(calls[0].sql).toContain("LTRIM(RTRIM(metadata_json)) <> ''");
+            expect(calls[0].params).toContain("PREMI");
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("normalizes division_code when deleting a manual adjustment column", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -988,6 +1013,306 @@ describe("manual adjustment ADCode rules", () => {
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
+    });
+});
+
+describe("manual adjustment grouped response", () => {
+    it("builds flat API response rows with estate, derived division code, and parsed ADCode", () => {
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 21,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "C0002",
+                nik: "1902050504860021",
+                emp_name: "DIDI TEST",
+                gang_code: "C2H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 50000,
+                remarks: "AD CODE: AL3PM0601P1A - PRUNING MANUAL"
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            gang_code: "C2H",
+            division_code: "C 2",
+            ad_code: "AL3PM0601P1A",
+            ad_code_desc: "PRUNING MANUAL"
+        });
+    });
+
+    it("builds flat API response rows with TaskDesc parsed from pipe remarks", () => {
+        const taskDesc = "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)";
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 22,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "C0003",
+                nik: "5203193101910004",
+                emp_name: "ABDURRAHMAN (SENIAH)",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI TBS",
+                amount: 423363,
+                remarks: `PREMI TBS | ${taskDesc} - ${taskDesc} | 423363 | sync:MANUAL | match:MANUAL`
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            gang_code: "G1H",
+            division_code: "G 1",
+            ad_code: taskDesc,
+            ad_code_desc: taskDesc
+        });
+    });
+
+    it("groups rows by division, gang, and employee with premium metadata details", () => {
+        const grouped = buildGroupedManualAdjustmentResponse([
+            {
+                id: 1,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                nik: "1902050504860001",
+                emp_name: "BUDI TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 3000,
+                metadata_json: JSON.stringify({
+                    input_type: "blok",
+                    items: [{ subblok: "P0921", gang_code: "G1H", jumlah: 3000 }],
+                    total_amount: 3000
+                })
+            },
+            {
+                id: 2,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                nik: "1902050504860001",
+                emp_name: "BUDI TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RITASE",
+                amount: 5000,
+                metadata_json: JSON.stringify({
+                    input_type: "kendaraan",
+                    items: [{ nomor_kendaraan: "B1234AB", expense_code: "TRANSPORT", jumlah: 5000 }],
+                    total_amount: 5000
+                })
+            },
+            {
+                id: 3,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0001",
+                nik: "1902050504860001",
+                emp_name: "BUDI TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "POTONGAN_KOTOR",
+                adjustment_name: "KOREKSI PANEN",
+                amount: -1000
+            }
+        ] as any);
+
+        expect(grouped.summary).toEqual({
+            division_count: 1,
+            gang_count: 1,
+            employee_count: 1,
+            adjustment_count: 3
+        });
+        expect(grouped.divisions[0]).toMatchObject({ estate: "AB1", estate_code: "AB1" });
+        expect(grouped.divisions[0].gangs[0].gang_code).toBe("G1H");
+        expect(grouped.divisions[0].gangs[0]).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            division_code: "G 1"
+        });
+
+        const employee = grouped.divisions[0].gangs[0].employees[0];
+        expect(employee).toMatchObject({
+            emp_code: "A0001",
+            nik: "1902050504860001",
+            emp_name: "BUDI TEST",
+            estate: "AB1",
+            estate_code: "AB1",
+            division_code: "G 1",
+            adjustment_count: 3,
+            premium_count: 2,
+            total_amount: 7000,
+            premium_total: 8000
+        });
+        expect(employee.premiums.map((item) => item.adjustment_name)).toEqual(["PREMI PRUNING", "PREMI RITASE"]);
+        expect(employee.premiums[0].metadata).toEqual({
+            input_type: "blok",
+            items: [{ subblok: "P0921", gang_code: "G1H", jumlah: 3000 }],
+            total_amount: 3000
+        });
+        expect(employee.premiums[0].detail_items).toEqual([
+            {
+                detail_type: "blok",
+                subblok: "P0921",
+                gang_code: "G1H",
+                jumlah: 3000,
+                amount: 3000
+            }
+        ]);
+        expect(employee.premiums[1].detail_items).toEqual([
+            {
+                detail_type: "kendaraan",
+                nomor_kendaraan: "B1234AB",
+                expense_code: "TRANSPORT",
+                jumlah: 5000,
+                amount: 5000
+            }
+        ]);
+        expect(employee.premium_transactions).toEqual([
+            {
+                transaction_index: 1,
+                adjustment_id: 1,
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                emp_code: "A0001",
+                nik: "1902050504860001",
+                emp_name: "BUDI TEST",
+                gang_code: "G1H",
+                estate: "AB1",
+                estate_code: "AB1",
+                division_code: "G 1",
+                ad_code: null,
+                ad_code_desc: null,
+                detail_type: "blok",
+                subblok: "P0921",
+                jumlah: 3000,
+                amount: 3000
+            },
+            {
+                transaction_index: 2,
+                adjustment_id: 2,
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI RITASE",
+                emp_code: "A0001",
+                nik: "1902050504860001",
+                emp_name: "BUDI TEST",
+                gang_code: "G1H",
+                estate: "AB1",
+                estate_code: "AB1",
+                division_code: "G 1",
+                ad_code: null,
+                ad_code_desc: null,
+                detail_type: "kendaraan",
+                nomor_kendaraan: "B1234AB",
+                expense_code: "TRANSPORT",
+                jumlah: 5000,
+                amount: 5000
+            }
+        ]);
+        expect(employee.adjustments.map((item) => item.adjustment_name)).toEqual([
+            "KOREKSI PANEN",
+            "PREMI PRUNING",
+            "PREMI RITASE"
+        ]);
+    });
+
+    it("normalizes subblok codes in detail items and premium transactions by removing symbols", () => {
+        const grouped = buildGroupedManualAdjustmentResponse([
+            {
+                id: 10,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0002",
+                nik: "1902050504860002",
+                emp_name: "ANI TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 304000,
+                metadata_json: JSON.stringify({
+                    input_type: "blok",
+                    items: [{ subblok: "P09/01-A", gang_code: "G1H", jumlah: 304000 }],
+                    total_amount: 304000
+                })
+            }
+        ] as any);
+
+        const employee = grouped.divisions[0].gangs[0].employees[0];
+
+        expect(employee.premiums[0].metadata).toMatchObject({
+            items: [{ subblok: "P09/01-A" }]
+        });
+        expect(employee.premiums[0].detail_items[0]).toMatchObject({
+            detail_type: "blok",
+            subblok: "P0901A",
+            subblok_raw: "P09/01-A",
+            amount: 304000
+        });
+        expect(employee.premium_transactions[0]).toMatchObject({
+            detail_type: "blok",
+            subblok: "P0901A",
+            subblok_raw: "P09/01-A",
+            amount: 304000
+        });
+    });
+
+    it("separates estate, derived division code, and ADCode fields in grouped response", () => {
+        const grouped = buildGroupedManualAdjustmentResponse([
+            {
+                id: 11,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "C0001",
+                nik: "1902050504860011",
+                emp_name: "CICI TEST",
+                gang_code: "C2H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 125000,
+                remarks: "PREMI PRUNING | AL0001 - PREMI PRUNING DETAIL | 125000 | sync:MANUAL",
+                metadata_json: JSON.stringify({
+                    input_type: "blok",
+                    items: [{ subblok: "C02/01", gang_code: "C2H", jumlah: 125000 }],
+                    total_amount: 125000
+                })
+            }
+        ] as any);
+
+        const division = grouped.divisions[0];
+        const gang = division.gangs[0];
+        const employee = gang.employees[0];
+        const premium = employee.premiums[0];
+        const transaction = employee.premium_transactions[0];
+
+        expect(division).toMatchObject({ estate: "AB1", estate_code: "AB1" });
+        expect(gang).toMatchObject({ estate: "AB1", estate_code: "AB1", gang_code: "C2H", division_code: "C 2" });
+        expect(employee).toMatchObject({ estate: "AB1", estate_code: "AB1", gang_code: "C2H", division_code: "C 2" });
+        expect(premium).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            division_code: "C 2",
+            ad_code: "AL0001",
+            ad_code_desc: "PREMI PRUNING DETAIL"
+        });
+        expect(transaction).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            division_code: "C 2",
+            ad_code: "AL0001",
+            ad_code_desc: "PREMI PRUNING DETAIL"
+        });
     });
 });
 

@@ -2,6 +2,8 @@
 
 .payroll-table-container {
     overflow: auto;
+    overscroll-behavior: contain;
+    overflow-anchor: none;
     position: relative;
     height: 100%;
     padding-bottom: var(--payroll-bottom-safe-area, 56px);

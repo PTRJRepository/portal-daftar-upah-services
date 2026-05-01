@@ -82,6 +82,7 @@ import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
 import UpahBersihDetailPage from './pages/UpahBersihDetailPage'
+import DataVerificationPage from './pages/DataVerificationPage'
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -1002,6 +1003,7 @@ function AppInner() {
             <Route path="detailed-salary" element={<SummaryReportWrapper component={DetailedSalaryAnalysisPage} />} />
             <Route path="mill-production" element={<SummaryReportWrapper component={MillProductionReport} />} />
             <Route path="detail-upah-bersih" element={<SummaryReportWrapper component={UpahBersihDetailPage} />} />
+            <Route path="data-verification" element={<SummaryReportWrapper component={DataVerificationPage} />} />
 
             {/* Development/Test Pages */}
             <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />

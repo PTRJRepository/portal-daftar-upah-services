@@ -9,6 +9,7 @@ import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
+import { inferManualAdjustmentAdCodeFromRemarks } from "../utils/manualAdjustmentRemarkParser";
 import {
     buildAdtransDocDescSqlCondition,
     buildAdtransDocDescSqlPatterns,
@@ -439,6 +440,103 @@ type ResolvedManualAdjustmentIdentity = {
     originalIdentifier: string;
 };
 
+export type ManualAdjustmentDetailItem = Record<string, unknown> & {
+    detail_type: string;
+    amount: number;
+};
+
+export type GroupedManualAdjustmentItem = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code"> & {
+    nik: string | null;
+    emp_name: string | null;
+    estate: string;
+    estate_code: string;
+    division_code: string;
+    ad_code: string | null;
+    ad_code_desc: string | null;
+    metadata: unknown | null;
+    metadata_parse_error: string | null;
+    detail_items: ManualAdjustmentDetailItem[];
+};
+
+export type GroupedManualAdjustmentPremiumTransaction = ManualAdjustmentDetailItem & {
+    transaction_index: number;
+    adjustment_id: number | null;
+    adjustment_type: string;
+    adjustment_name: string;
+    emp_code: string;
+    nik: string | null;
+    emp_name: string | null;
+    gang_code: string;
+    estate: string;
+    estate_code: string;
+    division_code: string;
+    ad_code: string | null;
+    ad_code_desc: string | null;
+};
+
+export type GroupedManualAdjustmentEmployee = {
+    emp_code: string;
+    nik: string | null;
+    emp_name: string | null;
+    gang_code: string;
+    estate: string;
+    estate_code: string;
+    division_code: string;
+    adjustment_count: number;
+    premium_count: number;
+    total_amount: number;
+    premium_total: number;
+    adjustments: GroupedManualAdjustmentItem[];
+    premiums: GroupedManualAdjustmentItem[];
+    premium_transactions: GroupedManualAdjustmentPremiumTransaction[];
+};
+
+export type GroupedManualAdjustmentGang = {
+    gang_code: string;
+    estate: string;
+    estate_code: string;
+    division_code: string;
+    employee_count: number;
+    adjustment_count: number;
+    premium_count: number;
+    total_amount: number;
+    premium_total: number;
+    employees: GroupedManualAdjustmentEmployee[];
+};
+
+export type GroupedManualAdjustmentDivision = {
+    estate: string;
+    estate_code: string;
+    employee_count: number;
+    gang_count: number;
+    adjustment_count: number;
+    premium_count: number;
+    total_amount: number;
+    premium_total: number;
+    gangs: GroupedManualAdjustmentGang[];
+};
+
+export type GroupedManualAdjustmentResponse = {
+    summary: {
+        division_count: number;
+        gang_count: number;
+        employee_count: number;
+        adjustment_count: number;
+    };
+    divisions: GroupedManualAdjustmentDivision[];
+};
+
+export type ManualAdjustmentApiResponseRow = Omit<ManualAdjustment, "nik" | "emp_name" | "division_code" | "ad_code"> & {
+    nik: string | null;
+    emp_name: string | null;
+    gang_code: string;
+    estate: string;
+    estate_code: string;
+    division_code: string;
+    ad_code: string | null;
+    ad_code_desc: string | null;
+};
+
 function normalizeIdentityValue(value: unknown): string {
     return normalizeText(value).toUpperCase();
 }
@@ -617,6 +715,258 @@ async function resolveManualAdjustmentLookupIdentity(identifier: string): Promis
     };
 }
 
+function toNumericAmount(value: unknown): number {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? amount : 0;
+}
+
+function normalizeSubblokCode(value: unknown): string {
+    return normalizeText(value).replace(/[^0-9A-Za-z]/g, "");
+}
+
+function deriveDivisionCodeFromGangCode(value: unknown): string {
+    const normalized = normalizeIdentityValue(value).replace(/[^0-9A-Z]/g, "");
+    const code = normalized.slice(0, 2);
+    return code ? code.split("").join(" ") : "";
+}
+
+function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null } {
+    const inferred = inferManualAdjustmentAdCodeFromRemarks(row.remarks);
+    const adCode = normalizeText(row.ad_code || row.base_task_code || row.task_code || inferred.adCode).toUpperCase() || null;
+    const adCodeDesc = normalizeText(row.task_desc || inferred.adCodeDesc) || null;
+
+    return {
+        ad_code: adCode,
+        ad_code_desc: adCodeDesc
+    };
+}
+
+function parseManualAdjustmentMetadataValue(value: unknown): { metadata: unknown | null; metadata_parse_error: string | null } {
+    if (value == null || value === "") return { metadata: null, metadata_parse_error: null };
+    if (typeof value === "object") return { metadata: value, metadata_parse_error: null };
+
+    try {
+        return { metadata: JSON.parse(String(value)), metadata_parse_error: null };
+    } catch (error: any) {
+        return { metadata: null, metadata_parse_error: error?.message || "Invalid metadata_json" };
+    }
+}
+
+function buildDetailItem(detailType: string, item: Record<string, unknown>): ManualAdjustmentDetailItem {
+    const detailItem: ManualAdjustmentDetailItem = {
+        detail_type: detailType,
+        ...item,
+        amount: toNumericAmount(item.amount ?? item.jumlah ?? item.total_amount)
+    };
+
+    if ("subblok" in item) {
+        const rawSubblok = normalizeText(item.subblok);
+        const normalizedSubblok = normalizeSubblokCode(rawSubblok);
+
+        if (rawSubblok) {
+            detailItem.subblok = normalizedSubblok;
+            if (normalizedSubblok !== rawSubblok) {
+                detailItem.subblok_raw = rawSubblok;
+            }
+        }
+    }
+
+    return detailItem;
+}
+
+function buildManualAdjustmentDetailItems(metadata: unknown): ManualAdjustmentDetailItem[] {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+
+    const data = metadata as Record<string, any>;
+    const inputType = String(data.input_type || "detail").trim() || "detail";
+
+    if (inputType === "blok,exp") {
+        const blokItems = Array.isArray(data.blok_items)
+            ? data.blok_items.map((item: Record<string, unknown>) => buildDetailItem("blok", item))
+            : [];
+        const expenseItems = data.expense && typeof data.expense === "object"
+            ? [buildDetailItem("exp", data.expense)]
+            : [];
+        return [...blokItems, ...expenseItems];
+    }
+
+    if (Array.isArray(data.items)) {
+        return data.items
+            .filter((item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+            .map((item) => buildDetailItem(inputType, item));
+    }
+
+    if ("jumlah" in data || "amount" in data || "expense_code" in data) {
+        return [buildDetailItem(inputType, data)];
+    }
+
+    return [];
+}
+
+function sortByText<T>(items: T[], selector: (item: T) => unknown): T[] {
+    return [...items].sort((a, b) => String(selector(a) || "").localeCompare(String(selector(b) || "")));
+}
+
+export function buildManualAdjustmentApiResponseRows(rows: ManualAdjustment[]): ManualAdjustmentApiResponseRow[] {
+    return rows.map((row) => {
+        const gangCode = normalizeIdentityValue(row.gang_code) || "UNKNOWN_GANG";
+        const estateCode = normalizeIdentityValue(row.division_code) || "UNKNOWN_ESTATE";
+        return {
+            ...row,
+            emp_code: normalizeIdentityValue(row.emp_code) || "UNKNOWN_EMPLOYEE",
+            nik: normalizeIdentityValue(row.nik) || null,
+            emp_name: normalizeIdentityValue(row.emp_name) || null,
+            gang_code: gangCode,
+            estate: estateCode,
+            estate_code: estateCode,
+            division_code: deriveDivisionCodeFromGangCode(gangCode) || "UNKNOWN_DIVISION",
+            ...resolveManualAdjustmentResponseAdCodeFields(row)
+        };
+    });
+}
+
+export function buildGroupedManualAdjustmentResponse(rows: ManualAdjustment[]): GroupedManualAdjustmentResponse {
+    const divisionMap = new Map<string, Map<string, Map<string, GroupedManualAdjustmentEmployee>>>();
+
+    for (const row of rows) {
+        const estateCode = normalizeIdentityValue(row.division_code) || "UNKNOWN_ESTATE";
+        const gangCode = normalizeIdentityValue(row.gang_code) || "UNKNOWN_GANG";
+        const divisionCode = deriveDivisionCodeFromGangCode(gangCode) || "UNKNOWN_DIVISION";
+        const empCode = normalizeIdentityValue(row.emp_code) || "UNKNOWN_EMPLOYEE";
+        const nik = normalizeIdentityValue(row.nik) || null;
+        const empName = normalizeIdentityValue(row.emp_name) || null;
+        const employeeKey = `${empCode}|${nik || ""}|${empName || ""}`;
+
+        if (!divisionMap.has(estateCode)) divisionMap.set(estateCode, new Map());
+        const gangMap = divisionMap.get(estateCode)!;
+        if (!gangMap.has(gangCode)) gangMap.set(gangCode, new Map());
+        const employeeMap = gangMap.get(gangCode)!;
+
+        if (!employeeMap.has(employeeKey)) {
+            employeeMap.set(employeeKey, {
+                emp_code: empCode,
+                nik,
+                emp_name: empName,
+                gang_code: gangCode,
+                estate: estateCode,
+                estate_code: estateCode,
+                division_code: divisionCode,
+                adjustment_count: 0,
+                premium_count: 0,
+                total_amount: 0,
+                premium_total: 0,
+                adjustments: [],
+                premiums: [],
+                premium_transactions: []
+            });
+        }
+
+        const employee = employeeMap.get(employeeKey)!;
+        const parsedMetadata = parseManualAdjustmentMetadataValue(row.metadata_json);
+        const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
+        const groupedItem: GroupedManualAdjustmentItem = {
+            ...row,
+            emp_code: empCode,
+            nik,
+            emp_name: empName,
+            gang_code: gangCode,
+            estate: estateCode,
+            estate_code: estateCode,
+            division_code: divisionCode,
+            ...adCodeFields,
+            metadata: parsedMetadata.metadata,
+            metadata_parse_error: parsedMetadata.metadata_parse_error,
+            detail_items: buildManualAdjustmentDetailItems(parsedMetadata.metadata)
+        };
+        const amount = toNumericAmount(row.amount);
+
+        employee.adjustments.push(groupedItem);
+        employee.adjustment_count += 1;
+        employee.total_amount += amount;
+
+        if (String(row.adjustment_type || "").toUpperCase() === "PREMI") {
+            employee.premiums.push(groupedItem);
+            employee.premium_count += 1;
+            employee.premium_total += amount;
+            for (const detailItem of groupedItem.detail_items) {
+                employee.premium_transactions.push({
+                    transaction_index: employee.premium_transactions.length + 1,
+                    adjustment_id: typeof groupedItem.id === "number" ? groupedItem.id : null,
+                    adjustment_type: groupedItem.adjustment_type,
+                    adjustment_name: groupedItem.adjustment_name,
+                    emp_code: employee.emp_code,
+                    nik: employee.nik,
+                    emp_name: employee.emp_name,
+                    gang_code: employee.gang_code,
+                    estate: employee.estate,
+                    estate_code: employee.estate_code,
+                    division_code: employee.division_code,
+                    ad_code: groupedItem.ad_code,
+                    ad_code_desc: groupedItem.ad_code_desc,
+                    ...detailItem
+                });
+            }
+        }
+    }
+
+    const divisions: GroupedManualAdjustmentDivision[] = [];
+    let gangCount = 0;
+    let employeeCount = 0;
+
+    for (const [estateCode, gangMap] of sortByText(Array.from(divisionMap.entries()), ([estate]) => estate)) {
+        const gangs: GroupedManualAdjustmentGang[] = [];
+
+        for (const [gangCode, employeeMap] of sortByText(Array.from(gangMap.entries()), ([gang]) => gang)) {
+            const divisionCode = deriveDivisionCodeFromGangCode(gangCode) || "UNKNOWN_DIVISION";
+            const employees = sortByText(Array.from(employeeMap.values()), (employee) => employee.emp_name || employee.emp_code)
+                .map((employee) => ({
+                    ...employee,
+                    adjustments: sortByText(employee.adjustments, (item) => item.adjustment_name),
+                    premiums: sortByText(employee.premiums, (item) => item.adjustment_name),
+                    premium_transactions: [...employee.premium_transactions].sort((a, b) => a.transaction_index - b.transaction_index)
+                }));
+
+            const gang: GroupedManualAdjustmentGang = {
+                gang_code: gangCode,
+                estate: estateCode,
+                estate_code: estateCode,
+                division_code: divisionCode,
+                employee_count: employees.length,
+                adjustment_count: employees.reduce((sum, employee) => sum + employee.adjustment_count, 0),
+                premium_count: employees.reduce((sum, employee) => sum + employee.premium_count, 0),
+                total_amount: employees.reduce((sum, employee) => sum + employee.total_amount, 0),
+                premium_total: employees.reduce((sum, employee) => sum + employee.premium_total, 0),
+                employees
+            };
+            gangs.push(gang);
+            gangCount += 1;
+            employeeCount += employees.length;
+        }
+
+        divisions.push({
+            estate: estateCode,
+            estate_code: estateCode,
+            employee_count: gangs.reduce((sum, gang) => sum + gang.employee_count, 0),
+            gang_count: gangs.length,
+            adjustment_count: gangs.reduce((sum, gang) => sum + gang.adjustment_count, 0),
+            premium_count: gangs.reduce((sum, gang) => sum + gang.premium_count, 0),
+            total_amount: gangs.reduce((sum, gang) => sum + gang.total_amount, 0),
+            premium_total: gangs.reduce((sum, gang) => sum + gang.premium_total, 0),
+            gangs
+        });
+    }
+
+    return {
+        summary: {
+            division_count: divisions.length,
+            gang_count: gangCount,
+            employee_count: employeeCount,
+            adjustment_count: rows.length
+        },
+        divisions
+    };
+}
+
 export class ManualAdjustmentService {
     private static instance: ManualAdjustmentService;
     private static identitySchemaEnsured = false;
@@ -677,7 +1027,8 @@ export class ManualAdjustmentService {
         empCode?: string,
         divisionCode?: string,
         adjustmentType?: string,
-        adjustmentName?: string
+        adjustmentName?: string,
+        metadataOnly: boolean = false
     ): Promise<ManualAdjustment[]> {
         const db = this.getDatabase();
         await this.ensureManualAdjustmentIdentitySchema(db);
@@ -728,6 +1079,10 @@ export class ManualAdjustmentService {
         if (adjustmentName) {
             query += ` AND UPPER(adjustment_name) LIKE ?`;
             params.push(`%${adjustmentName.toUpperCase()}%`);
+        }
+
+        if (metadataOnly) {
+            query += ` AND metadata_json IS NOT NULL AND LTRIM(RTRIM(metadata_json)) <> ''`;
         }
 
         return await db.query<ManualAdjustment>(query, params);

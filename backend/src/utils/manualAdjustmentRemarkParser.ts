@@ -27,27 +27,63 @@ function cleanDescription(value: string | undefined): string | null {
     return cleaned || null;
 }
 
+const AD_CODE_CAPTURE = "([A-Z]{2}\\d[A-Z0-9_-]*)";
+const TASK_DESC_DISPLAY_PREFIX = /^\((AL|DE)\)\s+.+/i;
+
+function splitTaskDescDisplayPair(value: string): { adCode: string; adCodeDesc: string } | null {
+    const text = normalizeSpaces(value);
+    if (!TASK_DESC_DISPLAY_PREFIX.test(text)) return null;
+
+    const separators = Array.from(text.matchAll(/\s+-\s+\((?:AL|DE)\)\s+/gi));
+    if (separators.length === 0) {
+        return { adCode: text, adCodeDesc: text };
+    }
+
+    const separatorIndex = separators[separators.length - 1].index;
+    if (separatorIndex == null) return { adCode: text, adCodeDesc: text };
+
+    const adCode = text.slice(0, separatorIndex).trim();
+    const adCodeDesc = text.slice(separatorIndex).replace(/^\s+-\s+/, "").trim();
+    if (!TASK_DESC_DISPLAY_PREFIX.test(adCode) || !TASK_DESC_DISPLAY_PREFIX.test(adCodeDesc)) {
+        return { adCode: text, adCodeDesc: text };
+    }
+
+    return { adCode, adCodeDesc };
+}
+
+function parseAdCodePart(value: unknown): ManualAdjustmentAdCodeInference {
+    const text = normalizeSpaces(value);
+    if (!text) return { adCode: null, adCodeDesc: null };
+
+    const rawCodeMatch = text.match(new RegExp(`^${AD_CODE_CAPTURE}\\s*(?:-\\s*(.+))?$`, "i"));
+    if (rawCodeMatch) {
+        return {
+            adCode: rawCodeMatch[1].toUpperCase(),
+            adCodeDesc: cleanDescription(rawCodeMatch[2])
+        };
+    }
+
+    const taskDescDisplay = splitTaskDescDisplayPair(text);
+    if (taskDescDisplay) {
+        return taskDescDisplay;
+    }
+
+    return { adCode: null, adCodeDesc: null };
+}
+
 export function inferManualAdjustmentAdCodeFromRemarks(value: unknown): ManualAdjustmentAdCodeInference {
     const remarks = normalizeSpaces(value);
     if (!remarks) return { adCode: null, adCodeDesc: null };
 
-    const adCodeLabelMatch = remarks.match(/AD\s*CODE\s*:\s*([A-Z]{2}\d{3,})\s*(?:-\s*([^|]+))?/i);
+    const adCodeLabelMatch = remarks.match(/AD\s*CODE\s*:\s*([^|]+)/i);
     if (adCodeLabelMatch) {
-        return {
-            adCode: adCodeLabelMatch[1].toUpperCase(),
-            adCodeDesc: cleanDescription(adCodeLabelMatch[2])
-        };
+        return parseAdCodePart(adCodeLabelMatch[1]);
     }
 
     const pipeSegments = remarks.split("|").map((segment) => segment.trim());
     for (const segment of pipeSegments.slice(1)) {
-        const match = segment.match(/^([A-Z]{2}\d{3,})\s*(?:-\s*(.+))?$/i);
-        if (match) {
-            return {
-                adCode: match[1].toUpperCase(),
-                adCodeDesc: cleanDescription(match[2])
-            };
-        }
+        const parsed = parseAdCodePart(segment);
+        if (parsed.adCode) return parsed;
     }
 
     return { adCode: null, adCodeDesc: null };
@@ -80,11 +116,9 @@ export function parsePipeDelimitedRemarks(value: unknown): PipeDelimitedRemarksP
     let adCodeDesc: string | null = null;
     if (segments[1]) {
         adCodePart = segments[1];
-        const match = segments[1].match(/^([A-Z]{2}\d{3,})\s*(?:-\s*(.+))?$/i);
-        if (match) {
-            adCode = match[1].toUpperCase();
-            adCodeDesc = cleanDescription(match[2]);
-        }
+        const parsedAdCode = parseAdCodePart(segments[1]);
+        adCode = parsedAdCode.adCode;
+        adCodeDesc = parsedAdCode.adCodeDesc;
     }
 
     // Parse amount

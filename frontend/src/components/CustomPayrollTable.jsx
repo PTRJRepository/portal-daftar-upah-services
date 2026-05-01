@@ -243,14 +243,16 @@ const buildManualCellDeleteRemarks = (name) => `${name || 'MANUAL ADJUSTMENT'} |
 const isManualCellDeleteEdit = (edit) => Boolean(edit?.delete_cell)
     || (Number(edit?.value || 0) === 0 && String(edit?.remarks || '').toUpperCase().includes(MANUAL_CELL_DELETE_MARKER));
 
+const isAutomaticPayrollKoreksiFieldKey = (value) => normalizeFieldKey(value) === 'koreksi_hk';
+
 const isDynamicGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
-    return normalized === 'koreksi' || normalized.startsWith('koreksi_');
+    return !isAutomaticPayrollKoreksiFieldKey(normalized) && (normalized === 'koreksi' || normalized.startsWith('koreksi_'));
 };
 
 const isGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
-    return normalized.startsWith('koreksi') || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
+    return isDynamicGrossDeductionFieldKey(normalized) || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
 };
 
 const isPotonganFieldKey = (value) => {
@@ -813,7 +815,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
         };
         const skipStaticPremiHeader = (label, field) => isStaticPremiFieldKey(field) || isBrondolLabel(label);
-        const skipStaticPotonganHeader = (label, field) => isStaticPotonganFieldKey(field) || isSpsiLabel(label);
+        const skipStaticPotonganHeader = (label, field) => isStaticPotonganFieldKey(field) || isAutomaticPayrollKoreksiFieldKey(field) || isSpsiLabel(label);
 
         const result = { premi: {}, potongan: {} };
         mergeHeaderMap(result.premi, buildTitleMap(stream.meta?.dynamic_premi_headers || [], stream.meta?.premi_title_map || {}), skipStaticPremiHeader);
@@ -3308,61 +3310,59 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 const normalizedField = normalizeFieldKey(field);
                 const normalizedLabel = String(label || '').trim().toUpperCase();
                 const addedType = addedPotonganTypeByField.get(normalizedField);
+                if (isAutomaticPayrollKoreksiFieldKey(normalizedField)) return false;
                 const isKoreksiField = normalizedField.startsWith('koreksi') || normalizedLabel.startsWith('KOREKSI');
                 if (!(isKoreksiField || addedType === 'POTONGAN_KOTOR')) return false;
                 return activePotFieldSet.has(normalizedField) || isEditMode;
             })
             .sort(([a], [b]) => (a || '').localeCompare(b || ''));
 
-        if (koreksiFields.length === 0 && !isEditMode) {
-            cols.push({ field: 'pot_koreksi', headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', 'KOREKSI (-)'], w: 88, className: 'text-right cell-koreksi-gross' });
-        } else {
-            for (const [label, field] of koreksiFields) {
-                const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOR. ') || label;
-                const canonicalName = buildCanonicalManualAdjustmentName('POTONGAN UPAH KOTOR', label);
-                cols.push({
-                    field, headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', `${displayLabel} (-)`], w: 96, className: 'text-right cell-koreksi-gross',
-                    render: (row) => {
-                        const val = row[field] || 0;
-                        const empCode = row.emp_code || row.nik;
-                        const editKey = `${empCode}-${field}`;
-                        const edit = editedCells[editKey];
-                        const displayVal = isEditMode ? (edit?.value ?? val) : val;
-                        const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_KOTOR');
-                        const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
-                        const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn, defaultInputType: KOREKSI_DEFAULT_INPUT_TYPE });
-                        const popupInitialData = row.type === 'employee'
-                            ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: canonicalName })
-                            : null;
-                        const mismatch = getVisibleManualDetailMismatch({
-                            row,
-                            field,
-                            adjustmentType: 'POTONGAN_KOTOR',
-                            adjustmentName: canonicalName
-                        });
-                        const popupMetadata = parsePremiumMetadataValue(popupInitialData);
-                        const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
-                        const hasFallbackMetadata = !!popupMetadata?.legacy_source;
-                        const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
-                        const editBase = isEditMode ? {
-                            emp_code: empCode,
-                            nik: row.nik,
-                            emp_name: row.nama || row.emp_name || null,
-                            field,
-                            value: popupStoredAmount,
-                            originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
-                            gang_code: row.gang_code,
-                            type: 'POTONGAN_KOTOR',
-                            name: canonicalName,
-                            ad_code: addedColumn?.ad_code || KOREKSI_DEFAULT_AD_CODE,
-                            task_code: addedColumn?.task_code || KOREKSI_DEFAULT_AD_CODE,
-                            base_task_code: addedColumn?.base_task_code || KOREKSI_DEFAULT_AD_CODE,
-                            task_desc: addedColumn?.task_desc || KOREKSI_DEFAULT_TASK_DESC,
-                            input_type: inputType,
-                            remarks: addedColumn?.remarks
-                        } : null;
-                        const detailButton = row.type === 'employee' ? (
-                            <button
+        for (const [label, field] of koreksiFields) {
+            const displayLabel = label.replace(/^KOREKSI\s*/i, 'KOR. ') || label;
+            const canonicalName = buildCanonicalManualAdjustmentName('POTONGAN UPAH KOTOR', label);
+            cols.push({
+                field, headers: [POTONGAN_UPAH_KOTOR, 'KOREKSI GROSS', `${displayLabel} (-)`], w: 96, className: 'text-right cell-koreksi-gross',
+                render: (row) => {
+                    const val = row[field] || 0;
+                    const empCode = row.emp_code || row.nik;
+                    const editKey = `${empCode}-${field}`;
+                    const edit = editedCells[editKey];
+                    const displayVal = isEditMode ? (edit?.value ?? val) : val;
+                    const addedColumn = addedColumns.find((item) => item.field === field && item.type === 'POTONGAN_KOTOR');
+                    const storedMetadata = parsePremiumMetadataValue(row?.manual_adjustment_metadata?.[field]);
+                    const inputType = resolveManualDetailInputType({ edit, storedMetadata, addedColumn, defaultInputType: KOREKSI_DEFAULT_INPUT_TYPE });
+                    const popupInitialData = row.type === 'employee'
+                        ? resolvePremiumPopupInitialData({ edit, amount: displayVal, inputType, row, field, adjustmentName: canonicalName })
+                        : null;
+                    const mismatch = getVisibleManualDetailMismatch({
+                        row,
+                        field,
+                        adjustmentType: 'POTONGAN_KOTOR',
+                        adjustmentName: canonicalName
+                    });
+                    const popupMetadata = parsePremiumMetadataValue(popupInitialData);
+                    const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
+                    const hasFallbackMetadata = !!popupMetadata?.legacy_source;
+                    const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
+                    const editBase = isEditMode ? {
+                        emp_code: empCode,
+                        nik: row.nik,
+                        emp_name: row.nama || row.emp_name || null,
+                        field,
+                        value: popupStoredAmount,
+                        originalValue: resolvePersistentOriginalNumber(edit?.originalValue, popupStoredAmount),
+                        gang_code: row.gang_code,
+                        type: 'POTONGAN_KOTOR',
+                        name: canonicalName,
+                        ad_code: addedColumn?.ad_code || KOREKSI_DEFAULT_AD_CODE,
+                        task_code: addedColumn?.task_code || KOREKSI_DEFAULT_AD_CODE,
+                        base_task_code: addedColumn?.base_task_code || KOREKSI_DEFAULT_AD_CODE,
+                        task_desc: addedColumn?.task_desc || KOREKSI_DEFAULT_TASK_DESC,
+                        input_type: inputType,
+                        remarks: addedColumn?.remarks
+                    } : null;
+                    const detailButton = row.type === 'employee' ? (
+                        <button
                                 type="button"
                                 title={isEditMode ? (mismatch ? `Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}` : 'Edit detail koreksi') : 'Lihat detail koreksi'}
                                 onClick={(event) => {
@@ -3480,7 +3480,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 });
             }
-        }
         cols.push({
             field: 'potongan_upah_kotor_total',
             headers: [POTONGAN_UPAH_KOTOR, 'TOTAL KOREKSI', 'TOTAL (-)'],

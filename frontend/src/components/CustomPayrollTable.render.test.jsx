@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import CustomPayrollTable from './CustomPayrollTable';
@@ -67,6 +68,13 @@ vi.mock('./PayrollScrollChapterBar', () => ({
 }));
 
 describe('CustomPayrollTable render', () => {
+    it('keeps the payroll table scroll container from chaining scroll to the page', () => {
+        const css = readFileSync('src/styles/CustomPayrollTable.css', 'utf8');
+
+        expect(css).toMatch(/\.payroll-table-container\s*\{[^}]*overscroll-behavior:\s*contain;/s);
+        expect(css).toMatch(/\.payroll-table-container\s*\{[^}]*overflow-anchor:\s*none;/s);
+    });
+
     it('renders without referencing header style before initialization', () => {
         expect(() => renderToString(
             <CustomPayrollTable
@@ -190,6 +198,42 @@ describe('CustomPayrollTable render', () => {
         expect(html).not.toContain('data-field="SPSI"');
         expect(html).toContain('INSENTIF');
         expect(html).toContain('KASBON');
+    });
+
+    it('keeps automatic koreksi HK in penggajian without showing static gross koreksi fallback', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: [],
+            dynamic_potongan_headers: [],
+            premi_title_map: {},
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            gaji_pokok_aktual: 2500000,
+            gaji_pokok_ideal: 2600000,
+            koreksi_hk: -100000,
+            pot_koreksi: 100000,
+            potongan_upah_kotor_total: 100000
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('KOR. HK');
+        expect(html).toContain('data-field="koreksi_hk"');
+        expect(html).not.toMatch(/cell-group-potongan-upah-kotor[^>]*data-field="koreksi_hk"/);
+        expect(html).not.toContain('data-field="pot_koreksi"');
+        expect(html).not.toContain('KOREKSI GROSS');
     });
 
     it('renders only total pendapatan lainnya without detail income columns', () => {
