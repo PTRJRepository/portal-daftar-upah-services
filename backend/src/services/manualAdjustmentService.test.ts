@@ -2179,7 +2179,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 emp_code: "A0091",
                 stored_emp_identifier: null,
                 category: "spsi",
-                adjustment_name: "AUTO SPSI",
+                adjustment_name: "SPSI",
                 source_amount: 4000,
                 stored_amount: 4000,
                 db_ptrj_amount: 4000,
@@ -2225,7 +2225,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
                 emp_code: "A0001",
                 stored_emp_identifier: "1902050504860001",
                 category: "spsi",
-                adjustment_name: "AUTO SPSI",
+                adjustment_name: "SPSI",
                 source_amount: 4000,
                 stored_amount: 0,
                 db_ptrj_amount: 4000,
@@ -2531,6 +2531,52 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
             expect(calls.some((call) => call.sql.includes("RTRIM(t.EmpCode) IN (?)") && call.params.includes("1902050504860001"))).toBe(false);
         } finally {
             (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("returns only unique PR_ADTRANS DocIDs for the selected config", async () => {
+        const originalCheckAdtransDirectly = (manualAdjustmentService as any).checkAdtransDirectly;
+        (manualAdjustmentService as any).checkAdtransDirectly = mock(async () => ({
+            totals: [],
+            doc_desc_details: [
+                { emp_code: "A0001", category: "premi", doc_desc: "PREMI TBS", doc_id: "ADAB126041001", amount: 100000 },
+                { emp_code: "A0001", category: "premi", doc_desc: "PREMI TBS", doc_id: "ADAB126041001", amount: 100000 },
+                { emp_code: "A0002", category: "premi", doc_desc: "PREMI TBS", doc_id: "ADAB126041002", amount: 150000 },
+                { emp_code: "A0003", category: "premi", doc_desc: "PREMI TBS", doc_id: null, amount: 175000 }
+            ],
+            duplicate_report: {
+                duplicate_count: 0,
+                duplicates: []
+            }
+        }));
+
+        try {
+            const docIds = await (manualAdjustmentService as any).listAdtransDocIds({
+                periodMonth: 4,
+                periodYear: 2026,
+                empCodes: ["A0001", "A0002"],
+                filters: [],
+                divisionCode: "AB1",
+                adjustmentTypes: ["PREMI"],
+                adjustmentNames: ["PREMI TBS"],
+                docDescs: []
+            });
+
+            expect(docIds).toEqual(["ADAB126041001", "ADAB126041002"]);
+            expect((manualAdjustmentService as any).checkAdtransDirectly).toHaveBeenCalledWith(
+                4,
+                2026,
+                ["A0001", "A0002"],
+                [],
+                "AB1",
+                {
+                    adjustmentTypes: ["PREMI"],
+                    adjustmentNames: ["PREMI TBS"],
+                    docDescs: []
+                }
+            );
+        } finally {
+            (manualAdjustmentService as any).checkAdtransDirectly = originalCheckAdtransDirectly;
         }
     });
 });

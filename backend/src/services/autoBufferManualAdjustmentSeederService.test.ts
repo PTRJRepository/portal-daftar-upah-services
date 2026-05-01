@@ -30,22 +30,22 @@ describe("autoBufferManualAdjustmentSeederService", () => {
         expect(entries.length).toBe(3);
         expect(entries.every((entry) => entry.adjustment_type === "AUTO_BUFFER")).toBe(true);
         expect(entries.map((entry) => entry.adjustment_name).sort()).toEqual([
-            "AUTO MASA KERJA",
-            "AUTO SPSI",
-            "AUTO TUNJANGAN JABATAN"
+            "MASA KERJA",
+            "SPSI",
+            "TUNJANGAN JABATAN"
         ]);
 
-        const spsiEntry = entries.find((entry) => entry.adjustment_name === "AUTO SPSI");
+        const spsiEntry = entries.find((entry) => entry.adjustment_name === "SPSI");
         expect(Number(spsiEntry?.amount || 0)).toBe(4000);
-        expect(spsiEntry?.remarks).toBe("AUTO SPSI | potongan spsi | 4000 | sync:MISS | match:MISMATCH");
+        expect(spsiEntry?.remarks).toBe("SPSI | potongan spsi | 4000 | sync:MISS | match:MISMATCH");
 
-        const masaKerjaEntry = entries.find((entry) => entry.adjustment_name === "AUTO MASA KERJA");
-        expect(masaKerjaEntry?.remarks).toContain(`AUTO MASA KERJA | masa kerja | ${Number(masaKerjaEntry?.amount || 0)}`);
+        const masaKerjaEntry = entries.find((entry) => entry.adjustment_name === "MASA KERJA");
+        expect(masaKerjaEntry?.remarks).toContain(`MASA KERJA | masa kerja | ${Number(masaKerjaEntry?.amount || 0)}`);
         expect(masaKerjaEntry?.remarks).toContain("| sync:");
         expect(masaKerjaEntry?.remarks).toContain("| match:");
 
-        const jabatanEntry = entries.find((entry) => entry.adjustment_name === "AUTO TUNJANGAN JABATAN");
-        expect(jabatanEntry?.remarks).toContain(`AUTO TUNJANGAN JABATAN | tunjangan jabatan | ${Number(jabatanEntry?.amount || 0)}`);
+        const jabatanEntry = entries.find((entry) => entry.adjustment_name === "TUNJANGAN JABATAN");
+        expect(jabatanEntry?.remarks).toContain(`TUNJANGAN JABATAN | tunjangan jabatan | ${Number(jabatanEntry?.amount || 0)}`);
         expect(jabatanEntry?.remarks).toContain("| sync:");
         expect(jabatanEntry?.remarks).toContain("| match:");
     });
@@ -65,14 +65,14 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             }
         ], 4, 2026, "AB1");
 
-        const jabatanEntry = entries.find((entry) => entry.adjustment_name === "AUTO TUNJANGAN JABATAN");
-        const spsiEntry = entries.find((entry) => entry.adjustment_name === "AUTO SPSI");
+        const jabatanEntry = entries.find((entry) => entry.adjustment_name === "TUNJANGAN JABATAN");
+        const spsiEntry = entries.find((entry) => entry.adjustment_name === "SPSI");
 
         expect(Number(jabatanEntry?.amount ?? -1)).toBe(0);
         expect(Number(spsiEntry?.amount ?? -1)).toBe(0);
     });
 
-    it("uses edit-mode SPSI checkbox for AUTO SPSI amount instead of db pot_spsi", () => {
+    it("uses edit-mode SPSI checkbox for SPSI amount instead of db pot_spsi", () => {
         const entries = buildAutoBufferSeedEntries([
             {
                 emp_code: "A0003",
@@ -88,12 +88,12 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             }
         ], 4, 2026, "AB1");
 
-        const spsiEntry = entries.find((entry) => entry.adjustment_name === "AUTO SPSI");
+        const spsiEntry = entries.find((entry) => entry.adjustment_name === "SPSI");
 
         expect(Number(spsiEntry?.amount ?? -1)).toBe(0);
     });
 
-    it("uses stable KTP NIK as manual adjustment emp_code when extractor has both identifiers", () => {
+    it("keeps PTRJ emp_code and stores stable KTP NIK separately when extractor has both identifiers", () => {
         const entries = buildAutoBufferSeedEntries([
             {
                 emp_code: "F0520",
@@ -111,9 +111,40 @@ describe("autoBufferManualAdjustmentSeederService", () => {
         ], 4, 2026, "F1");
 
         expect(entries.length).toBe(3);
-        expect(entries.every((entry) => entry.emp_code === "1902050504860001")).toBe(true);
+        expect(entries.every((entry) => entry.emp_code === "F0520")).toBe(true);
+        expect(entries.every((entry) => entry.nik === "1902050504860001")).toBe(true);
         expect(entries.every((entry) => entry.emp_name === "BUDI TEST")).toBe(true);
-        expect(entries.find((entry) => entry.adjustment_name === "AUTO MASA KERJA")?.amount).toBeGreaterThan(0);
+        expect(entries.find((entry) => entry.adjustment_name === "MASA KERJA")?.amount).toBeGreaterThan(0);
+
+        const metadata = JSON.parse(entries[0].metadata_json);
+        expect(metadata).toMatchObject({
+            input_type: "auto_buffer",
+            emp_code: "F0520",
+            nik: "1902050504860001",
+            emp_name: "BUDI TEST",
+            gang_code: "F1H",
+            division_code: "F1"
+        });
+    });
+
+    it("does not seed rows when extractor only has numeric KTP NIK as emp_code", () => {
+        const entries = buildAutoBufferSeedEntries([
+            {
+                emp_code: "1902050504860001",
+                nik: "1902050504860001",
+                nama: "BUDI TEST",
+                gang_code: "F1H",
+                jabatan_estate: "Karyawan Panen",
+                hari_kerja: 24,
+                jumlah_hk: 24,
+                masa_kerja_tahun: 8,
+                is_spsi_member: true,
+                jabatan_jumlah: 0,
+                masa_kerja_jumlah: 60000
+            }
+        ], 4, 2026, "F1");
+
+        expect(entries).toEqual([]);
     });
 
     it("normalizes stored division_code to the 3-character payroll format", () => {
@@ -216,7 +247,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             expect(insertCalls.length).toBe(3);
         });
 
-        it("uses profile override keyed by NIK before calculating AUTO SPSI amount", async () => {
+        it("uses profile override keyed by NIK before calculating SPSI amount", async () => {
             const queryCalls: SqlCall[] = [];
             const mockExtendedDb = {
                 queryOne: async (sql: string) => sql.includes("COUNT(1) as count") ? { count: 0 } : null,
@@ -258,12 +289,12 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             const spsiInsert = queryCalls.find((call) =>
                 call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments") &&
-                call.params?.[7] === "AUTO SPSI"
+                call.params?.[8] === "SPSI"
             );
-            expect(spsiInsert?.params?.[8]).toBe(4000);
+            expect(spsiInsert?.params?.[9]).toBe(4000);
         });
 
-        it("uses profile override keyed by letter EmpCode before calculating NIK-keyed AUTO SPSI amount", async () => {
+        it("uses profile override keyed by letter EmpCode before calculating PTRJ-keyed SPSI amount", async () => {
             const queryCalls: SqlCall[] = [];
             const mockExtendedDb = {
                 queryOne: async (sql: string) => sql.includes("COUNT(1) as count") ? { count: 0 } : null,
@@ -305,10 +336,19 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             const spsiInsert = queryCalls.find((call) =>
                 call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments") &&
-                call.params?.[7] === "AUTO SPSI"
+                call.params?.[8] === "SPSI"
             );
-            expect(spsiInsert?.params?.[2]).toBe("1902016806780001");
-            expect(spsiInsert?.params?.[8]).toBe(4000);
+            expect(spsiInsert?.params?.[2]).toBe("A0004");
+            expect(spsiInsert?.params?.[3]).toBe("1902016806780001");
+            expect(spsiInsert?.params?.[9]).toBe(4000);
+
+            const metadata = JSON.parse(spsiInsert?.params?.[11]);
+            expect(metadata).toMatchObject({
+                input_type: "auto_buffer",
+                emp_code: "A0004",
+                nik: "1902016806780001",
+                adjustment_name: "SPSI"
+            });
         });
 
         it("refreshes seeded remarks against db_ptrj PR_ADTRANS", async () => {
@@ -321,10 +361,11 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                     if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
                         return [{
                             id: 20,
-                            emp_code: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            emp_code: "F0520",
+                            nik: "1902050504860001",
+                            adjustment_name: "MASA KERJA",
                             amount: 60000,
-                            remarks: "AUTO MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH"
+                            remarks: "MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH"
                         }];
                     }
                     return [];
@@ -337,7 +378,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                         return [{
                             emp_code: "F0520",
                             nik: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            adjustment_name: "MASA KERJA",
                             total: 60000
                         }];
                     }
@@ -432,7 +473,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             expect(updateCalls.length).toBe(0);
         });
 
-        it("validates NIK-keyed auto buffer rows against db_ptrj PR_ADTRANS EmpCode values", async () => {
+        it("validates PTRJ-keyed auto buffer rows against db_ptrj PR_ADTRANS EmpCode values", async () => {
             const extendedQueryCalls: SqlCall[] = [];
 
             const mockExtendedDb = {
@@ -441,10 +482,11 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                     if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
                         return [{
                             id: 10,
-                            emp_code: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            emp_code: "F0520",
+                            nik: "1902050504860001",
+                            adjustment_name: "MASA KERJA",
                             amount: 60000,
-                            remarks: "AUTO MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH"
+                            remarks: "MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH"
                         }];
                     }
                     return [];
@@ -457,7 +499,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                         return [{
                             emp_code: "F0520",
                             nik: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            adjustment_name: "MASA KERJA",
                             total: 60000
                         }];
                     }
@@ -482,10 +524,10 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
             expect(updateCall).toBeDefined();
-            expect(updateCall?.params[0]).toBe("AUTO MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH");
+            expect(updateCall?.params[0]).toBe("MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH");
         });
 
-        it("keeps MISS when NIK-keyed auto buffer amount differs from db_ptrj PR_ADTRANS", async () => {
+        it("keeps MISS when PTRJ-keyed auto buffer amount differs from db_ptrj PR_ADTRANS", async () => {
             const extendedQueryCalls: SqlCall[] = [];
 
             const mockExtendedDb = {
@@ -494,10 +536,11 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                     if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
                         return [{
                             id: 11,
-                            emp_code: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            emp_code: "F0520",
+                            nik: "1902050504860001",
+                            adjustment_name: "MASA KERJA",
                             amount: 60000,
-                            remarks: "AUTO MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH"
+                            remarks: "MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH"
                         }];
                     }
                     return [];
@@ -510,7 +553,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                         return [{
                             emp_code: "F0520",
                             nik: "1902050504860001",
-                            adjustment_name: "AUTO MASA KERJA",
+                            adjustment_name: "MASA KERJA",
                             total: 70000
                         }];
                     }
@@ -535,7 +578,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
             expect(updateCall).toBeDefined();
-            expect(updateCall?.params[0]).toBe("AUTO MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH");
+            expect(updateCall?.params[0]).toBe("MASA KERJA | masa kerja | 60000 | sync:MISS | match:MISMATCH");
         });
     });
 });

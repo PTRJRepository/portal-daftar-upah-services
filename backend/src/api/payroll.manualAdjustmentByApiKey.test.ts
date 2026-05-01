@@ -13,7 +13,8 @@ const originalManualAdjustmentMethods = {
     getAdjustments: manualAdjustmentService.getAdjustments,
     listAdjustmentNameOptions: manualAdjustmentService.listAdjustmentNameOptions,
     updateManualAdjustmentSyncStatus: manualAdjustmentService.updateManualAdjustmentSyncStatus,
-    checkAdtransDirectly: manualAdjustmentService.checkAdtransDirectly
+    checkAdtransDirectly: manualAdjustmentService.checkAdtransDirectly,
+    listAdtransDocIds: manualAdjustmentService.listAdtransDocIds
 };
 const originalManualAdjustmentSyncStatusSeederMethods = {
     seedPeriod: manualAdjustmentSyncStatusSeederService.seedPeriod
@@ -92,6 +93,8 @@ const checkAdtransDirectly = mock(async () => ({
     }
 }));
 
+const listAdtransDocIds = mock(async () => ["ADIJL26041001", "ADIJL26041002"]);
+
 const seedSyncStatusPeriod = mock(async () => ({
     seeder: "manual_adjustment_sync_status",
     period_month: 4,
@@ -150,6 +153,7 @@ manualAdjustmentService.getAdjustments = getAdjustments;
 manualAdjustmentService.listAdjustmentNameOptions = listAdjustmentNameOptions;
 manualAdjustmentService.updateManualAdjustmentSyncStatus = updateManualAdjustmentSyncStatus;
 manualAdjustmentService.checkAdtransDirectly = checkAdtransDirectly;
+manualAdjustmentService.listAdtransDocIds = listAdtransDocIds;
 manualAdjustmentSyncStatusSeederService.seedPeriod = seedSyncStatusPeriod;
 taskCodeOptionService.searchAutomationAdjustmentOptions = searchAutomationAdjustmentOptions;
 
@@ -159,6 +163,7 @@ describe("manual adjustment by-api-key route", () => {
         manualAdjustmentService.listAdjustmentNameOptions = originalManualAdjustmentMethods.listAdjustmentNameOptions;
         manualAdjustmentService.updateManualAdjustmentSyncStatus = originalManualAdjustmentMethods.updateManualAdjustmentSyncStatus;
         manualAdjustmentService.checkAdtransDirectly = originalManualAdjustmentMethods.checkAdtransDirectly;
+        manualAdjustmentService.listAdtransDocIds = originalManualAdjustmentMethods.listAdtransDocIds;
         manualAdjustmentSyncStatusSeederService.seedPeriod = originalManualAdjustmentSyncStatusSeederMethods.seedPeriod;
         taskCodeOptionService.searchAutomationAdjustmentOptions = originalTaskCodeOptionMethods.searchAutomationAdjustmentOptions;
     });
@@ -169,6 +174,7 @@ describe("manual adjustment by-api-key route", () => {
         searchAutomationAdjustmentOptions.mockClear();
         updateManualAdjustmentSyncStatus.mockClear();
         checkAdtransDirectly.mockClear();
+        listAdtransDocIds.mockClear();
         seedSyncStatusPeriod.mockClear();
     });
 
@@ -356,6 +362,89 @@ describe("manual adjustment by-api-key route", () => {
                 docDescs: []
             }
         );
+    });
+
+    it("returns only matching ADTRANS DocIDs for the selected config", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/adtrans-doc-ids/by-api-key",
+            {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    period_month: 4,
+                    period_year: 2026,
+                    division_code: "IJL",
+                    adjustment_type: "PREMI",
+                    adjustment_name: "PREMI TBS"
+                })
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({
+            success: true,
+            count: 2,
+            doc_ids: ["ADIJL26041001", "ADIJL26041002"]
+        });
+        expect(listAdtransDocIds).toHaveBeenCalledWith({
+            periodMonth: 4,
+            periodYear: 2026,
+            empCodes: [],
+            filters: [],
+            divisionCode: "IJL",
+            adjustmentTypes: ["PREMI"],
+            adjustmentNames: ["PREMI TBS"],
+            docDescs: []
+        });
+    });
+
+    it("returns matching ADTRANS DocIDs through compatibility aliases", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        for (const endpoint of ["adtrans-by-docid", "adtrans-by-doid"]) {
+            const response = await payrollRoutes.handle(new Request(
+                `http://localhost/payroll/manual-adjustment/${endpoint}/by-api-key`,
+                {
+                    method: "POST",
+                    headers: {
+                        "X-API-Key": "test-manual-adjustment-api-key",
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        period_month: 4,
+                        period_year: 2026,
+                        division_code: "IJL",
+                        adjustment_type: "PREMI",
+                        adjustment_name: "PREMI TBS"
+                    })
+                }
+            ));
+            const body = await response.json() as any;
+
+            expect(response.status).toBe(200);
+            expect(body).toEqual({
+                success: true,
+                count: 2,
+                doc_ids: ["ADIJL26041001", "ADIJL26041002"]
+            });
+        }
+        expect(listAdtransDocIds).toHaveBeenCalledWith({
+            periodMonth: 4,
+            periodYear: 2026,
+            empCodes: [],
+            filters: [],
+            divisionCode: "IJL",
+            adjustmentTypes: ["PREMI"],
+            adjustmentNames: ["PREMI TBS"],
+            docDescs: []
+        });
+        expect(listAdtransDocIds).toHaveBeenCalledTimes(2);
     });
 
     it("runs manual adjustment sync status seeder through API key route", async () => {

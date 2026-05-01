@@ -43,6 +43,44 @@ Catatan eksekusi awal AB1: pada 2026-05-01 sudah dijalankan untuk `period_month=
 
 ---
 
+## Update Untuk Reset/Cleanup DocID ADTRANS
+
+Jika automation perlu menghapus record salah input di Plantware, gunakan endpoint read-only ini untuk mengambil **list `DocID`** yang match dengan periode, divisi, dan config kategori yang dipilih:
+
+```text
+POST /payroll/manual-adjustment/adtrans-doc-ids/by-api-key
+```
+
+Alias kompatibel jika automation sudah memakai nama `adtrans-by-docid`:
+
+```text
+POST /payroll/manual-adjustment/adtrans-by-docid/by-api-key
+POST /payroll/manual-adjustment/adtrans-by-doid/by-api-key
+```
+
+Endpoint ini hanya membaca `db_ptrj` dari `PR_ADTRANS` dan `PR_ADTRANS_ARC`. Endpoint ini tidak menjalankan delete, tidak update `extend_db_ptrj`, dan response-nya sengaja dibuat sederhana:
+
+```json
+{
+  "success": true,
+  "count": 2,
+  "doc_ids": ["ADIJL26041001", "ADIJL26041002"]
+}
+```
+
+Gunakan config yang sama dengan endpoint duplicate/check:
+
+- `filters: ["jabatan"]` untuk tunjangan jabatan.
+- `filters: ["masa kerja"]` untuk tunjangan masa kerja.
+- `filters: ["spsi"]` untuk potongan SPSI.
+- `adjustment_type: "PREMI"` dan `adjustment_name: "PREMI TBS"` untuk premi tertentu.
+- `adjustment_type: "POTONGAN_KOTOR"` dan `adjustment_name: "KOREKSI PANEN"` untuk koreksi tertentu.
+- `doc_desc` jika ingin match teks `PR_ADTRANS.DocDesc` langsung.
+
+Detail request, response, dan contoh cURL ada di section **4b. Ambil List `DocID` ADTRANS untuk Config Terpilih**.
+
+---
+
 ## Daftar Division (Divisi)
 
 Division dikelompokkan menjadi **Real Divisions** dan **Virtual Divisions**.
@@ -2309,6 +2347,115 @@ Aturan rekomendasi hapus:
 - Untuk cek satu divisi penuh, cukup kirim `division_code` tanpa `emp_codes`; endpoint akan memakai `PR_ADTRANS.LocCode` sebagai scope.
 - `duplicate_report` cocok untuk kasus auto buffer/Plantware input yang seharusnya satu record per employee per kategori, misalnya potongan SPSI double di Divisi P2A.
 - Untuk mengecek data yang baru di-update oleh user tertentu seperti `UpdatedBy = 'adm075'`, gunakan query investigasi terpisah; endpoint ini saat ini fokus ke pengecekan berdasarkan `EmpCode`/`division_code`, periode, dan filter `DocDesc`.
+
+---
+
+### 4b. Ambil List `DocID` ADTRANS untuk Config Terpilih
+
+**Endpoint utama:** `POST /payroll/manual-adjustment/adtrans-doc-ids/by-api-key`  
+**Alias kompatibel:** `POST /payroll/manual-adjustment/adtrans-by-docid/by-api-key` dan `POST /payroll/manual-adjustment/adtrans-by-doid/by-api-key`  
+**Access:** Protected, wajib menggunakan header `X-API-Key`.
+
+Endpoint ini hanya membaca `db_ptrj` (`PR_ADTRANS` dan `PR_ADTRANS_ARC`) dan mengembalikan list `DocID` yang match dengan scope/config yang dipilih. Endpoint ini **tidak menghapus data**, tidak menulis ke `extend_db_ptrj`, dan tidak mengubah `PR_ADTRANS`.
+
+#### Tujuan
+
+Tujuan endpoint ini adalah memberi daftar `DocID` transaksi Plantware yang perlu ditargetkan saat reset/cleanup dilakukan oleh automation lain. Kasus umum: user salah input nilai di Plantware untuk satu divisi/periode, misalnya tunjangan jabatan, tunjangan masa kerja, potongan SPSI, atau premi tertentu. Endpoint ini membantu menemukan `DocID` yang sesuai config tanpa perlu membaca payload duplicate/detail yang panjang.
+
+Endpoint ini berbeda dari `check-adtrans/by-api-key`:
+
+| Endpoint | Output | Cocok untuk |
+|----------|--------|-------------|
+| `check-adtrans/by-api-key` | total, detail `DocDesc`, dan duplicate report | Investigasi nominal, duplicate, dan detail transaksi. |
+| `adtrans-doc-ids/by-api-key` | hanya `doc_ids` | Automation yang hanya butuh list `DocID` untuk reset/cleanup. |
+
+#### Cara Pakai
+
+Kirim periode dan scope data:
+
+- `period_month` dan `period_year` selalu wajib.
+- Kirim `division_code` untuk ambil semua record dalam satu divisi/LocCode.
+- Atau kirim `emp_codes` jika hanya ingin target employee tertentu.
+
+Lalu kirim config transaksi yang ingin dicari. Minimal salah satu dari `filters`, `adjustment_type`, `adjustment_name`, atau `doc_desc` wajib dikirim.
+
+Config yang umum:
+
+- tunjangan jabatan: `filters: ["jabatan"]`
+- tunjangan masa kerja: `filters: ["masa kerja"]`
+- potongan SPSI: `filters: ["spsi"]`
+- premi tertentu: `adjustment_type: "PREMI"` + `adjustment_name: "PREMI TBS"`
+- koreksi/potongan tertentu: `adjustment_type` + `adjustment_name` atau `doc_desc`
+
+Flow usage yang disarankan:
+
+1. Panggil endpoint dengan scope paling sempit yang aman, misalnya `division_code` + kategori spesifik.
+2. Cek `count` dan isi `doc_ids`.
+3. Jika list sudah sesuai, teruskan `doc_ids` itu ke proses reset/delete Plantware yang terpisah.
+4. Setelah cleanup Plantware selesai, verifikasi ulang dengan `check-adtrans/by-api-key` atau endpoint compare yang relevan.
+
+Catatan penting:
+
+- Response tidak menyertakan nominal, employee, atau `DocDesc`; gunakan `check-adtrans/by-api-key` jika butuh audit detail.
+- `doc_ids` sudah dibuat unik, jadi `DocID` yang muncul lebih dari satu kali di hasil query hanya dikirim sekali.
+- `division_code` mengikuti normalisasi yang sama dengan `check-adtrans`, misalnya `PG2A`/`2A` dipakai sebagai `P2A` di `PR_ADTRANS.LocCode`.
+- Endpoint memakai `PhyMonth` dan `PhyYear`, bukan `AccMonth`/`AccYear`.
+
+Request body memakai field yang sama dengan `check-adtrans/by-api-key`:
+
+| Field | Type | Required | Keterangan |
+|-------|------|----------|------------|
+| `period_month` | number | Yes | Bulan kalender, dipakai sebagai `PhyMonth`. |
+| `period_year` | number | Yes | Tahun kalender, dipakai sebagai `PhyYear`. |
+| `emp_codes` | string[] | Conditional | List `EmpCode`; wajib jika `division_code` tidak dikirim. |
+| `division_code` | string | Conditional | Scope divisi/LocCode; wajib jika `emp_codes` kosong. |
+| `filters` | string[] | Conditional | Kategori seperti `spsi`, `masa kerja`, `jabatan`, `premi`, `koreksi`, `potongan`. |
+| `adjustment_type` / `adjustment_types` | string/string[] | Conditional | Alternatif kategori, misalnya `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`. |
+| `adjustment_name` / `adjustment_names` | string/string[] | Optional | Filter nama spesifik yang dicocokkan ke `DocDesc`. |
+| `doc_desc` / `doc_descs` | string/string[] | Optional | Filter teks `DocDesc` langsung. |
+
+Minimal kirim salah satu filter transaksi: `filters`, `adjustment_type`, `adjustment_name`, atau `doc_desc`.
+
+**Contoh potongan SPSI satu divisi:**
+
+```bash
+curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/adtrans-doc-ids/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "P2A",
+    "filters": ["spsi"]
+  }'
+```
+
+**Contoh premi spesifik:**
+
+```bash
+curl -s -X POST "${BASE_URL}/payroll/manual-adjustment/adtrans-doc-ids/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "IJL",
+    "adjustment_type": "PREMI",
+    "adjustment_name": "PREMI TBS"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 2,
+  "doc_ids": ["ADIJL26041001", "ADIJL26041002"]
+}
+```
+
+`doc_ids` berisi `DocID` unik yang match. Jika tidak ada transaksi yang match, `count` bernilai `0` dan `doc_ids` berupa array kosong.
 
 ---
 

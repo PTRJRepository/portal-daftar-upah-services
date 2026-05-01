@@ -311,6 +311,9 @@ export class PayrollVerificationService {
 
         // Known AUTO_BUFFER mappings
         const autoBufferToDocDesc: Record<string, string[]> = {
+            "TUNJANGAN JABATAN": ["JABATAN"],
+            "MASA KERJA": ["MASA KERJA"],
+            "SPSI": ["SPSI"],
             "AUTO TUNJANGAN JABATAN": ["JABATAN"],
             "AUTO MASA KERJA": ["MASA KERJA"],
             "AUTO SPSI": ["SPSI"]
@@ -831,6 +834,9 @@ export class PayrollVerificationService {
 
         // For each manual adjustment, check if DocDesc exists in PR_ADTRANS
         const autoBufferToDocDesc: Record<string, string[]> = {
+            "TUNJANGAN JABATAN": ["%JABATAN%"],
+            "MASA KERJA": ["%MASA%KERJA%"],
+            "SPSI": ["%SPSI%"],
             "AUTO TUNJANGAN JABATAN": ["%JABATAN%"],
             "AUTO MASA KERJA": ["%MASA%KERJA%"],
             "AUTO SPSI": ["%SPSI%"]

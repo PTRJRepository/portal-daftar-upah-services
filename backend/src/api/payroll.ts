@@ -73,6 +73,87 @@ function parseStringArrayInput(value: unknown): string[] {
         .filter(Boolean);
 }
 
+const ADTRANS_DOC_IDS_BODY_SCHEMA = t.Object({
+    period_month: t.Number(),
+    period_year: t.Number(),
+    emp_codes: t.Optional(t.Array(t.String())),
+    filters: t.Optional(t.Array(t.String())),
+    adjustment_type: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+    adjustment_types: t.Optional(t.Array(t.String())),
+    adjustment_name: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+    adjustment_names: t.Optional(t.Array(t.String())),
+    doc_desc: t.Optional(t.Union([t.String(), t.Array(t.String())])),
+    doc_descs: t.Optional(t.Array(t.String())),
+    division_code: t.Optional(t.String())
+});
+
+async function handleAdtransDocIdsByApiKey({ body, headers, set }: {
+    body: unknown;
+    headers: Record<string, string | undefined>;
+    set: any;
+}) {
+    try {
+        const apiKey = headers["x-api-key"];
+        if (!apiKey || apiKey !== Config.API_KEY_BYPASS) {
+            set.status = 401;
+            return { success: false, message: "Unauthorized - Invalid API Key" };
+        }
+
+        const data = body as any;
+        const { period_month, period_year, emp_codes = [], division_code } = data;
+        const filters = parseStringArrayInput(data.filters);
+        const adjustmentTypes = [
+            ...parseStringArrayInput(data.adjustment_type),
+            ...parseStringArrayInput(data.adjustment_types)
+        ];
+        const adjustmentNames = [
+            ...parseStringArrayInput(data.adjustment_name),
+            ...parseStringArrayInput(data.adjustment_names)
+        ];
+        const docDescs = [
+            ...parseStringArrayInput(data.doc_desc),
+            ...parseStringArrayInput(data.doc_descs)
+        ];
+
+        if (!period_month || !period_year) {
+            set.status = 400;
+            return { success: false, message: "period_month and period_year are required" };
+        }
+
+        if ((!Array.isArray(emp_codes) || emp_codes.length === 0) && !division_code) {
+            set.status = 400;
+            return { success: false, message: "emp_codes array or division_code is required" };
+        }
+
+        if (filters.length === 0 && adjustmentTypes.length === 0 && adjustmentNames.length === 0 && docDescs.length === 0) {
+            set.status = 400;
+            return { success: false, message: "filters, adjustment_type, adjustment_name, or doc_desc is required" };
+        }
+
+        const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+        const docIds = await manualAdjustmentService.listAdtransDocIds({
+            periodMonth: Number(period_month),
+            periodYear: Number(period_year),
+            empCodes: emp_codes,
+            filters,
+            divisionCode: division_code,
+            adjustmentTypes,
+            adjustmentNames,
+            docDescs
+        });
+
+        return {
+            success: true,
+            count: docIds.length,
+            doc_ids: docIds
+        };
+    } catch (e: any) {
+        console.error("[PayrollRoutes] manual-adjustment/adtrans-doc-ids error:", e);
+        set.status = 500;
+        return { success: false, message: e.message || "Internal server error" };
+    }
+}
+
 export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     .derive(async ({ headers }) => {
         try {
@@ -1147,6 +1228,31 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             doc_descs: t.Optional(t.Array(t.String())),
             division_code: t.Optional(t.String())
         })
+    })
+
+    /**
+     * @route POST /payroll/manual-adjustment/adtrans-doc-ids/by-api-key
+     * @description Return only PR_ADTRANS/PR_ADTRANS_ARC DocID values matching selected config.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/adtrans-doc-ids/by-api-key", handleAdtransDocIdsByApiKey, {
+        body: ADTRANS_DOC_IDS_BODY_SCHEMA
+    })
+    /**
+     * @route POST /payroll/manual-adjustment/adtrans-by-docid/by-api-key
+     * @description Compatibility alias for automation that asks for ADTRANS records by DocID.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/adtrans-by-docid/by-api-key", handleAdtransDocIdsByApiKey, {
+        body: ADTRANS_DOC_IDS_BODY_SCHEMA
+    })
+    /**
+     * @route POST /payroll/manual-adjustment/adtrans-by-doid/by-api-key
+     * @description Typo-compatible alias for adtrans-by-docid.
+     * @access Public (with X-API-Key)
+     */
+    .post("/manual-adjustment/adtrans-by-doid/by-api-key", handleAdtransDocIdsByApiKey, {
+        body: ADTRANS_DOC_IDS_BODY_SCHEMA
     })
 
     /**

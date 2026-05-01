@@ -2,7 +2,10 @@ import { Database } from "../db/client";
 import { Config } from "../config";
 import { dataExtractorService } from "./dataExtractorService";
 import { payrollAutoBufferService } from "./payroll/payrollAutoBufferService";
-import { buildAutoBufferSeedRemark } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
+import {
+    buildAutoBufferSeedRemark,
+    normalizeAutoBufferAdjustmentName
+} from "./payroll/manualAdjustments/autoBufferAdcodeMap";
 import { normalizeManualAdjustmentDivisionCode } from "./payroll/manualAdjustments/manualAdjustmentNaming";
 import { payrollProfileSeedService } from "./payrollProfileSeedService";
 import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
@@ -10,9 +13,9 @@ import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 const AUTO_BUFFER_ADJUSTMENT_TYPE = "AUTO_BUFFER";
 
 const AUTO_BUFFER_ADJUSTMENT_NAME = {
-    jabatan: "AUTO TUNJANGAN JABATAN",
-    masaKerja: "AUTO MASA KERJA",
-    spsi: "AUTO SPSI"
+    jabatan: "TUNJANGAN JABATAN",
+    masaKerja: "MASA KERJA",
+    spsi: "SPSI"
 } as const;
 
 function toNumber(value: unknown): number {
@@ -22,6 +25,38 @@ function toNumber(value: unknown): number {
 
 function normalizeString(value: unknown): string {
     return String(value || "").trim();
+}
+
+function isNumericNik(value: unknown): boolean {
+    return /^\d{10,}$/.test(normalizeString(value));
+}
+
+function serializeAutoBufferMetadata(input: {
+    period_month: number;
+    period_year: number;
+    emp_code: string;
+    nik: string | null;
+    emp_name: string | null;
+    gang_code: string;
+    division_code: string;
+    adjustment_type: string;
+    adjustment_name: string;
+    amount: number;
+}): string {
+    return JSON.stringify({
+        input_type: "auto_buffer",
+        period_month: input.period_month,
+        period_year: input.period_year,
+        emp_code: input.emp_code,
+        nik: input.nik,
+        emp_name: input.emp_name,
+        gang_code: input.gang_code,
+        division_code: input.division_code,
+        adjustment_type: input.adjustment_type,
+        adjustment_name: input.adjustment_name,
+        amount: input.amount,
+        total_amount: input.amount
+    });
 }
 
 export interface AutoBufferManualAdjustmentSeedInput {
@@ -41,6 +76,7 @@ export interface AutoBufferManualAdjustmentSeedEntry {
     period_month: number;
     period_year: number;
     emp_code: string;
+    nik: string | null;
     emp_name?: string | null;
     gang_code: string;
     division_code: string;
@@ -48,6 +84,7 @@ export interface AutoBufferManualAdjustmentSeedEntry {
     adjustment_name: string;
     amount: number;
     remarks: string;
+    metadata_json: string;
 }
 
 type ExtractedPayrollLike = {
@@ -81,7 +118,12 @@ export function buildAutoBufferSeedEntries(
     const entries: AutoBufferManualAdjustmentSeedEntry[] = [];
 
     for (const row of rows || []) {
-        const empCode = normalizeString(row.nik || row.new_nik || row.actual_nik || row.emp_code).toUpperCase();
+        const rawEmpCode = normalizeString(row.emp_code).toUpperCase();
+        const nik = (
+            normalizeString(row.nik || row.new_nik || row.actual_nik).toUpperCase()
+            || (isNumericNik(rawEmpCode) ? rawEmpCode : "")
+        ) || null;
+        const empCode = rawEmpCode && !isNumericNik(rawEmpCode) ? rawEmpCode : "";
         if (!empCode) continue;
 
         const empName = normalizeString(row.emp_name || row.nama).toUpperCase() || null;
@@ -111,11 +153,11 @@ export function buildAutoBufferSeedEntries(
             dbMasaKerjaJumlah
         });
 
-        entries.push(
-            {
+        const jabatanEntry = {
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                nik,
                 emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
@@ -127,11 +169,12 @@ export function buildAutoBufferSeedEntries(
                     auto.jabatanAmount,
                     dbJabatanJumlah
                 )
-            },
-            {
+        };
+        const masaKerjaEntry = {
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                nik,
                 emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
@@ -143,11 +186,12 @@ export function buildAutoBufferSeedEntries(
                     auto.masaKerjaAmount,
                     dbMasaKerjaJumlah
                 )
-            },
-            {
+        };
+        const spsiEntry = {
                 period_month: periodMonth,
                 period_year: periodYear,
                 emp_code: empCode,
+                nik,
                 emp_name: empName,
                 gang_code: gangCode,
                 division_code: normalizedDivision,
@@ -159,8 +203,12 @@ export function buildAutoBufferSeedEntries(
                     auto.spsiDeduction,
                     dbPotSpsi
                 )
-            }
-        );
+        };
+
+        entries.push(...[jabatanEntry, masaKerjaEntry, spsiEntry].map((entry) => ({
+            ...entry,
+            metadata_json: serializeAutoBufferMetadata(entry)
+        })));
     }
 
     return entries;
@@ -296,13 +344,14 @@ export class AutoBufferManualAdjustmentSeederService {
         for (const entry of entries) {
             await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
-                    period_month, period_year, emp_code, emp_name, gang_code, division_code,
-                    adjustment_type, adjustment_name, amount, remarks, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    period_month, period_year, emp_code, nik, emp_name, gang_code, division_code,
+                    adjustment_type, adjustment_name, amount, remarks, metadata_json, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 entry.period_month,
                 entry.period_year,
                 entry.emp_code,
+                entry.nik,
                 entry.emp_name || null,
                 entry.gang_code,
                 entry.division_code,
@@ -310,6 +359,7 @@ export class AutoBufferManualAdjustmentSeederService {
                 entry.adjustment_name,
                 entry.amount,
                 entry.remarks,
+                entry.metadata_json,
                 createdBy
             ]);
             inserted += 1;
@@ -392,9 +442,9 @@ export class AutoBufferManualAdjustmentSeederService {
             SELECT RTRIM(t.EmpCode) as emp_code,
                    MAX(RTRIM(ISNULL(e.NewICNo, ''))) as nik,
                    CASE
-                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'AUTO TUNJANGAN JABATAN'
-                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'AUTO MASA KERJA'
-                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'AUTO SPSI'
+                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'TUNJANGAN JABATAN'
+                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'MASA KERJA'
+                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'SPSI'
                    END as adjustment_name,
                    SUM(ln.Amount) as total
             FROM (
@@ -421,9 +471,9 @@ export class AutoBufferManualAdjustmentSeederService {
                OR UPPER(t.DocDesc) LIKE '%SPSI%'
             GROUP BY RTRIM(t.EmpCode),
                    CASE 
-                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'AUTO TUNJANGAN JABATAN'
-                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'AUTO MASA KERJA'
-                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'AUTO SPSI'
+                       WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'TUNJANGAN JABATAN'
+                       WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'MASA KERJA'
+                       WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'SPSI'
                    END
         `;
         
@@ -432,11 +482,12 @@ export class AutoBufferManualAdjustmentSeederService {
         // Map true values for quick lookup
         const trueValuesMap = new Map<string, number>();
         for (const row of trueValues) {
+            const adjustmentName = normalizeAutoBufferAdjustmentName(row.adjustment_name);
             const keys = [row.emp_code, row.nik]
                 .map((value) => normalizeString(value).toUpperCase())
                 .filter(Boolean);
             for (const empKey of keys) {
-                trueValuesMap.set(`${empKey}_${row.adjustment_name}`, toNumber(row.total));
+                trueValuesMap.set(`${empKey}_${adjustmentName}`, toNumber(row.total));
             }
         }
 
@@ -446,13 +497,14 @@ export class AutoBufferManualAdjustmentSeederService {
 
         // 3. Compare and Update
         for (const record of existingRecords) {
-            const key = `${normalizeString(record.emp_code).toUpperCase()}_${record.adjustment_name}`;
+            const adjustmentName = normalizeAutoBufferAdjustmentName(record.adjustment_name);
+            const key = `${normalizeString(record.emp_code).toUpperCase()}_${adjustmentName}`;
             const dbAmount = trueValuesMap.get(key) || 0;
             const currentAmount = Math.abs(toNumber(record.amount)); // Comparing absolute values for safety since SPSI is a deduction
             const absoluteDbAmount = Math.abs(dbAmount);
             
             // Build the new remark containing the match status
-            const newRemark = buildAutoBufferSeedRemark(record.adjustment_name, currentAmount, absoluteDbAmount);
+            const newRemark = buildAutoBufferSeedRemark(adjustmentName, currentAmount, absoluteDbAmount);
             
             // Check if it's a match
             if (Math.abs(currentAmount - absoluteDbAmount) <= 0.01) {

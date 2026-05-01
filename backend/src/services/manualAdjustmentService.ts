@@ -10,6 +10,7 @@ import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
+import { normalizeAutoBufferAdjustmentName } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
 import {
     inferManualAdjustmentAdCodeFromRemarks,
     updatePipeDelimitedSyncStatus
@@ -61,6 +62,14 @@ export interface AdtransCheckOptions {
     adjustmentTypes?: string[];
     adjustmentNames?: string[];
     docDescs?: string[];
+}
+
+export interface AdtransDocIdLookupInput extends AdtransCheckOptions {
+    periodMonth: number;
+    periodYear: number;
+    empCodes?: string[];
+    filters?: string[];
+    divisionCode?: string;
 }
 
 type NormalizedAdtransCheckOptions = {
@@ -399,7 +408,7 @@ function validatePremiumAdjustmentDefinition(data: ManualAdjustment, normalizedA
     premiumDefinitionService.validatePremiumName(normalizedAdjustmentName);
 }
 
-const DETAIL_TOTAL_SYNC_PREMI_NAMES = new Set(["PREMI PRUNING", "PREMI RAKING"]);
+const DETAIL_TOTAL_SYNC_PREMI_NAMES = new Set(["PREMI PRUNING", "PREMI RAKING", "PREMI TIKET"]);
 
 function serializeManualAdjustmentMetadata(metadataJson: unknown): string | null {
     if (!metadataJson) return null;
@@ -2431,6 +2440,35 @@ export class ManualAdjustmentService {
         };
     }
 
+    public async listAdtransDocIds(input: AdtransDocIdLookupInput): Promise<string[]> {
+        const result = await this.checkAdtransDirectly(
+            input.periodMonth,
+            input.periodYear,
+            input.empCodes || [],
+            input.filters || [],
+            input.divisionCode,
+            {
+                adjustmentTypes: input.adjustmentTypes || [],
+                adjustmentNames: input.adjustmentNames || [],
+                docDescs: input.docDescs || []
+            }
+        );
+
+        const details = Array.isArray(result) ? [] : (result?.doc_desc_details || []);
+        const seenDocIds = new Set<string>();
+        const docIds: string[] = [];
+
+        for (const detail of details) {
+            const docId = normalizeText(detail?.doc_id);
+            if (!docId || seenDocIds.has(docId)) continue;
+
+            seenDocIds.add(docId);
+            docIds.push(docId);
+        }
+
+        return docIds;
+    }
+
     /**
      * Compare PR_ADTRANS (db_ptrj) values with payroll_manual_adjustments (extend_db_ptrj).
      * Returns per-employee per-category comparison showing source vs stored amount,
@@ -2608,10 +2646,11 @@ export class ManualAdjustmentService {
         `, [periodMonth, periodYear, ...adjustmentDivisionCodes]);
 
         const categoryToAdjustmentName: Record<string, string> = {
-            'spsi': 'AUTO SPSI',
-            'masa kerja': 'AUTO MASA KERJA',
-            'jabatan': 'AUTO TUNJANGAN JABATAN'
+            'spsi': 'SPSI',
+            'masa kerja': 'MASA KERJA',
+            'jabatan': 'TUNJANGAN JABATAN'
         };
+        const autoBufferComparableNames = new Set(Object.values(categoryToAdjustmentName));
 
         // 3. Build map of stored adjustments: emp_code -> category -> amount
         const storedMap = new Map<string, Map<string, { amount: number; remarks: string; gang_code: string; adjustment_name: string }>>();
@@ -2622,7 +2661,11 @@ export class ManualAdjustmentService {
             ].filter(Boolean)));
             const adjustmentType = String(row.adjustment_type || '').trim().toUpperCase();
             const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
-            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === adjustmentName);
+            const normalizedAutoBufferName = normalizeAutoBufferAdjustmentName(adjustmentName);
+            const comparableAdjustmentName = autoBufferComparableNames.has(normalizedAutoBufferName)
+                ? normalizedAutoBufferName
+                : adjustmentName;
+            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === comparableAdjustmentName);
             if (!category && adjustmentType === 'PREMI') category = 'premi';
             if (!category && adjustmentType === 'POTONGAN_KOTOR') category = adjustmentName.includes('KOREKSI') ? 'koreksi' : 'potongan';
             if (!category || !normalizedFilters.includes(category)) continue;
@@ -2633,7 +2676,7 @@ export class ManualAdjustmentService {
                     amount: Number(row.amount || 0),
                     remarks: String(row.remarks || ''),
                     gang_code: String(row.gang_code || ''),
-                    adjustment_name: adjustmentName
+                    adjustment_name: autoBufferComparableNames.has(comparableAdjustmentName) ? comparableAdjustmentName : adjustmentName
                 });
             }
         }
@@ -2725,13 +2768,17 @@ export class ManualAdjustmentService {
         await this.ensureManualAdjustmentIdentitySchema(dbExtend);
         const normalizedFilters = filters.map(normalizeAdtransFilter).filter(Boolean);
         const categoryToAdjustmentName: Record<string, string> = {
-            'spsi': 'AUTO SPSI',
-            'masa kerja': 'AUTO MASA KERJA',
-            'jabatan': 'AUTO TUNJANGAN JABATAN'
+            'spsi': 'SPSI',
+            'masa kerja': 'MASA KERJA',
+            'jabatan': 'TUNJANGAN JABATAN'
         };
+        const autoBufferComparableNames = new Set(Object.values(categoryToAdjustmentName));
         const autoBufferAdjustmentNames = normalizedFilters
             .filter((filterKey) => categoryToAdjustmentName[filterKey])
-            .map((filterKey) => categoryToAdjustmentName[filterKey]);
+            .flatMap((filterKey) => {
+                const name = categoryToAdjustmentName[filterKey];
+                return [name, `AUTO ${name}`];
+            });
         const includesManualCategories = normalizedFilters.some((filterKey) => ['premi', 'koreksi', 'potongan'].includes(filterKey));
 
         const normalizedDivisionCode = resolveAdtransLocCode(divisionCode);
@@ -2826,7 +2873,11 @@ export class ManualAdjustmentService {
             const ptrjEmpCode = ptrjEmpCodeByStoredIdentifier.get(empCode) || empCode.toUpperCase();
             const adjustmentName = String(row.adjustment_name || '').trim().toUpperCase();
             const adjustmentType = String(row.adjustment_type || '').trim().toUpperCase();
-            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === adjustmentName);
+            const normalizedAutoBufferName = normalizeAutoBufferAdjustmentName(adjustmentName);
+            const comparableAdjustmentName = autoBufferComparableNames.has(normalizedAutoBufferName)
+                ? normalizedAutoBufferName
+                : adjustmentName;
+            let category = normalizedFilters.find((filterKey) => categoryToAdjustmentName[filterKey] === comparableAdjustmentName);
             if (!category && adjustmentType === 'PREMI') category = 'premi';
             if (!category && adjustmentType === 'POTONGAN_KOTOR') {
                 category = adjustmentName.includes('KOREKSI') ? 'koreksi' : 'potongan';
@@ -2851,7 +2902,7 @@ export class ManualAdjustmentService {
                 emp_code: ptrjEmpCode,
                 stored_emp_identifier: empCode !== ptrjEmpCode ? empCode : null,
                 category,
-                adjustment_name: adjustmentName,
+                adjustment_name: autoBufferComparableNames.has(comparableAdjustmentName) ? comparableAdjustmentName : adjustmentName,
                 stored_amount: storedAmount,
                 source_amount: sourceAmount,
                 db_ptrj_amount: sourceAmount,

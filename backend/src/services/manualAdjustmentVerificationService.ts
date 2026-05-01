@@ -133,15 +133,18 @@ function resolveLocCode(divisionCode: string): string {
 }
 
 const AUTO_BUFFER_TO_DOC_DESC: Record<string, string[]> = {
+    "TUNJANGAN JABATAN": ["%JABATAN%"],
+    "MASA KERJA": ["%MASA%KERJA%"],
+    "SPSI": ["%SPSI%"],
     "AUTO TUNJANGAN JABATAN": ["%JABATAN%"],
     "AUTO MASA KERJA": ["%MASA%KERJA%"],
     "AUTO SPSI": ["%SPSI%"]
 };
 
 const DOC_DESC_TO_AUTO_BUFFER: Record<string, string> = {
-    "spsi": "AUTO SPSI",
-    "masa kerja": "AUTO MASA KERJA",
-    "jabatan": "AUTO TUNJANGAN JABATAN"
+    "spsi": "SPSI",
+    "masa kerja": "MASA KERJA",
+    "jabatan": "TUNJANGAN JABATAN"
 };
 
 function resolveExpectedDocDescPatterns(adjustmentName: string, adjustmentType: string): string[] {

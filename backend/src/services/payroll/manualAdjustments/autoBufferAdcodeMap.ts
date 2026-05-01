@@ -1,19 +1,30 @@
 export const AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME = {
-    "AUTO TUNJANGAN JABATAN": "tunjangan jabatan",
-    "AUTO MASA KERJA": "masa kerja",
-    "AUTO SPSI": "potongan spsi"
+    "TUNJANGAN JABATAN": "tunjangan jabatan",
+    "MASA KERJA": "masa kerja",
+    "SPSI": "potongan spsi"
 } as const;
 
 export type AutoBufferAdjustmentName = keyof typeof AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME;
 export type AutoBufferSyncStatus = "SYNC" | "MISS";
 export type AutoBufferMatchStatus = "MATCH" | "MISMATCH";
 
+const LEGACY_AUTO_BUFFER_ADJUSTMENT_NAME_ALIASES: Record<string, AutoBufferAdjustmentName> = {
+    "AUTO TUNJANGAN JABATAN": "TUNJANGAN JABATAN",
+    "AUTO MASA KERJA": "MASA KERJA",
+    "AUTO SPSI": "SPSI"
+};
+
 function normalizeAdjustmentName(value: unknown): string {
     return String(value || "").trim().toUpperCase();
 }
 
+export function normalizeAutoBufferAdjustmentName(value: unknown): string {
+    const normalizedName = normalizeAdjustmentName(value);
+    return LEGACY_AUTO_BUFFER_ADJUSTMENT_NAME_ALIASES[normalizedName] || normalizedName;
+}
+
 export function resolveAutoBufferAdcode(adjustmentName: unknown): string {
-    const normalizedName = normalizeAdjustmentName(adjustmentName);
+    const normalizedName = normalizeAutoBufferAdjustmentName(adjustmentName);
     const adcode = AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME[normalizedName as AutoBufferAdjustmentName];
 
     if (!adcode) {
@@ -39,7 +50,7 @@ export function buildAutoBufferSeedRemark(
     amount: unknown,
     sourceAmount?: unknown
 ): string {
-    const normalizedName = normalizeAdjustmentName(adjustmentName);
+    const normalizedName = normalizeAutoBufferAdjustmentName(adjustmentName);
     const adcode = resolveAutoBufferAdcode(normalizedName);
     const numericAmount = Number.isFinite(Number(amount)) ? Number(amount) : 0;
     const numericSourceAmount = Number.isFinite(Number(sourceAmount))

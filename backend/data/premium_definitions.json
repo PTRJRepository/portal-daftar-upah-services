@@ -24,7 +24,7 @@
     "adjustment_name": "PREMI TIKET",
     "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
     "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
-    "input_type": "amount",
+    "input_type": "blok",
     "is_active": true
   },
   {
