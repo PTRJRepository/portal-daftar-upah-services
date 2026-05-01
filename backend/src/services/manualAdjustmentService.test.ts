@@ -1049,6 +1049,242 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("updates only the sync segment for non-auto-buffer manual adjustment remarks", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT TOP") && sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 10,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0001",
+                            nik: "1902050504860001",
+                            emp_name: "BUDI TEST",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI JAGA",
+                            amount: 350000,
+                            remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL"
+                        },
+                        {
+                            id: 11,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0002",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "AUTO_BUFFER",
+                            adjustment_name: "AUTO SPSI",
+                            amount: 4000,
+                            remarks: "AUTO SPSI | potongan spsi | 4000 | sync:MANUAL | match:MANUAL"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                adjustmentTypes: ["PREMI"],
+                syncStatus: "SYNC",
+                updatedBy: "agent_sync"
+            });
+
+            const selectCall = calls.find((call) => call.sql.includes("FROM dbo.payroll_manual_adjustments"));
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+
+            expect(selectCall?.sql).toContain("adjustment_type IN");
+            expect(selectCall?.sql).toContain("adjustment_type <> 'AUTO_BUFFER'");
+            expect(selectCall?.params).toEqual([4, 2026, "PREMI", "AB1", "ARB1"]);
+            expect(updateCall?.sql).toContain("SET remarks = ?, updated_at = GETDATE(), updated_by = ?");
+            expect(updateCall?.sql).not.toContain("amount =");
+            expect(updateCall?.params).toEqual([
+                "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:SYNC | match:MANUAL",
+                "agent_sync",
+                10
+            ]);
+            expect(result.updated_count).toBe(1);
+            expect(result.rows).toEqual([
+                expect.objectContaining({
+                    id: 10,
+                    old_sync_status: "MANUAL",
+                    new_sync_status: "SYNC",
+                    status: "UPDATED"
+                })
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("updates sync status only when ADTRANS has a matching row in adtrans_exists mode", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const dbExtend = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT TOP") && sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 12,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0001",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI JAGA",
+                            amount: 350000,
+                            remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL"
+                        },
+                        {
+                            id: 13,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0002",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI TBS",
+                            amount: 123000,
+                            remarks: "PREMI TBS | (AL) TUNJANGAN PREMI | 123000 | sync:MANUAL | match:MANUAL"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+        const dbPtrj = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [
+                    {
+                        emp_code: "A0001",
+                        doc_id: "AD001",
+                        doc_desc: "(AL) TUNJANGAN JAGA GENSET",
+                        amount: 350000
+                    }
+                ];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                adjustmentTypes: ["PREMI"],
+                syncStatus: "SYNC",
+                updatedBy: "agent_sync",
+                onlyIfAdtransExists: true
+            });
+
+            const adtransCall = calls.find((call) => call.sql.includes("FROM PR_ADTRANS t"));
+            const updateCalls = calls.filter((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+
+            expect(adtransCall?.params).toEqual(["AB1", 4, 2026, "A0001", "A0002", "AB1", 4, 2026, "A0001", "A0002"]);
+            expect(updateCalls).toHaveLength(1);
+            expect(updateCalls[0].params?.[2]).toBe(12);
+            expect(result.updated_count).toBe(1);
+            expect(result.adtrans_matched_count).toBe(1);
+            expect(result.rows.map((row) => ({ id: row.id, status: row.status, skip_reason: row.skip_reason }))).toEqual([
+                { id: 12, status: "UPDATED", skip_reason: null },
+                { id: 13, status: "SKIPPED", skip_reason: "ADTRANS_NOT_FOUND" }
+            ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("does not mark a metadata-detail premium as synced when ADTRANS amount is only partial", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const dbExtend = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT TOP") && sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 14,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0001",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "PREMI",
+                            adjustment_name: "PREMI PRUNING",
+                            amount: 500000,
+                            metadata_json: JSON.stringify({
+                                input_type: "blok",
+                                items: [
+                                    { subblok: "P09/01", gang_code: "G1H", jumlah: 350000 },
+                                    { subblok: "P09/02", gang_code: "G1H", jumlah: 150000 }
+                                ],
+                                total_amount: 500000
+                            }),
+                            remarks: "PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 500000 | sync:MANUAL | match:MANUAL"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+        const dbPtrj = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [
+                    {
+                        emp_code: "A0001",
+                        doc_id: "AD001",
+                        doc_desc: "PRUNING MANUAL",
+                        amount: 350000
+                    }
+                ];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                adjustmentTypes: ["PREMI"],
+                syncStatus: "SYNC",
+                updatedBy: "agent_sync",
+                onlyIfAdtransExists: true
+            });
+
+            expect(calls.some((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"))).toBe(false);
+            expect(result.updated_count).toBe(0);
+            expect(result.partial_count).toBe(1);
+            expect(result.rows[0]).toMatchObject({
+                id: 14,
+                target_amount: 500000,
+                metadata_detail_total: 500000,
+                adtrans_amount: 350000,
+                status: "SKIPPED",
+                skip_reason: "ADTRANS_AMOUNT_PARTIAL"
+            });
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("normalizes division_code when deleting a manual adjustment column", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -1137,6 +1373,59 @@ describe("manual adjustment grouped response", () => {
             division_code: "G 1",
             ad_code: taskDesc,
             ad_code_desc: taskDesc
+        });
+    });
+
+    it("builds flat API response rows with parenthesized ADCode and TaskDesc parsed from pipe remarks", () => {
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 23,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "C0004",
+                nik: "5203180107750348",
+                emp_name: "MAHSUN ( INAQ MAHYAM )",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI JAGA",
+                amount: 350000,
+                remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL"
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            estate: "AB1",
+            estate_code: "AB1",
+            gang_code: "G1H",
+            division_code: "G 1",
+            ad_code: "AL0018P1A",
+            ad_code_desc: "(AL) TUNJANGAN JAGA GENSET"
+        });
+    });
+
+    it("falls back to premium definitions when response ADCode description is missing", () => {
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 24,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "C0004",
+                nik: "5203180107750348",
+                emp_name: "MAHSUN ( INAQ MAHYAM )",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI JAGA",
+                amount: 350000,
+                remarks: "manual note without parseable taskdesc"
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            ad_code: "AL0018P1A",
+            ad_code_desc: "(AL) TUNJANGAN JAGA GENSET",
+            task_desc: "(AL) TUNJANGAN JAGA GENSET"
         });
     });
 
@@ -1257,8 +1546,9 @@ describe("manual adjustment grouped response", () => {
                 estate: "AB1",
                 estate_code: "AB1",
                 division_code: "G 1",
-                ad_code: null,
-                ad_code_desc: null,
+                ad_code: "AL3PM0601P1A",
+                ad_code_desc: "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
+                task_desc: "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
                 detail_type: "blok",
                 subblok: "P0921",
                 jumlah: 3000,
@@ -1276,8 +1566,9 @@ describe("manual adjustment grouped response", () => {
                 estate: "AB1",
                 estate_code: "AB1",
                 division_code: "G 1",
-                ad_code: null,
-                ad_code_desc: null,
+                ad_code: "AL3PT2305P1A",
+                ad_code_desc: "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
+                task_desc: "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT MATERIAL)",
                 detail_type: "kendaraan",
                 nomor_kendaraan: "B1234AB",
                 expense_code: "TRANSPORT",

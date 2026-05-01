@@ -79,6 +79,30 @@ const listAdjustmentNameOptions = mock(async () => [
     }
 ]);
 
+const updateManualAdjustmentSyncStatus = mock(async () => ({
+    period_month: 4,
+    period_year: 2026,
+    target_sync_status: "SYNC",
+    only_if_adtrans_exists: true,
+    dry_run: false,
+    matched_count: 2,
+    eligible_count: 1,
+    adtrans_matched_count: 1,
+    updated_count: 1,
+    skipped_count: 1,
+    rows: [
+        {
+            id: 12,
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI JAGA",
+            old_sync_status: "MANUAL",
+            new_sync_status: "SYNC",
+            status: "UPDATED",
+            skip_reason: null
+        }
+    ]
+}));
+
 const searchAutomationAdjustmentOptions = mock(async () => [
     {
         category: "premi",
@@ -118,7 +142,8 @@ const searchAutomationAdjustmentOptions = mock(async () => [
 mock.module("../services/manualAdjustmentService", () => ({
     manualAdjustmentService: {
         getAdjustments,
-        listAdjustmentNameOptions
+        listAdjustmentNameOptions,
+        updateManualAdjustmentSyncStatus
     },
     buildManualAdjustmentApiResponseRows,
     buildGroupedManualAdjustmentResponse
@@ -137,6 +162,7 @@ describe("manual adjustment by-api-key route", () => {
         buildGroupedManualAdjustmentResponse.mockClear();
         buildManualAdjustmentApiResponseRows.mockClear();
         searchAutomationAdjustmentOptions.mockClear();
+        updateManualAdjustmentSyncStatus.mockClear();
     });
 
     it("passes metadata_only to the service and returns grouped metadata flag", async () => {
@@ -235,5 +261,49 @@ describe("manual adjustment by-api-key route", () => {
             metadataOnly: false
         });
         expect(searchAutomationAdjustmentOptions).not.toHaveBeenCalled();
+    });
+
+    it("updates manual adjustment sync status through API key route", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/sync-status/by-api-key",
+            {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    period_month: 4,
+                    period_year: 2026,
+                    division_code: "AB1",
+                    adjustment_type: "PREMI",
+                    sync_status: "SYNC",
+                    only_if_adtrans_exists: true,
+                    updated_by: "agent_sync"
+                })
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.updated_count).toBe(1);
+        expect(updateManualAdjustmentSyncStatus).toHaveBeenCalledWith({
+            periodMonth: 4,
+            periodYear: 2026,
+            divisionCode: "AB1",
+            gangCode: undefined,
+            empCode: undefined,
+            adjustmentTypes: ["PREMI"],
+            adjustmentName: undefined,
+            ids: undefined,
+            syncStatus: "SYNC",
+            updatedBy: "agent_sync",
+            onlyIfAdtransExists: true,
+            dryRun: false,
+            limit: undefined
+        });
     });
 });

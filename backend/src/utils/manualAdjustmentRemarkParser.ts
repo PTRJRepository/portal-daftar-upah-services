@@ -13,6 +13,13 @@ export interface PipeDelimitedRemarksParts {
     matchStatus: string | null;
 }
 
+export interface PipeDelimitedSyncStatusUpdate {
+    remarks: string;
+    oldSyncStatus: string;
+    newSyncStatus: string;
+    changed: boolean;
+}
+
 function normalizeSpaces(value: unknown): string {
     return String(value || "").trim().replace(/\s+/g, " ");
 }
@@ -63,6 +70,16 @@ function parseAdCodePart(value: unknown): ManualAdjustmentAdCodeInference {
         };
     }
 
+    const parenthesizedCodeMatch = text.match(new RegExp(`^\\(${AD_CODE_CAPTURE}\\)\\s*(.+)$`, "i"));
+    if (parenthesizedCodeMatch) {
+        const taskDescPart = parenthesizedCodeMatch[2];
+        const taskDescDisplay = splitTaskDescDisplayPair(taskDescPart);
+        return {
+            adCode: parenthesizedCodeMatch[1].toUpperCase(),
+            adCodeDesc: taskDescDisplay?.adCodeDesc || cleanDescription(taskDescPart)
+        };
+    }
+
     const taskDescDisplay = splitTaskDescDisplayPair(text);
     if (taskDescDisplay) {
         return taskDescDisplay;
@@ -80,10 +97,9 @@ export function inferManualAdjustmentAdCodeFromRemarks(value: unknown): ManualAd
         return parseAdCodePart(adCodeLabelMatch[1]);
     }
 
-    const pipeSegments = remarks.split("|").map((segment) => segment.trim());
-    for (const segment of pipeSegments.slice(1)) {
-        const parsed = parseAdCodePart(segment);
-        if (parsed.adCode) return parsed;
+    if (remarks.includes("|")) {
+        const pipeSegments = remarks.split("|").map((segment) => segment.trim());
+        return parseAdCodePart(pipeSegments[1]);
     }
 
     return { adCode: null, adCodeDesc: null };
@@ -142,4 +158,37 @@ export function parsePipeDelimitedRemarks(value: unknown): PipeDelimitedRemarksP
     }
 
     return { adjustmentName, adCodePart, adCode, adCodeDesc, amount, syncStatus, matchStatus };
+}
+
+export function updatePipeDelimitedSyncStatus(value: unknown, status: unknown): PipeDelimitedSyncStatusUpdate | null {
+    const originalRemarks = String(value || "").trim();
+    if (!originalRemarks || !originalRemarks.includes("|")) return null;
+
+    const newSyncStatus = normalizeSpaces(status).toUpperCase();
+    if (!newSyncStatus) return null;
+
+    const segments = originalRemarks.split("|").map((segment) => segment.trim());
+    const syncSegmentIndex = segments.findIndex((segment) => /^sync:\s*\w+$/i.test(segment));
+    if (syncSegmentIndex < 0) return null;
+
+    const oldSyncStatus = segments[syncSegmentIndex].match(/^sync:\s*(\w+)$/i)?.[1]?.toUpperCase();
+    if (!oldSyncStatus) return null;
+
+    if (oldSyncStatus === newSyncStatus) {
+        return {
+            remarks: originalRemarks,
+            oldSyncStatus,
+            newSyncStatus,
+            changed: false
+        };
+    }
+
+    segments[syncSegmentIndex] = `sync:${newSyncStatus}`;
+
+    return {
+        remarks: segments.join(" | "),
+        oldSyncStatus,
+        newSyncStatus,
+        changed: true
+    };
 }

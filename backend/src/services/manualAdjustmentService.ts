@@ -9,7 +9,10 @@ import {
     normalizeStoredAdjustmentName,
     shouldDeleteStoredAdjustment
 } from "./payroll/manualAdjustments/manualAdjustmentNaming";
-import { inferManualAdjustmentAdCodeFromRemarks } from "../utils/manualAdjustmentRemarkParser";
+import {
+    inferManualAdjustmentAdCodeFromRemarks,
+    updatePipeDelimitedSyncStatus
+} from "../utils/manualAdjustmentRemarkParser";
 import {
     buildAdtransDocDescSqlCondition,
     buildAdtransDocDescSqlPatterns,
@@ -43,6 +46,10 @@ type AdtransDocDescDetail = {
     doc_desc: string;
     doc_id: string | null;
     amount: number;
+};
+
+type ManualAdjustmentSyncAdtransDetail = AdtransDocDescDetail & {
+    emp_code: string;
 };
 
 export interface AdtransComparisonItem {
@@ -472,6 +479,7 @@ export type GroupedManualAdjustmentPremiumTransaction = ManualAdjustmentDetailIt
     division_code: string;
     ad_code: string | null;
     ad_code_desc: string | null;
+    task_desc: string | null;
 };
 
 export type GroupedManualAdjustmentEmployee = {
@@ -540,6 +548,60 @@ export type ManualAdjustmentApiResponseRow = Omit<ManualAdjustment, "nik" | "emp
 export type ManualAdjustmentNameOption = {
     adjustment_type: string;
     adjustment_name: string;
+};
+
+export type ManualAdjustmentSyncStatusUpdateInput = {
+    periodMonth: number;
+    periodYear: number;
+    divisionCode?: string;
+    gangCode?: string;
+    empCode?: string;
+    adjustmentTypes?: string[];
+    adjustmentName?: string;
+    ids?: number[];
+    syncStatus?: string;
+    updatedBy?: string;
+    onlyIfAdtransExists?: boolean;
+    dryRun?: boolean;
+    limit?: number;
+};
+
+export type ManualAdjustmentSyncStatusRowResult = {
+    id: number;
+    emp_code: string;
+    nik: string | null;
+    emp_name: string | null;
+    gang_code: string;
+    estate: string;
+    adjustment_type: string;
+    adjustment_name: string;
+    amount: number;
+    target_amount: number;
+    metadata_detail_total: number | null;
+    adtrans_amount: number | null;
+    old_sync_status: string | null;
+    new_sync_status: string | null;
+    status: "UPDATED" | "UNCHANGED" | "SKIPPED";
+    skip_reason: string | null;
+    remarks_before: string | null;
+    remarks_after: string | null;
+    adtrans_details: AdtransDocDescDetail[];
+};
+
+export type ManualAdjustmentSyncStatusUpdateResult = {
+    period_month: number;
+    period_year: number;
+    target_sync_status: string;
+    only_if_adtrans_exists: boolean;
+    dry_run: boolean;
+    matched_count: number;
+    eligible_count: number;
+    adtrans_matched_count: number;
+    updated_count: number;
+    unchanged_count: number;
+    skipped_count: number;
+    partial_count: number;
+    rows: ManualAdjustmentSyncStatusRowResult[];
 };
 
 function normalizeIdentityValue(value: unknown): string {
@@ -735,14 +797,37 @@ function deriveDivisionCodeFromGangCode(value: unknown): string {
     return code ? code.split("").join(" ") : "";
 }
 
-function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null } {
+function resolveManualAdjustmentDefinitionAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null; task_desc: string | null } {
+    const adjustmentType = normalizeText(row.adjustment_type).toUpperCase();
+    const definition = premiumDefinitionService.getDefinitionByName(normalizeStoredAdjustmentName(row.adjustment_name));
+    if (!definition) return { ad_code: null, ad_code_desc: null, task_desc: null };
+
+    const definitionType = normalizeText(definition.adjustment_type || "PREMI").toUpperCase();
+    if (definitionType !== adjustmentType) return { ad_code: null, ad_code_desc: null, task_desc: null };
+
+    const taskDesc = normalizeText(definition.task_desc) || null;
+    const parsedDefinition = inferManualAdjustmentAdCodeFromRemarks(
+        `${definition.adjustment_name} | ${normalizeText(definition.ad_code)}${taskDesc ? ` - ${taskDesc}` : ""} | 0`
+    );
+
+    return {
+        ad_code: normalizeText(parsedDefinition.adCode || definition.ad_code).toUpperCase() || null,
+        ad_code_desc: normalizeText(parsedDefinition.adCodeDesc || taskDesc) || null,
+        task_desc: taskDesc
+    };
+}
+
+function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string | null; ad_code_desc: string | null; task_desc: string | null } {
     const inferred = inferManualAdjustmentAdCodeFromRemarks(row.remarks);
-    const adCode = normalizeText(row.ad_code || row.base_task_code || row.task_code || inferred.adCode).toUpperCase() || null;
-    const adCodeDesc = normalizeText(row.task_desc || inferred.adCodeDesc) || null;
+    const definition = resolveManualAdjustmentDefinitionAdCodeFields(row);
+    const taskDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.task_desc || definition.ad_code_desc) || null;
+    const adCode = normalizeText(row.ad_code || row.base_task_code || row.task_code || inferred.adCode || definition.ad_code).toUpperCase() || null;
+    const adCodeDesc = normalizeText(row.task_desc || inferred.adCodeDesc || definition.ad_code_desc || definition.task_desc) || null;
 
     return {
         ad_code: adCode,
-        ad_code_desc: adCodeDesc
+        ad_code_desc: adCodeDesc,
+        task_desc: taskDesc
     };
 }
 
@@ -806,6 +891,91 @@ function buildManualAdjustmentDetailItems(metadata: unknown): ManualAdjustmentDe
     }
 
     return [];
+}
+
+function normalizeSyncStatus(value: unknown): string {
+    return normalizeText(value).toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+}
+
+function normalizeManualAdjustmentSyncTypes(values?: string[]): string[] {
+    const allowedTypes = new Set(["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"]);
+    const aliases: Record<string, string> = {
+        PREMI: "PREMI",
+        KOREKSI: "POTONGAN_KOTOR",
+        POTONGAN_KOTOR: "POTONGAN_KOTOR",
+        POTONGAN_UPAH_KOTOR: "POTONGAN_KOTOR",
+        POTONGAN_BERSIH: "POTONGAN_BERSIH",
+        POTONGAN_UPAH_BERSIH: "POTONGAN_BERSIH"
+    };
+
+    const normalized = (values && values.length > 0 ? values : Array.from(allowedTypes))
+        .flatMap((value) => String(value || "").split(","))
+        .map((value) => aliases[normalizeText(value).toUpperCase()] || normalizeText(value).toUpperCase())
+        .filter((value) => allowedTypes.has(value));
+
+    return Array.from(new Set(normalized.length ? normalized : Array.from(allowedTypes)));
+}
+
+function resolveManualAdjustmentAdtransCategory(row: Pick<ManualAdjustment, "adjustment_type" | "adjustment_name">): string {
+    const adjustmentType = normalizeText(row.adjustment_type).toUpperCase();
+    const adjustmentName = normalizeText(row.adjustment_name).toUpperCase();
+    if (adjustmentType === "PREMI") return "premi";
+    if (adjustmentType === "POTONGAN_KOTOR") return adjustmentName.includes("KOREKSI") ? "koreksi" : "potongan";
+    if (adjustmentType === "POTONGAN_BERSIH") return "potongan";
+    return "";
+}
+
+function normalizeAdtransComparableText(value: unknown): string {
+    return normalizeText(value)
+        .toUpperCase()
+        .replace(/\((AL|DE)\)/g, " ")
+        .replace(/[^A-Z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function buildManualAdjustmentExpectedAdtransTexts(row: ManualAdjustment): string[] {
+    const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
+    const values = [
+        adCodeFields.task_desc,
+        adCodeFields.ad_code_desc,
+        row.adjustment_name
+    ];
+
+    return Array.from(new Set(values
+        .map(normalizeAdtransComparableText)
+        .filter((value) => value.length >= 3)));
+}
+
+function adtransDetailMatchesManualAdjustment(row: ManualAdjustment, detail: ManualAdjustmentSyncAdtransDetail): boolean {
+    const docText = normalizeAdtransComparableText(detail.doc_desc);
+    if (!docText) return false;
+
+    const expectedTexts = buildManualAdjustmentExpectedAdtransTexts(row);
+    if (expectedTexts.length > 0) {
+        return expectedTexts.some((expected) => docText.includes(expected) || expected.includes(docText));
+    }
+
+    const category = resolveManualAdjustmentAdtransCategory(row);
+    return category ? matchesAdtransFilter(detail.doc_desc, category) : false;
+}
+
+function resolveManualAdjustmentSyncTargetAmount(row: ManualAdjustment): { targetAmount: number; metadataDetailTotal: number | null } {
+    const parsedMetadata = parseManualAdjustmentMetadataValue(row.metadata_json);
+    const detailItems = buildManualAdjustmentDetailItems(parsedMetadata.metadata);
+    const detailTotal = detailItems.reduce((sum, item) => sum + toNumericAmount(item.amount), 0);
+
+    if (detailItems.length > 0 && Math.abs(detailTotal) > 0.01) {
+        return {
+            targetAmount: detailTotal,
+            metadataDetailTotal: detailTotal
+        };
+    }
+
+    return {
+        targetAmount: toNumericAmount(row.amount),
+        metadataDetailTotal: detailItems.length > 0 ? detailTotal : null
+    };
 }
 
 function sortByText<T>(items: T[], selector: (item: T) => unknown): T[] {
@@ -908,6 +1078,7 @@ export function buildGroupedManualAdjustmentResponse(rows: ManualAdjustment[]): 
                     division_code: employee.division_code,
                     ad_code: groupedItem.ad_code,
                     ad_code_desc: groupedItem.ad_code_desc,
+                    task_desc: groupedItem.task_desc || groupedItem.ad_code_desc,
                     ...detailItem
                 });
             }
@@ -1166,6 +1337,301 @@ export class ManualAdjustmentService {
                 adjustment_name: normalizeStoredAdjustmentName(row.adjustment_name)
             }))
             .filter((row) => row.adjustment_type && row.adjustment_name);
+    }
+
+    private async fetchManualAdjustmentSyncAdtransDetails(
+        periodMonth: number,
+        periodYear: number,
+        divisionCode: string | undefined,
+        rows: ManualAdjustment[]
+    ): Promise<ManualAdjustmentSyncAdtransDetail[]> {
+        const empCodes = Array.from(new Set(rows
+            .map((row) => normalizeIdentityValue(row.emp_code))
+            .filter(Boolean)));
+        const locCodes = Array.from(new Set((divisionCode
+            ? [resolveAdtransLocCode(divisionCode)]
+            : rows.map((row) => resolveAdtransLocCode(normalizeText(row.division_code))))
+            .filter(Boolean)));
+
+        if (empCodes.length === 0 || locCodes.length === 0) return [];
+
+        const dbPtrj = Database.getInstance();
+        const locSql = locCodes.length === 1
+            ? "UPPER(RTRIM(t.LocCode)) = ?"
+            : `UPPER(RTRIM(t.LocCode)) IN (${locCodes.map(() => "?").join(", ")})`;
+        const empSql = empCodes.length === 1
+            ? "RTRIM(t.EmpCode) = ?"
+            : `RTRIM(t.EmpCode) IN (${empCodes.map(() => "?").join(", ")})`;
+        const selectSql = (headerTable: string, lineTable: string) => `
+            SELECT
+                RTRIM(t.EmpCode) as emp_code,
+                RTRIM(t.DocID) as doc_id,
+                RTRIM(t.DocDesc) as doc_desc,
+                SUM(ln.Amount) as amount
+            FROM ${headerTable} t
+            JOIN ${lineTable} ln ON t.ID = ln.MasterID
+            WHERE ${locSql}
+              AND t.PhyMonth = ?
+              AND t.PhyYear = ?
+              AND ${empSql}
+            GROUP BY t.EmpCode, t.DocID, t.DocDesc
+        `;
+
+        const params = [
+            ...locCodes,
+            periodMonth,
+            periodYear,
+            ...empCodes,
+            ...locCodes,
+            periodMonth,
+            periodYear,
+            ...empCodes
+        ];
+
+        const rowsFromAdtrans = await dbPtrj.query<ManualAdjustmentSyncAdtransDetail>(`
+            ${selectSql("PR_ADTRANS", "PR_ADTRANSLN")}
+            UNION ALL
+            ${selectSql("PR_ADTRANS_ARC", "PR_ADTRANSLN_ARC")}
+        `, params);
+
+        return rowsFromAdtrans.map((row) => ({
+            emp_code: normalizeIdentityValue(row.emp_code),
+            doc_id: row.doc_id ? normalizeText(row.doc_id) : null,
+            doc_desc: normalizeText(row.doc_desc),
+            amount: toNumericAmount(row.amount)
+        }));
+    }
+
+    public async updateManualAdjustmentSyncStatus(input: ManualAdjustmentSyncStatusUpdateInput): Promise<ManualAdjustmentSyncStatusUpdateResult> {
+        const periodMonth = Number(input.periodMonth);
+        const periodYear = Number(input.periodYear);
+        if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+            throw new Error("periodMonth harus 1-12");
+        }
+        if (!Number.isInteger(periodYear) || periodYear < 2000) {
+            throw new Error("periodYear tidak valid");
+        }
+
+        const targetSyncStatus = normalizeSyncStatus(input.syncStatus || "SYNC");
+        if (!targetSyncStatus) throw new Error("syncStatus wajib diisi");
+
+        const db = this.getDatabase();
+        await this.ensureManualAdjustmentIdentitySchema(db);
+        const adjustmentTypes = normalizeManualAdjustmentSyncTypes(input.adjustmentTypes);
+        const ids = Array.from(new Set((input.ids || [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)));
+        const limit = Math.min(Math.max(Number(input.limit) || 1000, 1), 5000);
+        const params: any[] = [periodMonth, periodYear, ...adjustmentTypes];
+        let query = `
+            SELECT TOP (${limit})
+                id,
+                period_month,
+                period_year,
+                emp_code,
+                nik,
+                emp_name,
+                gang_code,
+                division_code,
+                adjustment_type,
+                adjustment_name,
+                amount,
+                remarks,
+                metadata_json
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ?
+              AND period_year = ?
+              AND adjustment_type IN (${adjustmentTypes.map(() => "?").join(", ")})
+              AND adjustment_type <> 'AUTO_BUFFER'
+              AND remarks IS NOT NULL
+              AND remarks LIKE '%sync:%'
+        `;
+
+        if (input.divisionCode) {
+            const divisionCodes = getManualAdjustmentDivisionCodeVariants(input.divisionCode);
+            if (divisionCodes.length === 1) {
+                query += ` AND division_code = ?`;
+                params.push(divisionCodes[0]);
+            } else if (divisionCodes.length > 1) {
+                query += ` AND division_code IN (${divisionCodes.map(() => "?").join(", ")})`;
+                params.push(...divisionCodes);
+            }
+        }
+
+        if (input.gangCode) {
+            query += ` AND UPPER(gang_code) = ?`;
+            params.push(normalizeIdentityValue(input.gangCode));
+        }
+
+        if (input.empCode) {
+            const lookup = await resolveManualAdjustmentLookupIdentity(input.empCode);
+            query += ` AND (emp_code = ? OR nik = ? OR emp_code = ?)`;
+            params.push(lookup.empCode, lookup.nik, lookup.originalIdentifier);
+        }
+
+        if (input.adjustmentName) {
+            query += ` AND UPPER(adjustment_name) LIKE ?`;
+            params.push(`%${normalizeText(input.adjustmentName).toUpperCase()}%`);
+        }
+
+        if (ids.length > 0) {
+            query += ` AND id IN (${ids.map(() => "?").join(", ")})`;
+            params.push(...ids);
+        }
+
+        query += ` ORDER BY id ASC`;
+
+        const rows = (await db.query<ManualAdjustment>(query, params))
+            .filter((row) => {
+                const type = normalizeText(row.adjustment_type).toUpperCase();
+                return type !== "AUTO_BUFFER" && adjustmentTypes.includes(type);
+            });
+        const adtransDetails = input.onlyIfAdtransExists
+            ? await this.fetchManualAdjustmentSyncAdtransDetails(periodMonth, periodYear, input.divisionCode, rows)
+            : [];
+        const detailsByEmpCode = new Map<string, ManualAdjustmentSyncAdtransDetail[]>();
+        for (const detail of adtransDetails) {
+            const empCode = normalizeIdentityValue(detail.emp_code);
+            if (!detailsByEmpCode.has(empCode)) detailsByEmpCode.set(empCode, []);
+            detailsByEmpCode.get(empCode)!.push(detail);
+        }
+
+        const remainingAmountByKey = new Map<string, number>();
+        let eligibleCount = 0;
+        let adtransMatchedCount = 0;
+        let updatedCount = 0;
+        let unchangedCount = 0;
+        let skippedCount = 0;
+        let partialCount = 0;
+        const resultRows: ManualAdjustmentSyncStatusRowResult[] = [];
+
+        for (const row of rows) {
+            const id = Number(row.id);
+            const empCode = normalizeIdentityValue(row.emp_code);
+            const estateCode = normalizeIdentityValue(row.division_code);
+            const update = updatePipeDelimitedSyncStatus(row.remarks, targetSyncStatus);
+            const amountInfo = resolveManualAdjustmentSyncTargetAmount(row);
+            const baseResult: ManualAdjustmentSyncStatusRowResult = {
+                id,
+                emp_code: empCode,
+                nik: normalizeIdentityValue(row.nik) || null,
+                emp_name: normalizeIdentityValue(row.emp_name) || null,
+                gang_code: normalizeIdentityValue(row.gang_code),
+                estate: estateCode,
+                adjustment_type: normalizeText(row.adjustment_type).toUpperCase(),
+                adjustment_name: normalizeStoredAdjustmentName(row.adjustment_name),
+                amount: toNumericAmount(row.amount),
+                target_amount: amountInfo.targetAmount,
+                metadata_detail_total: amountInfo.metadataDetailTotal,
+                adtrans_amount: null,
+                old_sync_status: update?.oldSyncStatus || null,
+                new_sync_status: update?.newSyncStatus || null,
+                status: "SKIPPED",
+                skip_reason: null,
+                remarks_before: row.remarks || null,
+                remarks_after: null,
+                adtrans_details: []
+            };
+
+            if (!id || !update) {
+                skippedCount++;
+                resultRows.push({
+                    ...baseResult,
+                    skip_reason: "SYNC_SEGMENT_NOT_FOUND"
+                });
+                continue;
+            }
+
+            eligibleCount++;
+
+            if (input.onlyIfAdtransExists) {
+                const empDetails = detailsByEmpCode.get(empCode) || [];
+                const matchingDetails = empDetails.filter((detail) => adtransDetailMatchesManualAdjustment(row, detail));
+                const expectedTexts = buildManualAdjustmentExpectedAdtransTexts(row);
+                const category = resolveManualAdjustmentAdtransCategory(row);
+                const allocationKey = `${empCode}|${expectedTexts[0] || category || "UNKNOWN"}`;
+                if (!remainingAmountByKey.has(allocationKey)) {
+                    remainingAmountByKey.set(
+                        allocationKey,
+                        matchingDetails.reduce((sum, detail) => sum + Math.abs(toNumericAmount(detail.amount)), 0)
+                    );
+                }
+
+                const availableAmount = remainingAmountByKey.get(allocationKey) || 0;
+                const targetAmountAbs = Math.abs(toNumericAmount(amountInfo.targetAmount));
+                const adtransDocDetails = matchingDetails.map((detail) => ({
+                    doc_desc: detail.doc_desc,
+                    doc_id: detail.doc_id,
+                    amount: detail.amount
+                }));
+                baseResult.adtrans_amount = availableAmount;
+                baseResult.adtrans_details = adtransDocDetails;
+
+                if (matchingDetails.length === 0 || availableAmount <= 0.01) {
+                    skippedCount++;
+                    resultRows.push({
+                        ...baseResult,
+                        skip_reason: "ADTRANS_NOT_FOUND"
+                    });
+                    continue;
+                }
+
+                adtransMatchedCount++;
+
+                if (targetAmountAbs > 0.01 && availableAmount + 0.01 < targetAmountAbs) {
+                    skippedCount++;
+                    partialCount++;
+                    resultRows.push({
+                        ...baseResult,
+                        skip_reason: "ADTRANS_AMOUNT_PARTIAL"
+                    });
+                    continue;
+                }
+
+                remainingAmountByKey.set(allocationKey, Math.max(0, availableAmount - targetAmountAbs));
+            }
+
+            if (!update.changed) {
+                unchangedCount++;
+                resultRows.push({
+                    ...baseResult,
+                    status: "UNCHANGED",
+                    remarks_after: update.remarks
+                });
+                continue;
+            }
+
+            if (!input.dryRun) {
+                await db.query(`
+                    UPDATE dbo.payroll_manual_adjustments
+                    SET remarks = ?, updated_at = GETDATE(), updated_by = ?
+                    WHERE id = ?
+                `, [update.remarks, input.updatedBy || "sync_status_api", id]);
+            }
+
+            updatedCount++;
+            resultRows.push({
+                ...baseResult,
+                status: "UPDATED",
+                remarks_after: update.remarks
+            });
+        }
+
+        return {
+            period_month: periodMonth,
+            period_year: periodYear,
+            target_sync_status: targetSyncStatus,
+            only_if_adtrans_exists: !!input.onlyIfAdtransExists,
+            dry_run: !!input.dryRun,
+            matched_count: rows.length,
+            eligible_count: eligibleCount,
+            adtrans_matched_count: adtransMatchedCount,
+            updated_count: updatedCount,
+            unchanged_count: unchangedCount,
+            skipped_count: skippedCount,
+            partial_count: partialCount,
+            rows: resultRows
+        };
     }
 
     /**

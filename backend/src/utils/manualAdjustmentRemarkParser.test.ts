@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
     inferManualAdjustmentAdCodeFromRemarks,
     normalizeManualAdjustmentPresetName,
-    parsePipeDelimitedRemarks
+    parsePipeDelimitedRemarks,
+    updatePipeDelimitedSyncStatus
 } from "./manualAdjustmentRemarkParser";
 
 describe("manualAdjustmentRemarkParser", () => {
@@ -40,6 +41,13 @@ describe("manualAdjustmentRemarkParser", () => {
         expect(inferManualAdjustmentAdCodeFromRemarks(`PREMI TBS | ${taskDesc} - ${taskDesc} | 423363 | sync:MANUAL | match:MANUAL`)).toEqual({
             adCode: taskDesc,
             adCodeDesc: taskDesc
+        });
+    });
+
+    it("infers parenthesized ADCode and TaskDesc display from pipe-formatted remarks", () => {
+        expect(inferManualAdjustmentAdCodeFromRemarks("PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL")).toEqual({
+            adCode: "AL0018P1A",
+            adCodeDesc: "(AL) TUNJANGAN JAGA GENSET"
         });
     });
 
@@ -108,5 +116,44 @@ describe("parsePipeDelimitedRemarks", () => {
         expect(result.amount).toBe(423363);
         expect(result.syncStatus).toBe("MANUAL");
         expect(result.matchStatus).toBe("MANUAL");
+    });
+
+    it("parses parenthesized ADCode followed by TaskDesc display", () => {
+        const result = parsePipeDelimitedRemarks("PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL");
+
+        expect(result.adCode).toBe("AL0018P1A");
+        expect(result.adCodeDesc).toBe("(AL) TUNJANGAN JAGA GENSET");
+        expect(result.amount).toBe(350000);
+        expect(result.syncStatus).toBe("MANUAL");
+        expect(result.matchStatus).toBe("MANUAL");
+    });
+});
+
+describe("updatePipeDelimitedSyncStatus", () => {
+    it("updates only the sync segment from pipe-delimited remarks", () => {
+        const remarks = "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL";
+
+        expect(updatePipeDelimitedSyncStatus(remarks, "SYNC")).toEqual({
+            remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:SYNC | match:MANUAL",
+            oldSyncStatus: "MANUAL",
+            newSyncStatus: "SYNC",
+            changed: true
+        });
+    });
+
+    it("preserves remarks when sync status is already the target value", () => {
+        const remarks = "PREMI TBS | (AL) TUNJANGAN PREMI | 423363 | sync:SYNC | match:MANUAL";
+
+        expect(updatePipeDelimitedSyncStatus(remarks, "sync")).toEqual({
+            remarks,
+            oldSyncStatus: "SYNC",
+            newSyncStatus: "SYNC",
+            changed: false
+        });
+    });
+
+    it("returns null when remarks are not pipe-delimited or have no sync segment", () => {
+        expect(updatePipeDelimitedSyncStatus("manual note", "SYNC")).toBeNull();
+        expect(updatePipeDelimitedSyncStatus("PREMI TBS | (AL) TASK | 1000 | match:MANUAL", "SYNC")).toBeNull();
     });
 });

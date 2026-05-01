@@ -764,6 +764,71 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_desc: t.Optional(t.String())
         })
     })
+    .post("/manual-adjustment/sync-status/by-api-key", async ({ body, headers, set }) => {
+        try {
+            if (!hasValidApiKeyBypass(headers as Record<string, string | undefined>)) {
+                set.status = 401;
+                return { success: false, error: "Unauthorized: invalid x-api-key" };
+            }
+
+            const data = body as any;
+            const adjustmentTypes = Array.isArray(data.adjustment_types)
+                ? data.adjustment_types
+                : data.adjustment_type
+                    ? String(data.adjustment_type).split(",")
+                    : undefined;
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: Number(data.period_month),
+                periodYear: Number(data.period_year),
+                divisionCode: data.division_code || data.estate || undefined,
+                gangCode: data.gang_code || undefined,
+                empCode: data.emp_code || undefined,
+                adjustmentTypes,
+                adjustmentName: data.adjustment_name || undefined,
+                ids: Array.isArray(data.ids) ? data.ids : undefined,
+                syncStatus: data.sync_status || "SYNC",
+                updatedBy: data.updated_by || data.created_by || "sync_status_api",
+                onlyIfAdtransExists: data.only_if_adtrans_exists === true,
+                dryRun: data.dry_run === true,
+                limit: data.limit ? Number(data.limit) : undefined
+            });
+
+            if (!result.dry_run && result.updated_count > 0) {
+                cacheService.clearByPattern(`:${data.period_month}:${data.period_year}`);
+            }
+
+            return {
+                success: true,
+                message: `Sync status update checked ${result.matched_count} rows and updated ${result.updated_count}`,
+                data: result
+            };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-adjustment/sync-status/by-api-key error:", e);
+            set.status = 500;
+            return { success: false, error: e.message || "Internal server error" };
+        }
+    }, {
+        body: t.Object({
+            period_month: t.Number(),
+            period_year: t.Number(),
+            division_code: t.Optional(t.String()),
+            estate: t.Optional(t.String()),
+            gang_code: t.Optional(t.String()),
+            emp_code: t.Optional(t.String()),
+            adjustment_type: t.Optional(t.String()),
+            adjustment_types: t.Optional(t.Array(t.String())),
+            adjustment_name: t.Optional(t.String()),
+            ids: t.Optional(t.Array(t.Number())),
+            sync_status: t.Optional(t.String()),
+            updated_by: t.Optional(t.String()),
+            created_by: t.Optional(t.String()),
+            only_if_adtrans_exists: t.Optional(t.Boolean()),
+            dry_run: t.Optional(t.Boolean()),
+            limit: t.Optional(t.Number())
+        })
+    })
     /**
      * SNAPSHOT TABLES ARE IMMUTABLE.
      * NEVER WRITE USER EDITS DIRECTLY INTO SNAPSHOT TABLES.

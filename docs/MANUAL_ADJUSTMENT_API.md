@@ -4,6 +4,30 @@ Dokumentasi API untuk mengelola manual adjustment (koreksi) daftar upah melalui 
 
 ---
 
+## Update Penting Untuk Browser Automation
+
+Perubahan terbaru menambahkan endpoint khusus untuk agent/browser automation yang sudah menginput premi, koreksi, atau potongan ke Plantware lalu ingin menandai data manual adjustment sebagai sudah sync.
+
+Endpoint yang dipakai:
+
+```text
+POST /payroll/manual-adjustment/sync-status/by-api-key
+```
+
+Gunakan endpoint ini setelah input Plantware selesai. Endpoint akan:
+
+- membaca row manual adjustment dari `extend_db_ptrj.dbo.payroll_manual_adjustments`;
+- mengecek transaksi yang sudah masuk di `db_ptrj` (`PR_ADTRANS` dan `PR_ADTRANS_ARC`);
+- mengubah hanya segmen `sync:` di `remarks`, misalnya `sync:MANUAL` menjadi `sync:SYNC`;
+- tidak mengubah `amount`, `metadata_json`, `adjustment_name`, TaskDesc/ADCode, atau segmen `match:`;
+- melewati row yang belum ada di ADTRANS atau baru masuk sebagian detailnya.
+
+Gunakan `dry_run=true` dulu untuk verifikasi. Jika hasilnya sesuai, panggil ulang dengan `dry_run=false`.
+
+Catatan eksekusi awal AB1: pada 2026-05-01 sudah dijalankan untuk `period_month=4`, `period_year=2026`, `division_code=AB1`, `adjustment_type=PREMI`, `only_if_adtrans_exists=true`. Hasil apply: 27 row diubah ke `sync:SYNC`, 102 row belum ditemukan di ADTRANS, dan 2 row dilewati karena `ADTRANS_AMOUNT_PARTIAL`.
+
+---
+
 ## Daftar Division (Divisi)
 
 Division dikelompokkan menjadi **Real Divisions** dan **Virtual Divisions**.
@@ -191,22 +215,28 @@ AD CODE: <adcode> - <taskdesc>
 Parser response mendukung format remarks lama/automation berikut untuk mengisi `ad_code` dan `ad_code_desc` saat kolom structured (`ad_code`, `task_code`, `base_task_code`, `task_desc`) masih kosong:
 
 ```text
+AD CODE: <adcode> - <taskdesc>
 <adjustment_name> | <adcode> - <taskdesc> | <amount> | sync:<status> | match:<status>
+<adjustment_name> | (<adcode>) <taskdesc> - <taskdesc> | <amount> | sync:<status> | match:<status>
 <adjustment_name> | <taskdesc> - <taskdesc> | <amount> | sync:<status> | match:<status>
 ```
 
-Jika segmen ADCode/TaskDesc diawali `(AL)` atau `(DE)`, parser memperlakukannya sebagai **TaskDesc display**, bukan kode ADCode pendek. Contoh:
+Untuk remarks pipe-delimited, parser hanya mengambil hasil `remarks.split("|")[1]` sebagai sumber ADCode/TaskDesc. Jika segmen itu diawali kode dalam kurung seperti `(AL0018P1A)`, response mengisi `ad_code` dari kode tersebut dan `ad_code_desc` dari TaskDesc setelahnya. Jika segmen ADCode/TaskDesc diawali `(AL)` atau `(DE)`, parser memperlakukannya sebagai **TaskDesc display**, bukan kode ADCode pendek.
+
+Contoh:
 
 ```text
 PREMI TBS | (AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING) - (AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING) | 423363 | sync:MANUAL | match:MANUAL
+PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL
 ```
 
-Parser akan menghasilkan:
+Parser contoh `PREMI JAGA` akan menghasilkan:
 
 ```json
 {
-  "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
-  "ad_code_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)"
+  "ad_code": "AL0018P1A",
+  "ad_code_desc": "(AL) TUNJANGAN JAGA GENSET",
+  "task_desc": "(AL) TUNJANGAN JAGA GENSET"
 }
 ```
 
@@ -217,6 +247,7 @@ Parser akan menghasilkan:
 - Parser remarks bekerja secara berurutan: jika kolom structured (`ad_code`, `task_code`, `base_task_code`, `task_desc`) sudah terisi, nilainya digunakan langsung; baru kemudian fallback ke parse remarks.
 - Format `AD CODE: <adcode> - <taskdesc>` di remarks juga tetap didukung untuk backward compatibility.
 - Format `AD CODE: <taskdesc>` (tanpa kode pendek) juga didukung untuk remarks yang hanya menyimpan TaskDesc display saja.
+- Jika structured field kosong dan remarks tidak bisa diparse, response fallback ke `backend/data/premium_definitions.json` berdasarkan `adjustment_name`. Ini memastikan premi/koreksi/potongan yang sudah punya definisi tetap memiliki `ad_code_desc`/`task_desc`.
 
 Daftar ADCode diambil dari cache JSON `backend/data/taskcode_mapping_db_ptrj.json` yang bersumber dari `PR_TASKCODE` dengan filter:
 
@@ -2308,12 +2339,191 @@ jq '.data.comparisons[]
 
 | Endpoint | Arah cek | Cocok untuk |
 |----------|----------|-------------|
+| `sync-status/by-api-key` | browser automation -> db_ptrj -> remarks | Setelah browser automation input ke Plantware, verifikasi row sudah muncul di PR_ADTRANS lalu ubah hanya segmen `sync:` pada remarks manual adjustment. |
 | `compare-adtrans/by-api-key` | `db_ptrj` → `extend_db_ptrj` | Mencari data real Plantware yang belum ada (`MISSING`) atau nominalnya beda (`MISMATCH`) di manual adjustment. |
 | `reverse-compare-adtrans/by-api-key` | `extend_db_ptrj` → `db_ptrj` | Mencari manual adjustment yang masih ada padahal tidak ada/nol di Plantware (`EXTRA_IN_ADJUSTMENTS`) atau nominalnya beda (`MISMATCH`). |
 
 ---
 
-### 6. POST `/payroll/manual-adjustment/sync-adtrans/by-api-key`
+### 6. POST `/payroll/manual-adjustment/sync-status/by-api-key`
+
+Endpoint ini dipakai oleh browser automation atau agent lain setelah selesai input manual adjustment ke Plantware. Tujuannya bukan membuat nominal baru, tetapi memverifikasi data sudah masuk ke `db_ptrj` (`PR_ADTRANS`/`PR_ADTRANS_ARC`) lalu mengubah status `sync:` pada `remarks`.
+
+Aturan penting:
+
+- Hanya memproses `PREMI`, `POTONGAN_KOTOR`, dan `POTONGAN_BERSIH`.
+- Tidak memproses `AUTO_BUFFER`.
+- Hanya mengubah segmen pipe `sync:<status>` dari `remarks.split("|")`; segmen lain seperti adjustment name, task desc/ADCode, amount, dan `match:` tidak diubah.
+- Jika `only_if_adtrans_exists=true`, row hanya diubah menjadi `sync:SYNC` kalau transaksi terkait sudah ditemukan di `db_ptrj`.
+- Untuk premi yang punya `metadata_json` detail, pembanding nominal memakai total detail metadata. Jika baru sebagian detail/subblok yang terinput di Plantware, response memberi `skip_reason: "ADTRANS_AMOUNT_PARTIAL"` dan remarks tidak diubah.
+
+Jangan tertukar dengan `sync-adtrans/by-api-key`. Endpoint `sync-adtrans` membuat atau mengubah data manual adjustment dari ADTRANS. Endpoint `sync-status` hanya menandai row manual adjustment yang sudah berhasil diinput ke Plantware.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `period_month` | number | yes | Bulan payroll/PhyMonth |
+| `period_year` | number | yes | Tahun payroll/PhyYear |
+| `division_code` / `estate` | string | no | Estate/LocCode seperti `AB1`; disarankan selalu isi |
+| `gang_code` | string | no | Filter gang tertentu |
+| `emp_code` | string | no | Filter employee tertentu |
+| `adjustment_type` | string | no | `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, atau comma-separated |
+| `adjustment_types` | string[] | no | Alternatif array untuk type |
+| `adjustment_name` | string | no | Filter nama adjustment |
+| `ids` | number[] | no | Target row spesifik `payroll_manual_adjustments.id` |
+| `sync_status` | string | no | Status tujuan, default `SYNC` |
+| `only_if_adtrans_exists` | boolean | no | Jika `true`, verifikasi ke `db_ptrj` dulu sebelum update |
+| `dry_run` | boolean | no | Jika `true`, hanya verifikasi dan preview, tidak update DB |
+| `updated_by` | string | no | User/agent pencatat |
+| `limit` | number | no | Batas row, default 1000, max 5000 |
+
+**Cara endpoint memverifikasi ADTRANS:**
+
+- Scope utama adalah `period_month`, `period_year`, `division_code`/`estate`, `gang_code`, `emp_code`, `adjustment_type`, `adjustment_name`, atau `ids`.
+- Untuk `PREMI`, kategori ADTRANS adalah dokumen premi dinamis.
+- Untuk `POTONGAN_KOTOR`, kategori ADTRANS adalah `koreksi` jika nama adjustment mengandung `KOREKSI`; selain itu dianggap `potongan`.
+- Untuk `POTONGAN_BERSIH`, kategori ADTRANS dianggap `potongan`.
+- Matching memakai employee (`emp_code`), LocCode/estate, kategori DocDesc, dan teks TaskDesc/ADCode dari remarks/definition jika tersedia.
+- Jika `metadata_json` punya detail, `target_amount` memakai total detail metadata. Ini penting untuk premi per subblok: row baru boleh `SYNC` kalau nominal ADTRANS sudah menutup total detail yang seharusnya diinput.
+
+**Flow browser automation yang disarankan:**
+
+1. Ambil data input dari `GET /payroll/manual-adjustment/by-api-key?view=grouped&metadata_only=true`.
+2. Browser automation input satu atau beberapa employee/detail ke Plantware.
+3. Panggil endpoint ini dengan `only_if_adtrans_exists=true` dan `dry_run=true` untuk preview.
+4. Jika `updated_count` sesuai dan `partial_count=0`, panggil lagi dengan `dry_run=false`.
+5. Jika ada `ADTRANS_AMOUNT_PARTIAL`, lanjutkan input detail/subblok yang belum masuk; jangan paksa `sync:SYNC`.
+
+**Contoh dry run untuk AB1 premi:**
+
+```bash
+curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "adjustment_type": "PREMI",
+    "sync_status": "SYNC",
+    "only_if_adtrans_exists": true,
+    "dry_run": true,
+    "updated_by": "browser_automation"
+  }'
+```
+
+**Contoh update setelah dry run aman:**
+
+```bash
+curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "adjustment_type": "PREMI",
+    "sync_status": "SYNC",
+    "only_if_adtrans_exists": true,
+    "dry_run": false,
+    "updated_by": "browser_automation"
+  }'
+```
+
+**Contoh update satu row spesifik setelah input satu employee selesai:**
+
+```bash
+curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "ids": [12345],
+    "sync_status": "SYNC",
+    "only_if_adtrans_exists": true,
+    "dry_run": false,
+    "updated_by": "browser_automation"
+  }'
+```
+
+**Contoh update per gang setelah batch browser automation selesai:**
+
+```bash
+curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "gang_code": "G1H",
+    "adjustment_type": "PREMI",
+    "sync_status": "SYNC",
+    "only_if_adtrans_exists": true,
+    "dry_run": false,
+    "updated_by": "browser_automation"
+  }'
+```
+
+**Contoh response partial detail:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "matched_count": 1,
+    "eligible_count": 1,
+    "adtrans_matched_count": 1,
+    "updated_count": 0,
+    "partial_count": 1,
+    "rows": [
+      {
+        "id": 14,
+        "emp_code": "A0001",
+        "adjustment_type": "PREMI",
+        "adjustment_name": "PREMI PRUNING",
+        "target_amount": 500000,
+        "metadata_detail_total": 500000,
+        "adtrans_amount": 350000,
+        "old_sync_status": "MANUAL",
+        "new_sync_status": "SYNC",
+        "status": "SKIPPED",
+        "skip_reason": "ADTRANS_AMOUNT_PARTIAL",
+        "remarks_before": "PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 500000 | sync:MANUAL | match:MANUAL",
+        "remarks_after": null
+      }
+    ]
+  }
+}
+```
+
+**Field response utama:**
+
+| Field | Arti |
+|-------|------|
+| `matched_count` | Jumlah row manual adjustment yang masuk filter awal |
+| `eligible_count` | Row yang punya format remarks pipe dengan segmen `sync:` |
+| `adtrans_matched_count` | Row yang menemukan transaksi cocok di ADTRANS |
+| `updated_count` | Row yang remarks-nya benar-benar diubah |
+| `unchanged_count` | Row yang sudah berada di target `sync_status` |
+| `skipped_count` | Row yang dilewati karena tidak memenuhi syarat |
+| `partial_count` | Row detail/metadata yang baru sebagian nominalnya ditemukan di ADTRANS |
+| `rows[]` | Detail keputusan per row, termasuk `remarks_before`, `remarks_after`, dan `skip_reason` |
+
+**Skip reason utama:**
+
+| skip_reason | Arti |
+|-------------|------|
+| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya format pipe `sync:<status>` |
+| `ADTRANS_NOT_FOUND` | Belum ada transaksi cocok di `db_ptrj` |
+| `ADTRANS_AMOUNT_PARTIAL` | Ada transaksi cocok, tapi nominal belum menutup total row/detail metadata |
+
+---
+
+### 7. POST `/payroll/manual-adjustment/sync-adtrans/by-api-key`
 
 **Sync real-time** dari PR_ADTRANS (`db_ptrj`) ke `payroll_manual_adjustments` (`extend_db_ptrj`). Hanya mensync item yang **MISMATCH** atau **MISSING** berdasarkan hasil komparasi.
 
