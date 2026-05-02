@@ -12,7 +12,21 @@ import '../styles/TaxReportPage.css';
 // LocalStorage keys for tax report persistence
 // Note: Month/Year are now shared globally via ReportContext (report_period_month, report_period_year)
 const STORAGE_KEYS = {
-    ACTIVE_TAB: 'tax_report_active_tab'
+    ACTIVE_TAB: 'tax_report_active_tab',
+    VALUE_PRIORITY_MODE: 'payroll.value_priority_mode'
+};
+
+const normalizeValuePriorityMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'db_ptrj_only' ? 'db_ptrj_only' : 'non_db_ptrj';
+};
+
+const loadValuePriorityModeFromStorage = () => {
+    try {
+        return normalizeValuePriorityMode(localStorage.getItem(STORAGE_KEYS.VALUE_PRIORITY_MODE));
+    } catch {
+        return 'non_db_ptrj';
+    }
 };
 
 // Load from localStorage
@@ -52,7 +66,7 @@ const formatPercent = (val) => {
 // ================================================================
 // TAB 1: Pajak Bulanan (Monthly PPH21)
 // ================================================================
-function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion }) {
+function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion, valuePriorityMode }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -92,9 +106,10 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                 gang,
                 gangPrefix,
                 monthName: MONTH_NAMES[month - 1],
-                useHistory
+                useHistory,
+                valuePriorityMode
             });
-            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion);
+            const result = await fetchMonthlyTaxReport(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion, valuePriorityMode);
             const summary = result?.summary || {};
             const monthlyTotals = summary?.monthly_table_totals || {};
             const pph21Summary = summary?.pph21 || {};
@@ -118,13 +133,13 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         } finally {
             setLoading(false);
         }
-    }, [token, year, month, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion]);
+    }, [token, year, month, division, gang, gangPrefix, refreshKey, useHistory, snapshotVersion, valuePriorityMode]);
 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
             // Use the same useHistory state as the displayed data to ensure consistency
-            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion);
+            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion, valuePriorityMode);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -136,7 +151,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
         setExportingJson(true);
         try {
             // Use the same useHistory state as the displayed data to ensure consistency
-            await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory, snapshotVersion);
+            await exportPajakJson(token, year, month, gang || 'ALL', division, gangPrefix, useHistory, snapshotVersion, valuePriorityMode);
         } catch (err) {
             alert('Gagal export JSON: ' + (err.message || 'Unknown error'));
         } finally {
@@ -1594,6 +1609,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
     const [activeTab, setActiveTab] = useState(() => loadFromStorage(STORAGE_KEYS.ACTIVE_TAB, 'monthly'));
     const [useHistory, setUseHistory] = useState(false);
     const [snapshotVersion, setSnapshotVersion] = useState('');
+    const [valuePriorityMode, setValuePriorityMode] = useState(loadValuePriorityModeFromStorage);
 
     // Initial load from URL
     useEffect(() => {
@@ -1602,6 +1618,10 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
             setUseHistory(true);
         }
         setSnapshotVersion(params.get('snapshot_version') || '');
+        const sourceModeParam = params.get('value_priority_mode');
+        if (sourceModeParam) {
+            setValuePriorityMode(normalizeValuePriorityMode(sourceModeParam));
+        }
     }, []);
 
     // Save to localStorage when values change
@@ -1765,6 +1785,7 @@ export default function TaxReportPage({ onBack, initialMonth, initialYear, initi
                         gangPrefix={gangPrefix}
                         useHistory={useHistory}
                         snapshotVersion={snapshotVersion}
+                        valuePriorityMode={valuePriorityMode}
                     />
                 )}
                 {activeTab === 'annual' && (

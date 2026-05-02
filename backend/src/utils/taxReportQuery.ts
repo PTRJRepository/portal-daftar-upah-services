@@ -8,6 +8,7 @@ export interface MonthlyTaxQueryInput {
     gangPrefix?: string;
     use_history?: string;
     snapshot_version?: string;
+    value_priority_mode?: string;
 }
 
 export interface MonthlyTaxUserScope {
@@ -23,6 +24,7 @@ export interface ResolvedMonthlyTaxQuery {
     gangPrefix?: string;
     useHistoryDb: boolean;
     snapshotVersion: number | null;
+    valuePriorityMode: "db_ptrj_only" | "non_db_ptrj";
     hasValidPeriod: boolean;
 }
 
@@ -30,6 +32,12 @@ function normalizeOptionalString(value?: string): string | undefined {
     if (typeof value !== "string") return undefined;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeValuePriorityMode(value?: string): "db_ptrj_only" | "non_db_ptrj" {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "db_ptrj_only") return "db_ptrj_only";
+    return "non_db_ptrj";
 }
 
 export function resolveMonthlyTaxQuery(
@@ -55,6 +63,7 @@ export function resolveMonthlyTaxQuery(
         gangPrefix,
         useHistoryDb: parseBooleanQueryParam(query.use_history) ?? false,
         snapshotVersion: parsePositiveIntegerQueryParam(query.snapshot_version),
+        valuePriorityMode: normalizeValuePriorityMode(query.value_priority_mode),
         hasValidPeriod: Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12
     };
 }

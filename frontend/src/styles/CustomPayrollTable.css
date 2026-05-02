@@ -629,7 +629,7 @@
     border-right: 1px solid rgba(148, 163, 184, 0.32);
 }
 
-.payroll-table tbody td.sticky-col.frozen-col-theme * {
+.payroll-table tbody td.sticky-col.frozen-col-theme *:not(button):not(input):not(select):not(textarea):not(option) {
     color: inherit !important;
 }
 
@@ -731,9 +731,20 @@
     filter: none !important;
 }
 
-.payroll-table tbody tr.row-highlighted td *,
-.payroll-table tbody tr.row-highlighted .sticky-col * {
+.payroll-table tbody tr.row-highlighted td *:not(button):not(input):not(select):not(textarea):not(option),
+.payroll-table tbody tr.row-highlighted .sticky-col *:not(button):not(input):not(select):not(textarea):not(option) {
     color: inherit !important;
+}
+
+.payroll-table tbody tr.row-highlighted td input:not([type="checkbox"]):not(.edit-input),
+.payroll-table tbody tr.row-highlighted td select:not(.edit-input),
+.payroll-table tbody tr.row-highlighted td textarea:not(.edit-input),
+.payroll-table tbody td.sticky-col.frozen-col-theme input:not([type="checkbox"]):not(.edit-input),
+.payroll-table tbody td.sticky-col.frozen-col-theme select:not(.edit-input),
+.payroll-table tbody td.sticky-col.frozen-col-theme textarea:not(.edit-input) {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
 }
 
 .payroll-table tbody td.cell-wrap {

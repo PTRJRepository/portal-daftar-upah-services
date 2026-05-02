@@ -51,7 +51,7 @@ export default function GangEmployeeInfo({ token, gangCodes, month, year, divisi
     const [search, setSearch] = useState('')
     
     // Use parent sorting if provided, otherwise fallback to local state
-    const [localSortBy, setLocalSortBy] = useState('name')
+    const [localSortBy, setLocalSortBy] = useState('emp_code')
     const [localSortOrder, setLocalSortOrder] = useState('asc')
     
     const sortBy = parentSortBy || localSortBy

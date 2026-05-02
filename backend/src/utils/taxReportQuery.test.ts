@@ -10,7 +10,8 @@ describe("resolveMonthlyTaxQuery", () => {
             gang: "A1H",
             gangPrefix: "A1",
             use_history: "true",
-            snapshot_version: "4"
+            snapshot_version: "4",
+            value_priority_mode: "db_ptrj_only"
         });
 
         expect(result.year).toBe(2026);
@@ -20,7 +21,18 @@ describe("resolveMonthlyTaxQuery", () => {
         expect(result.gangPrefix).toBe("A1");
         expect(result.useHistoryDb).toBe(true);
         expect(result.snapshotVersion).toBe(4);
+        expect(result.valuePriorityMode).toBe("db_ptrj_only");
         expect(result.hasValidPeriod).toBe(true);
+    });
+
+    test("maps extend_db_ptrj source alias to non_db_ptrj mode", () => {
+        const result = resolveMonthlyTaxQuery({
+            year: "2026",
+            month: "3",
+            value_priority_mode: "extend_db_ptrj"
+        });
+
+        expect(result.valuePriorityMode).toBe("non_db_ptrj");
     });
 
     test("forces kerani division scope", () => {

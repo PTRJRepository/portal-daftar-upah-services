@@ -81,6 +81,39 @@ describe('CustomPayrollTable render', () => {
         expect(css).toMatch(/\.payroll-table-container\s*\{[^}]*overflow-anchor:\s*none;/s);
     });
 
+    it('keeps highlighted-row detail controls readable on light control surfaces', () => {
+        const css = readFileSync('src/styles/CustomPayrollTable.css', 'utf8');
+        const style = document.createElement('style');
+        style.textContent = css;
+        document.head.appendChild(style);
+
+        const table = document.createElement('table');
+        table.className = 'payroll-table';
+        table.innerHTML = `
+            <tbody>
+                <tr class="row-highlighted">
+                    <td>
+                        <button type="button" style="background: rgb(248, 250, 252);">Detail</button>
+                        <input style="background: rgb(255, 255, 255);" value="123" />
+                    </td>
+                </tr>
+            </tbody>
+        `;
+        document.body.appendChild(table);
+
+        try {
+            const button = table.querySelector('button');
+            const input = table.querySelector('input');
+
+            expect(css).toMatch(/row-highlighted td \*:not\(button\):not\(input\):not\(select\):not\(textarea\):not\(option\)/);
+            expect(window.getComputedStyle(button).color).not.toBe('inherit');
+            expect(window.getComputedStyle(input).color).toBe('rgb(15, 23, 42)');
+        } finally {
+            table.remove();
+            style.remove();
+        }
+    });
+
     it('renders without referencing header style before initialization', () => {
         expect(() => renderToString(
             <CustomPayrollTable

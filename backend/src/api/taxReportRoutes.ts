@@ -73,7 +73,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 resolved.gang,
                 resolved.gangPrefix,
                 resolved.useHistoryDb,
-                resolved.snapshotVersion
+                resolved.snapshotVersion,
+                resolved.valuePriorityMode
             );
             return result;
         } catch (error: any) {
@@ -89,7 +90,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
 
@@ -116,7 +118,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 resolved.gang,
                 resolved.gangPrefix,
                 resolved.useHistoryDb,
-                resolved.snapshotVersion
+                resolved.snapshotVersion,
+                resolved.valuePriorityMode
             );
 
             console.log(`[TaxReport Excel] Data fetched: ${data?.employees?.length || 0} employees`);
@@ -171,7 +174,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
 
@@ -187,7 +191,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gang = resolved.gang;
             const gangPrefix = resolved.gangPrefix;
 
-            console.log(`[TaxReport Excel Progressive] Request: year=${resolved.year}, month=${resolved.month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${resolved.useHistoryDb}, snapshotVersion=${resolved.snapshotVersion ?? 'latest'}`);
+            console.log(`[TaxReport Excel Progressive] Request: year=${resolved.year}, month=${resolved.month}, division=${division}, gang=${gang}, gangPrefix=${gangPrefix}, useHistory=${resolved.useHistoryDb}, snapshotVersion=${resolved.snapshotVersion ?? 'latest'}, valuePriorityMode=${resolved.valuePriorityMode}`);
 
             if (!resolved.hasValidPeriod) {
                 set.status = 400;
@@ -304,7 +308,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Use progressive extraction - filter by specific gang if selected
             const progressiveStream = dataExtractor.extractPayrollDataProgressive(
                 resolved.month, resolved.year, targetGangCode, effectiveDivision,
-                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined, resolved.useHistoryDb, resolved.snapshotVersion
+                Config.DB_PROFILE, targetGangCode === "ALL" ? effectiveGangPrefix : undefined, resolved.useHistoryDb, resolved.snapshotVersion, resolved.valuePriorityMode
             );
 
             for await (const chunk of progressiveStream) {
@@ -544,7 +548,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
 
@@ -564,8 +569,9 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const gangPrefix = resolved.gangPrefix;
             const useHistoryDb = resolved.useHistoryDb;
             const snapshotVersion = resolved.snapshotVersion;
+            const valuePriorityMode = resolved.valuePriorityMode;
 
-            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
+            console.log(`[TaxReport Excel FAST] Request: year=${year}, month=${month}, division=${division}, gang=${gang}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}, valuePriorityMode=${valuePriorityMode}`);
 
             if (!resolved.hasValidPeriod) {
                 set.status = 400;
@@ -584,7 +590,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             // Resolve gang/division
             const targetGangCode = gang && gang.trim() !== '' && gang !== 'ALL' ? gang.trim().toUpperCase() : undefined;
 
-            console.log(`[TaxReport Excel FAST] Using DataExtractorService (same as Daftar Upah): gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
+            console.log(`[TaxReport Excel FAST] Using DataExtractorService (same as Daftar Upah): gang=${targetGangCode || 'ALL'}, division=${division || 'ALL'}, prefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}, valuePriorityMode=${valuePriorityMode}`);
 
             // Use DataExtractorService EXACTLY like Daftar Upah - same data source, same logic
             // This ensures Excel export matches exactly what appears in Daftar Upah
@@ -599,7 +605,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 gangPrefix,
                 false,  // skipHarvest [FIXED 2026-04-08]: Must match UI logic
                 false,
-                snapshotVersion
+                snapshotVersion,
+                valuePriorityMode
             );
 
             if (!extractorResult.data_rows || extractorResult.data_rows.length === 0) {
@@ -1048,7 +1055,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             gang: t.Optional(t.String()),
             gangPrefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
-            snapshot_version: t.Optional(t.String())
+            snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String())
         })
     })
 

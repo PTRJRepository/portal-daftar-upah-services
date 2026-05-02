@@ -120,7 +120,7 @@ const OperationalReportWrapper = () => {
   const headerValuePriorityMeta = VALUE_PRIORITY_MODE_META[headerValuePriorityMode] || VALUE_PRIORITY_MODE_META.non_db_ptrj;
 
   // Employee sorting state
-  const [employeeSortBy, setEmployeeSortBy] = useState('name'); // 'name' | 'emp_code' | 'nik'
+  const [employeeSortBy, setEmployeeSortBy] = useState('emp_code'); // 'name' | 'emp_code' | 'nik'
   const [employeeSortOrder, setEmployeeSortOrder] = useState('asc'); // 'asc' | 'desc'
 
   // Seed data state
@@ -266,7 +266,7 @@ const OperationalReportWrapper = () => {
   const handleExportTaxExcel = async () => {
     setTaxExportLoading(true)
     try {
-      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, effectiveUseHistoryDb, effectiveSnapshotVersion)
+      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, effectiveUseHistoryDb, effectiveSnapshotVersion, headerValuePriorityMode)
     } catch (err) {
       alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
     } finally {
@@ -313,7 +313,8 @@ const OperationalReportWrapper = () => {
       year: String(year),
       gang: gang || '',
       gangPrefix: gangPrefix || '',
-      use_history: effectiveUseHistoryDb ? 'true' : 'false'
+      use_history: effectiveUseHistoryDb ? 'true' : 'false',
+      value_priority_mode: headerValuePriorityMode
     });
     appendSnapshotVersionToSearchParams(params, effectiveSnapshotVersion)
     const taxPath = buildAppPath(`/report-pajak?${params.toString()}`);

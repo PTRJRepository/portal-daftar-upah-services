@@ -16,11 +16,12 @@ import { divisionDefinition } from './divisionDefinition';
 import { OtherIncomesService } from './otherIncomesService';
 import { getCarumanForPph21, calculateAllCaruman, CARUMAN_RATES } from './carumanDefinitions';
 import { Config } from "../config";
-import { DataExtractorService } from './dataExtractorService';
+import { DataExtractorService, normalizePayrollValuePriorityMode } from './dataExtractorService';
 import { currentPeriodService } from './currentPeriodService';
 import { EmployeeEstateService } from './employeeEstateService';
 import { cacheService } from './cacheService';
 import { filterTaxReportRows, resolveTaxReportDivisionScope } from '../utils/taxReportDivisionScope';
+import { sortAndRenumberByEmpCode } from '../utils/employeeSort';
 
 /**
  * Auto-derive jabatan (job title) from the last character of gang code.
@@ -433,8 +434,9 @@ class TaxReportService {
      * when history is not available. This ensures seeded data is always preferred for archived periods.
      * @param useHistoryDb - Explicit override to use history database (from UI state)
      */
-    private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean, snapshotVersion?: number | null) {
-        console.log(`[TaxReportService] Fetching payroll data via DataExtractorService: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb} snapshotVersion=${snapshotVersion ?? 'latest'}`);
+    private async fetchPayrollData(month: number, year: number, divisionCode: string, gangCode?: string, gangPrefix?: string, useHistoryDb?: boolean, snapshotVersion?: number | null, valuePriorityMode?: string | null) {
+        const normalizedValuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityMode);
+        console.log(`[TaxReportService] Fetching payroll data via DataExtractorService: div=${divisionCode} m=${month} y=${year} useHistory=${useHistoryDb} snapshotVersion=${snapshotVersion ?? 'latest'} valuePriorityMode=${normalizedValuePriorityMode}`);
 
         try {
             // [ALIGNMENT] Trust DataExtractorService as the Single Source of Truth
@@ -450,7 +452,8 @@ class TaxReportService {
                 gangPrefix, 
                 true, // skipHarvest (Match payroll.ts)
                 false, // skipHeavyDetails (Match payroll.ts default)
-                snapshotVersion
+                snapshotVersion,
+                normalizedValuePriorityMode
             );
 
             if (result && result.data_rows.length > 0) {
@@ -478,13 +481,15 @@ class TaxReportService {
         gangCode?: string,
         gangPrefix?: string,
         useHistoryDb?: boolean,
-        snapshotVersion?: number | null
+        snapshotVersion?: number | null,
+        valuePriorityMode?: string | null
     ): Promise<any> {
-        console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}`);
+        const normalizedValuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityMode);
+        console.log(`[TaxReportService] getMonthlyTaxReport: year=${year}, month=${month}, division=${divisionCode || 'ALL'}, gang=${gangCode || 'ALL'}, gangPrefix=${gangPrefix || 'none'}, useHistory=${useHistoryDb}, snapshotVersion=${snapshotVersion ?? 'latest'}, valuePriorityMode=${normalizedValuePriorityMode}`);
 
         const currentPeriod = await currentPeriodService.getCurrentPeriod();
         const snapshotCacheScope = useHistoryDb ? `SNAP_${snapshotVersion ?? 'LATEST'}` : 'LIVE';
-        const cacheKey = cacheService.buildPayrollKey(`TAX_M_${gangCode || 'ALL'}_${gangPrefix || 'ALL'}_${snapshotCacheScope}`, month, year, divisionCode, useHistoryDb);
+        const cacheKey = cacheService.buildPayrollKey(`TAX_M_${gangCode || 'ALL'}_${gangPrefix || 'ALL'}_${snapshotCacheScope}_${normalizedValuePriorityMode}`, month, year, divisionCode, useHistoryDb);
         const shouldCache = cacheService.shouldCache(month, year, currentPeriod.month, currentPeriod.year);
 
         if (shouldCache) {
@@ -506,11 +511,12 @@ class TaxReportService {
         const allHistoryRows: any[] = [];
         const dynamicPremiHeaders = new Set<string>();
         const dynamicPotonganHeaders = new Set<string>();
+        let finalMeta: any = null;
         let finalIsSourceCurrent = false;
 
         for (const sourceDiv of sourceDivisions) {
             const { data: chunk, isSourceCurrent: chunkIsSourceCurrent } = await this.fetchPayrollData(
-                month, year, sourceDiv, gangCode || 'ALL', gangPrefix, useHistoryDb, snapshotVersion
+                month, year, sourceDiv, gangCode || 'ALL', gangPrefix, useHistoryDb, snapshotVersion, normalizedValuePriorityMode
             );
 
             if (chunk?.data_rows) {
@@ -521,6 +527,7 @@ class TaxReportService {
                 }
 
                 allHistoryRows.push(...filteredRows);
+                finalMeta = chunk.meta || finalMeta;
                 
                 // Merge dynamic headers
                 if (chunk.dynamic_premi_headers) chunk.dynamic_premi_headers.forEach((h: string) => dynamicPremiHeaders.add(h));
@@ -533,13 +540,14 @@ class TaxReportService {
         console.log(`[TaxReportService] Total aggregated rows: ${allHistoryRows.length}, isSourceCurrent=${finalIsSourceCurrent}`);
 
         if (allHistoryRows.length === 0) {
-            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: finalIsSourceCurrent ? 'current' : 'history' };
+            return { employees: [], period: { month, year }, total_pph21: 0, premiKeys: [], data_source: finalIsSourceCurrent ? 'current' : 'history', value_priority_mode: normalizedValuePriorityMode };
         }
 
         const historyData = {
             data_rows: allHistoryRows,
             dynamic_premi_headers: Array.from(dynamicPremiHeaders),
-            dynamic_potongan_headers: Array.from(dynamicPotonganHeaders)
+            dynamic_potongan_headers: Array.from(dynamicPotonganHeaders),
+            meta: finalMeta || {}
         };
 
         const effectiveDivisionCode = divisionScope.fetchDivisionCode;
@@ -599,7 +607,7 @@ class TaxReportService {
         const activeRows = Array.from(employeeMap.values());
         console.log(`[TaxReportService] De-duplicated ${historyData.data_rows.length} rows down to ${activeRows.length} unique employees.`);
 
-        const employees: MonthlyTaxRow[] = activeRows.map((row: any, idx: number) => {
+        const mappedEmployees: MonthlyTaxRow[] = activeRows.map((row: any, idx: number) => {
             const empCodeTrimmed = row.emp_code?.trim() || '';
             const masterPtkp = ptkpMap.get(empCodeTrimmed) || row.status_ptkp || 'TK/0';
             const kategoriTer = mapPTKPToTER(masterPtkp);
@@ -868,6 +876,8 @@ class TaxReportService {
             };
         });
 
+        const employees: MonthlyTaxRow[] = sortAndRenumberByEmpCode(mappedEmployees);
+
         // Collect all unique premi keys across all employees
         // premiDetail already contains clean, normalized keys (no LAINNYA, no brondol sub-keys)
         const premiKeySet = new Set<string>();
@@ -916,6 +926,7 @@ class TaxReportService {
             total_pot_pph21: monthlyTableTotals.pph21_input,
             premiKeys,
             data_source: finalIsSourceCurrent ? 'current' : 'history',
+            value_priority_mode: normalizedValuePriorityMode,
             snapshot_version: historyData.meta?.snapshot_version ?? null,
             requested_snapshot_version: historyData.meta?.requested_snapshot_version ?? null,
             available_snapshot_versions: historyData.meta?.available_snapshot_versions ?? [],
@@ -1196,7 +1207,7 @@ class TaxReportService {
 
 
         // Calculate annual totals
-        const employees: AnnualIncomeRow[] = [];
+        let employees: AnnualIncomeRow[] = [];
         let idx = 0;
 
         for (const [empCode, emp] of employeeMap) {
@@ -1388,6 +1399,8 @@ class TaxReportService {
             });
         }
 
+        employees = sortAndRenumberByEmpCode(employees);
+
         const monthlyTotalsByMode = {
             gaji: Array.from({ length: 12 }, (_, m) =>
                 Math.round(employees.reduce((s, e) => s + (Number(e.monthly_gaji_kotor?.[String(m + 1)]) || 0), 0))
@@ -1549,7 +1562,7 @@ class TaxReportService {
             }
         }
 
-        const employees: AstekBpjsMonthlyRow[] = [];
+        let employees: AstekBpjsMonthlyRow[] = [];
         let idx = 0;
 
         for (const [empCode, emp] of employeeMap) {
@@ -1593,6 +1606,8 @@ class TaxReportService {
                 total,
             });
         }
+
+        employees = sortAndRenumberByEmpCode(employees);
 
         const modeKeys = [
             'bpjs_kes_majikan',
@@ -1870,7 +1885,7 @@ class TaxReportService {
             }
         }
 
-        const employees: DecemberTaxRow[] = [];
+        let employees: DecemberTaxRow[] = [];
         let idx = 0;
 
         for (const [empCode, emp] of employeeMap) {
@@ -2041,6 +2056,8 @@ class TaxReportService {
                 monthly_breakdown: breakdown
             });
         }
+
+        employees = sortAndRenumberByEmpCode(employees);
 
         const sumDecember = (selector: (emp: DecemberTaxRow) => number): number =>
             Math.round(employees.reduce((s, emp) => s + (selector(emp) || 0), 0));

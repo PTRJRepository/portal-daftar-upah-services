@@ -131,6 +131,37 @@ function resolveValuePriorityModeLabel(mode) {
     return 'Non DB_PTRJ (Auto Buffer + Manual Adjustment)';
 }
 
+const UI_ONLY_EXPORT_FIELDS = new Set([
+    'checkbox',
+    'actions',
+    'selection'
+]);
+
+const TAX_DETAIL_EXPORT_FIELDS = new Set([
+    'status_ptkp',
+    'kategori_ter',
+    'penghasilan_bruto',
+    'tarif_pajak_ter',
+    'pph21_ter',
+    'premi_pph',
+    'upah_kotor_pajak'
+]);
+
+function isTaxDetailExportField(field) {
+    if (!field) return false;
+    if (TAX_DETAIL_EXPORT_FIELDS.has(field)) return true;
+    return field.startsWith('taxable_pendapatan_');
+}
+
+export function buildPayrollExportColumns(_rows, columnDefs = []) {
+    return columnDefs.filter((col) => {
+        const field = col?.field;
+        if (!field || UI_ONLY_EXPORT_FIELDS.has(field)) return false;
+        if (field === 'pot_pph21') return true;
+        return !isTaxDetailExportField(field);
+    });
+}
+
 /**
  * Build merged header cells from column definitions
  * Returns: Array of { row, col, rowSpan, colSpan, label }
@@ -212,44 +243,7 @@ function buildHeaderMerges(enhancedColumnDefs) {
  * @param {Object} meta - Metadata: { division, gangCode, month, year }
  */
 export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
-    // === ENSURE ALL FIELDS FROM ROWS ARE INCLUDED IN EXPORT ===
-    // Collect all unique fields from rows data
-    const allFieldsInData = new Set();
-    rows.forEach(row => {
-        if (row.type === 'employee') {
-            Object.keys(row).forEach(key => {
-                // Skip internal/react keys
-                if (!key.startsWith('_') && key !== 'type' && key !== 'id') {
-                    allFieldsInData.add(key);
-                }
-            });
-        }
-    });
-
-    // Get fields already in columnDefs (original parameter, not enhanced yet)
-    const fieldsInColumnDefs = new Set(columnDefs.map(col => col.field));
-
-    // Find missing fields
-    const missingFields = [...allFieldsInData].filter(f => !fieldsInColumnDefs.has(f));
-
-    // Add missing fields to columnDefs with generic headers
-    const enhancedColumnDefs = [
-        ...columnDefs,
-        ...missingFields.map(field => ({
-            field,
-            headers: ['DATA TAMBAHAN', null, null, field.toUpperCase().replace(/_/g, ' ')],
-            w: 90,
-            className: 'text-right',
-            render: (row) => {
-                const val = row[field];
-                if (val === null || val === undefined || val === '') return '-';
-                if (typeof val === 'number') return Math.round(val);
-                return val;
-            }
-        }))
-    ];
-
-    console.log(`[Export] Added ${missingFields.length} missing fields to export:`, missingFields);
+    const enhancedColumnDefs = buildPayrollExportColumns(rows, columnDefs);
 
     let workbook = new ExcelJS.Workbook();
     workbook.creator = 'PT Rebinmas Jaya - Payroll System';

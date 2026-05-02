@@ -99,7 +99,7 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
     const [error, setError] = useState(null)
     const [showPekerjaDetail, setShowPekerjaDetail] = useState(false)
     const [search, setSearch] = useState('')
-    const [sortBy, setSortBy] = useState('nama')
+    const [sortBy, setSortBy] = useState('emp_code')
     const [sortOrder, setSortOrder] = useState('asc')
 
     const fetchData = useCallback(async () => {
@@ -291,7 +291,7 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                 {/* Search */}
                 <input
                     type="text"
-                    placeholder="Cari NIK / Nama..."
+                    placeholder="Cari NIK / Nama / Emp Code..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     style={{

@@ -36,6 +36,7 @@ import { gangService } from "./gangService";
 import { employeeHrDataService } from "./employeeHrDataService";
 import { divisionDefinition } from "./divisionDefinition";
 import { debug, info, warn, error as logError } from "../utils/logger";
+import { sortByEmpCode } from "../utils/employeeSort";
 
 export interface Employee {
     nik: string;
@@ -1266,7 +1267,7 @@ export class HistoryDatabaseService {
             return normalizedKey !== "PREMI_BRONDOL" && normalizedKey !== "PREMI_KOREKSI";
         };
 
-        const data_rows = finalDetails.map(d => {
+        const data_rows = sortByEmpCode(finalDetails.map(d => {
             const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
             const liveHr = hrEmployeeMap.get(empCodeClean);
@@ -1374,7 +1375,7 @@ export class HistoryDatabaseService {
             } catch (e) { }
 
             return row;
-        });
+        }));
 
         const premiTitles: Record<string, string> = {};
         dynamicPremiSet.forEach(k => premiTitles[k] = k.replace('PREMI_', '').replace(/_/g, ' '));

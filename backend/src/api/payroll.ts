@@ -12,6 +12,7 @@ import { dataExtractorService } from "../services/dataExtractorService";
 import { User, UserRole } from "../types/user";
 import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
 import { hasValidApiKeyBypass, resolveUserFromHeaders } from "../utils/authBypass";
+import { sortByEmpCode } from "../utils/employeeSort";
 
 
 const authService = AuthService.getInstance();
@@ -1075,29 +1076,29 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             );
 
             // [DEBUG] Log result summary
-            const { data_rows } = result;
-            const uniqueGangs = new Set(data_rows.map(r => r.gang_code || "UNKNOWN"));
-            console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${data_rows.length} gangs=${uniqueGangs.size} | gangPrefix=${gangPrefix}`);
+            const dataRows = sortByEmpCode(result.data_rows);
+            const uniqueGangs = new Set(dataRows.map(r => r.gang_code || "UNKNOWN"));
+            console.log(`[PayrollRoutes] /report/division-raw-tree RESULT | data_rows=${dataRows.length} gangs=${uniqueGangs.size} | gangPrefix=${gangPrefix}`);
 
             // [NEW] Use centralized payrollTotalsCalculator for consistent totals
             const { calculatePayrollTotals, calculateTaxMatrixTotals } = await import("../services/payrollTotalsCalculator");
 
             // Group by gang and calculate totals
             const gangsMap: Record<string, any[]> = {};
-            for (const row of result.data_rows) {
+            for (const row of dataRows) {
                 const gang = row.gang_code || "UNKNOWN";
                 if (!gangsMap[gang]) gangsMap[gang] = [];
                 gangsMap[gang].push(row);
             }
 
             console.log(`[PayrollRoutes] division-raw-tree: division=${divisionCode}, month=${month}, year=${year}, gangPrefix=${gangPrefix || 'none'}`);
-            console.log(`[PayrollRoutes] division-raw-tree: data_rows count=${result.data_rows.length}, gangs count=${Object.keys(gangsMap).length}`);
+            console.log(`[PayrollRoutes] division-raw-tree: data_rows count=${dataRows.length}, gangs count=${Object.keys(gangsMap).length}`);
             console.log(`[PayrollRoutes] division-raw-tree: dynamic_premi=${result.dynamic_premi_headers?.length || 0}, dynamic_pot=${result.dynamic_potongan_headers?.length || 0}`);
 
             // [PERFORMANCE] Calculate totals FIRST (needs full data with arrays),
             // then strip heavy array fields from employee rows before serializing to JSON.
             // This prevents "Aw, Snap!" browser crash caused by oversized JSON.
-            const grandTotal = calculatePayrollTotals(result.data_rows, 'GRAND TOTAL');
+            const grandTotal = calculatePayrollTotals(dataRows, 'GRAND TOTAL');
 
             // Build gangs list with pre-calculated totals
             const gangsList = Object.entries(gangsMap)
@@ -1117,7 +1118,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 year,
                 gangs: gangsList,
                 grand_total: grandTotal,  // Division-level totals
-                tax_matrix_totals: calculateTaxMatrixTotals(result.data_rows),
+                tax_matrix_totals: calculateTaxMatrixTotals(dataRows),
                 dynamic_premi_headers: result.dynamic_premi_headers || [],
                 dynamic_potongan_headers: result.dynamic_potongan_headers || [],
                 premi_title_map: result.premi_title_map || {},
@@ -1876,8 +1877,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             );
 
             // [DEBUG] Log result summary
-            const empCount = result?.data_rows?.length || 0;
-            const uniqueGangs = new Set(result?.data_rows?.map(r => r.gang_code || "UNKNOWN") || []);
+            const dataRows = sortByEmpCode(result?.data_rows || []);
+            const empCount = dataRows.length;
+            const uniqueGangs = new Set(dataRows.map(r => r.gang_code || "UNKNOWN"));
             const gangCount = uniqueGangs.size;
             console.log(`[PayrollRoutes] /locked/report/raw-tree RESULT | gangs=${gangCount} employees=${empCount} | gangCode=${gangCode} | gangPrefix=${gangPrefix}`);
 
@@ -1886,7 +1888,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // Group by gang and calculate totals
             const gangsMap: Record<string, any[]> = {};
-            for (const row of result.data_rows) {
+            for (const row of dataRows) {
                 const gang = row.gang_code || "UNKNOWN";
                 if (!gangsMap[gang]) gangsMap[gang] = [];
                 gangsMap[gang].push(row);
@@ -1895,7 +1897,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [PERFORMANCE] Calculate totals FIRST (needs full data with arrays),
             // then strip heavy array fields from employee rows before serializing to JSON.
             // This prevents "Aw, Snap!" browser crash caused by oversized JSON.
-            const grandTotal = calculatePayrollTotals(result.data_rows, 'GRAND TOTAL');
+            const grandTotal = calculatePayrollTotals(dataRows, 'GRAND TOTAL');
 
             // Build gangs list with pre-calculated totals
             const gangsList = Object.entries(gangsMap)
@@ -1917,7 +1919,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 year,
                 gangs: gangsList,
                 grand_total: grandTotal,  // Division-level totals
-                tax_matrix_totals: calculateTaxMatrixTotals(result.data_rows),
+                tax_matrix_totals: calculateTaxMatrixTotals(dataRows),
                 dynamic_premi_headers: result.dynamic_premi_headers,
                 dynamic_potongan_headers: result.dynamic_potongan_headers,
                 premi_title_map: result.premi_title_map,
@@ -2295,7 +2297,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             // [NEW] Calculate totals on backend to replace frontend calculation
             // Group data by gang_code
             const gangsMap: Record<string, any[]> = {};
-            result.data_rows.forEach((row: any) => {
+            const dataRows = sortByEmpCode(result.data_rows);
+
+            dataRows.forEach((row: any) => {
                 const gang = row.gang_code || "UNKNOWN";
                 if (!gangsMap[gang]) gangsMap[gang] = [];
                 gangsMap[gang].push(row);
@@ -2309,13 +2313,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }));
 
             // Calculate grand total
-            const grandTotal = calculatePayrollTotals(result.data_rows, 'GRAND TOTAL');
+            const grandTotal = calculatePayrollTotals(dataRows, 'GRAND TOTAL');
 
             return {
                 gang_code: gangCode,
                 month,
                 year,
-                data: result.data_rows,
+                data: dataRows,
                 gangs: gangsList,
                 grand_total: grandTotal,
                 dynamic_premi_headers: result.dynamic_premi_headers,
@@ -2367,7 +2371,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 gang_code: gangCode,
                 month,
                 year,
-                data: result.data_rows,
+                data: sortByEmpCode(result.data_rows),
                 components: result.components,  // All component data with metadata
                 meta: result.meta
             };
@@ -3107,7 +3111,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
             // Filter to only the requested gang codes and extract summary fields
             const gangCodesSet = new Set(gangCodes.map((c: string) => c.trim().toUpperCase()));
-            const data = result.data_rows
+            const data = sortByEmpCode(result.data_rows
                 .filter((row: any) => gangCodesSet.has((row.gang_code || '').trim().toUpperCase()))
                 .map((row: any) => ({
                     emp_code: (row.emp_code || row.nik || '').trim(),
@@ -3120,7 +3124,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                     gaji_pokok_aktual: Number(row.gaji_pokok_aktual) || 0,
                     total_tunjangan: Number(row.total_tunjangan) || 0,
                     total_premi: Number(row.total_premi) || 0,
-                }));
+                })));
 
             return {
                 data,
@@ -3158,13 +3162,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const gangPrefix = query.gang_prefix as string || undefined;
             const useHistoryDb = parseBooleanQueryParam(query.use_history) ?? false;
             const snapshotVersion = parsePositiveIntegerQueryParam(query.snapshot_version as string | undefined);
+            const valuePriorityMode = query.value_priority_mode as string | undefined;
 
             if (!month || !year || month < 1 || month > 12) {
                 set.status = 400;
                 return { error: "Invalid month or year" };
             }
 
-            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistoryDb, snapshotVersion);
+            const result = await taxReportService.getMonthlyTaxReport(year, month, division, gang, gangPrefix, useHistoryDb, snapshotVersion, valuePriorityMode);
 
             // Build emp_code → pajak mapping
             const employeesMap: Record<string, any> = {};
@@ -3244,6 +3249,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             gang_prefix: t.Optional(t.String()),
             use_history: t.Optional(t.String()),
             snapshot_version: t.Optional(t.String()),
+            value_priority_mode: t.Optional(t.String()),
         })
     })
     // --- Premium Definitions (from JSON file) ---
