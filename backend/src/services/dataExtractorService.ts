@@ -124,6 +124,17 @@ export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityI
     return result;
 }
 
+export function pickStaticPremiForManualBuffer(source: Record<string, number>): Record<string, number> {
+    const brondol = Number(
+        source?.brondol
+        ?? source?.premi_brondol
+        ?? source?.premi_brondol_total
+        ?? 0
+    ) || 0;
+
+    return brondol !== 0 ? { brondol } : {};
+}
+
 type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
 const DETAIL_TOTAL_MISMATCH_PREMI_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
 type PayrollValueSourceCompareMap = Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
@@ -1364,7 +1375,7 @@ export class DataExtractorService {
 
             const dbEmpPremiSource = premi[emp.emp_code] || {};
             const dbEmpPotonganSource = potongan[emp.emp_code] || {};
-            const empPremi = manualBufferOnlyMode ? {} : { ...dbEmpPremiSource };
+            const empPremi = manualBufferOnlyMode ? pickStaticPremiForManualBuffer(dbEmpPremiSource) : { ...dbEmpPremiSource };
             const empPotongan = manualBufferOnlyMode
                 ? pickStaticPotonganForManualBuffer(dbEmpPotonganSource)
                 : { ...dbEmpPotonganSource };
@@ -1407,8 +1418,8 @@ export class DataExtractorService {
 
             const upah_pokok = attData.total_amount_rp || 0;
             // [PHASE 2.5] Brondol dual source tracking
-            const empBrondolLoosefruit = manualBufferOnlyMode ? 0 : (brondol[emp.emp_code] || 0);
-            const empBrondolAdtrans = manualBufferOnlyMode ? 0 : (empPremi["brondol"] || 0); // From PR_ADTRANS (before adding loosefruit)
+            const empBrondolLoosefruit = brondol[emp.emp_code] || 0;
+            const empBrondolAdtrans = empPremi["brondol"] || 0; // From PR_ADTRANS (before adding loosefruit)
             const empBrondolTotal = empBrondolLoosefruit + empBrondolAdtrans;
             // Keep empBrondol for backward compatibility (total)
             const empBrondol = empBrondolTotal;
@@ -4521,12 +4532,12 @@ export class DataExtractorService {
         for (const emp of employees) {
             const dbEmpPremiSource = globalPremiResult.amounts[emp.emp_code] || {};
             const dbEmpPotonganSource = globalPotonganResult.amounts[emp.emp_code] || {};
-            const empPremi = manualBufferOnlyMode ? {} : { ...dbEmpPremiSource };
+            const empPremi = manualBufferOnlyMode ? pickStaticPremiForManualBuffer(dbEmpPremiSource) : { ...dbEmpPremiSource };
             const empPotongan = manualBufferOnlyMode
                 ? pickStaticPotonganForManualBuffer(dbEmpPotonganSource)
                 : { ...dbEmpPotonganSource };
-            const empBrondol = manualBufferOnlyMode ? 0 : (globalBrondolMap[emp.emp_code] || 0);
-            const empPremiBrondol = manualBufferOnlyMode ? 0 : (empPremi["brondol"] || 0);
+            const empBrondol = globalBrondolMap[emp.emp_code] || 0;
+            const empPremiBrondol = empPremi["brondol"] || 0;
             const valueSyncFrame: Record<string, "red" | "green"> = { ...(emp.value_sync_frame || {}) };
 
             let total_premi = 0;

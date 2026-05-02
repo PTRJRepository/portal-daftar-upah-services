@@ -3,6 +3,7 @@ import {
     attachManualAdjustmentSourceComparisons,
     attachManualAdjustmentValueSourceComparison,
     normalizePayrollValuePriorityMode,
+    pickStaticPremiForManualBuffer,
     resolveManualAdjustmentDbPtrjCompareAmount,
     resolveManualAdjustmentSourcePolicy
 } from "./dataExtractorService";
@@ -29,6 +30,16 @@ describe("resolveManualAdjustmentSourcePolicy", () => {
             applyAmounts: true,
             fetchRowsForMetadata: true,
             manualBufferOnly: true
+        });
+    });
+
+    it("keeps DB_PTRJ brondol as the only static premi in non-DB_PTRJ mode", () => {
+        expect(pickStaticPremiForManualBuffer({
+            brondol: 125000,
+            premi_pruning: 50000,
+            premi_kinerja: 75000
+        })).toEqual({
+            brondol: 125000
         });
     });
 
