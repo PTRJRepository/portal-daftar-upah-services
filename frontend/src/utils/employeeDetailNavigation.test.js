@@ -28,8 +28,8 @@ describe('employee detail navigation', () => {
         expect(path).toBe('/upah/employee/detail?emp_code=B001&nik=1234567890123456&month=4&year=2026&division=INFRA');
     });
 
-    it('opens detail path and falls back to location href when popup is blocked', () => {
-        const locationRef = { href: '' };
+    it('opens detail path in a new tab without changing the current tab when popup is blocked', () => {
+        const locationRef = { href: '/operational' };
         const openFn = vi.fn(() => null);
 
         const path = openEmployeeDetailPage({
@@ -42,6 +42,6 @@ describe('employee detail navigation', () => {
 
         expect(path).toBe('/employee/detail?emp_code=B001&month=4&year=2026&division=PG1A');
         expect(openFn).toHaveBeenCalledWith(path, '_blank', 'noopener,noreferrer');
-        expect(locationRef.href).toBe(path);
+        expect(locationRef.href).toBe('/operational');
     });
 });

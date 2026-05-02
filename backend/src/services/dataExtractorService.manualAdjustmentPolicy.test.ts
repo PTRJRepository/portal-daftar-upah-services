@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+    attachManualAdjustmentSourceComparisons,
     attachManualAdjustmentValueSourceComparison,
     normalizePayrollValuePriorityMode,
     resolveManualAdjustmentDbPtrjCompareAmount,
@@ -80,5 +81,71 @@ describe("resolveManualAdjustmentSourcePolicy", () => {
         expect(dbPtrjAmount).toBe(350000);
         expect(frame.premi_jaga).toBe("green");
         expect(compare.premi_jaga).toEqual({ db_ptrj: 350000, active: 350000 });
+    });
+
+    it("matches DB_PTRJ premi jaga variants to the manual adjustment name field", () => {
+        const syncMeta = {
+            fieldName: "premi_jaga",
+            adjustmentType: "PREMI" as const,
+            adjustmentName: "PREMI JAGA",
+            previousAmount: 0,
+            finalAmount: 250000,
+            hadDbValue: false
+        };
+
+        const dbPtrjAmount = resolveManualAdjustmentDbPtrjCompareAmount(
+            syncMeta,
+            { premi_jaga_genset: 250000, premi_jaga_tanggung_jawab: 400000 },
+            {}
+        );
+
+        expect(dbPtrjAmount).toBe(250000);
+    });
+
+    it("matches DB_PTRJ koreksi brondol variants to the manual adjustment field name", () => {
+        const syncMeta = {
+            fieldName: "koreksi_brondol",
+            adjustmentType: "POTONGAN_KOTOR" as const,
+            adjustmentName: "KOREKSI BRONDOL",
+            previousAmount: 0,
+            finalAmount: 27500,
+            hadDbValue: false
+        };
+
+        const dbPtrjAmount = resolveManualAdjustmentDbPtrjCompareAmount(
+            syncMeta,
+            {},
+            { KOREKSI_BERONDOL: -27500 }
+        );
+
+        expect(dbPtrjAmount).toBe(27500);
+    });
+
+    it("adds comparison frames for manual koreksi and potongan without applying manual amounts", () => {
+        const frame: Record<string, "red" | "green"> = {};
+        const compare: Record<string, { db_ptrj: number; active: number }> = {};
+        const dbPremiSource = { premi_pruning: 100000 };
+        const dbPotonganSource = {
+            koreksi_brondol: -5000,
+            potongan_lainnya_kasbon: -3000
+        };
+
+        const syncMetas = attachManualAdjustmentSourceComparisons(
+            frame,
+            compare,
+            [
+                { adjustment_type: "POTONGAN_KOTOR", adjustment_name: "KOREKSI BRONDOL", amount: 7000 },
+                { adjustment_type: "POTONGAN_BERSIH", adjustment_name: "POTONGAN LAINNYA KASBON", amount: 3000 }
+            ],
+            dbPremiSource,
+            dbPotonganSource
+        );
+
+        expect(syncMetas.map((item) => item.fieldName)).toEqual(["koreksi_brondol", "potongan_lainnya_kasbon"]);
+        expect(frame.koreksi_brondol).toBe("red");
+        expect(frame.potongan_lainnya_kasbon).toBe("green");
+        expect(compare.koreksi_brondol).toEqual({ db_ptrj: 5000, active: 7000 });
+        expect(compare.potongan_lainnya_kasbon).toEqual({ db_ptrj: 3000, active: 3000 });
+        expect(dbPotonganSource.koreksi_brondol).toBe(-5000);
     });
 });

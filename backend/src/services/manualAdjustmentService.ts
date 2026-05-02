@@ -194,6 +194,21 @@ function normalizeText(value: unknown): string {
     return String(value || '').trim();
 }
 
+function isKoreksiManualAdjustment(row: Pick<ManualAdjustment, "adjustment_type" | "adjustment_name">): boolean {
+    const adjustmentType = normalizeText(row.adjustment_type).toUpperCase();
+    const adjustmentName = normalizeText(row.adjustment_name).toUpperCase();
+    return adjustmentType === "POTONGAN_KOTOR" || adjustmentName.includes(KOREKSI_PREFIX);
+}
+
+function resolveKoreksiManualAdjustmentAdCodeFields(): { ad_code: string; ad_code_desc: string; ad_desc: string; task_desc: string } {
+    return {
+        ad_code: KOREKSI_DEFAULT_AD_CODE,
+        ad_code_desc: KOREKSI_DEFAULT_TASK_DESC,
+        ad_desc: KOREKSI_DEFAULT_TASK_DESC,
+        task_desc: KOREKSI_DEFAULT_TASK_DESC
+    };
+}
+
 function normalizeAdtransDuplicateDocDesc(value: unknown): string {
     return normalizeText(value).toUpperCase().replace(/\s+/g, " ");
 }
@@ -1025,6 +1040,10 @@ function resolveManualAdjustmentDefinitionAdCodeFields(row: ManualAdjustment): {
 }
 
 function resolveManualAdjustmentResponseAdCodeFields(row: ManualAdjustment): { ad_code: string; ad_code_desc: string; ad_desc: string; task_desc: string } {
+    if (isKoreksiManualAdjustment(row)) {
+        return resolveKoreksiManualAdjustmentAdCodeFields();
+    }
+
     const inferred = inferManualAdjustmentAdCodeFromRemarks(row.remarks);
     const definition = resolveManualAdjustmentDefinitionAdCodeFields(row);
     const fallbackName = normalizeStoredAdjustmentName(row.adjustment_name) || "UNKNOWN_ADJUSTMENT";

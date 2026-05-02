@@ -901,7 +901,7 @@ class TaxReportService {
             gaji_pokok_ideal: sumMonthly(emp => Number(emp.gaji_pokok_ideal) || 0),
             gaji_standar: sumMonthly(emp => (Number(emp.upah_dasar) || 0) * 30),
             gaji_pokok_aktual: sumMonthly(emp => Number(emp.gaji_pokok_aktual) || 0),
-            koreksi_hk: sumMonthly(emp => Number(emp.koreksi_hk) || 0),
+            koreksi_hk: 0,
             pendapatan_tidak_tetap_thp: sumMonthly(emp => Number(emp.pendapatan_tidak_tetap_thp) || 0),
             upah_kotor: sumMonthly(emp => Number(emp.upah_kotor) || 0),
             penghasilan_bruto: sumMonthly(emp => Number(emp.penghasilan_bruto) || 0),

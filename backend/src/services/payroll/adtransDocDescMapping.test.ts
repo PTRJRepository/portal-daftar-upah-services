@@ -21,7 +21,19 @@ describe("ADTRANS DocDesc mapping rules", () => {
 
     it("treats koreksi as dynamic potongan upah kotor", () => {
         expect(isDynamicPotonganDocDesc("KOREKSI PANEN")).toBe(true);
-        expect(normalizeAdtransPotonganField("KOREKSI PANEN")).toEqual({ key: "KOREKSI_PANEN", title: "KOREKSI PANEN" });
+        expect(normalizeAdtransPotonganField("KOREKSI PANEN")).toEqual({ key: "koreksi_panen", title: "KOREKSI PANEN" });
+    });
+
+    it("normalizes koreksi brondol variants to the manual adjustment field name", () => {
+        expect(normalizeAdtransPotonganField("KOREKSI BRONDOL")).toEqual({ key: "koreksi_brondol", title: "KOREKSI BRONDOL" });
+        expect(normalizeAdtransPotonganField("KOREKSI BERONDOL")).toEqual({ key: "koreksi_brondol", title: "KOREKSI BERONDOL" });
+    });
+
+    it("normalizes premi jaga variants to the manual adjustment field name", () => {
+        expect(mapAdtransPremiField("PREMI JAGA")).toBe("premi_jaga");
+        expect(mapAdtransPremiField("PREMI JAGA GENSET")).toBe("premi_jaga");
+        expect(mapAdtransPremiField("Premi Jaga Cuci Unit")).toBe("premi_jaga");
+        expect(mapAdtransPremiField("Premi Jaga Tanggung Jawab")).toBe("premi_jaga_tanggung_jawab");
     });
 
     it("keeps static potongan names out of generic dynamic potongan", () => {

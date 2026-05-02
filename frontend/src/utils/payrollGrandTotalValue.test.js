@@ -50,6 +50,19 @@ describe('resolveGrandTotalNumericValue', () => {
 
     expect(value).toBe(4000);
   });
+
+  it('does not total automatic koreksi HK because it is display-only', () => {
+    expect(isPayrollNumericField('koreksi_hk')).toBe(false);
+    expect(resolveGrandTotalNumericValue({
+      grandTotal: { koreksi_hk: -999999 },
+      rows: [
+        { type: 'employee', koreksi_hk: -100000 },
+        { type: 'employee', koreksi_hk: 25000 },
+      ],
+      field: 'koreksi_hk',
+      preferRows: true,
+    })).toBe(0);
+  });
 });
 
 describe('isPayrollNumericField', () => {

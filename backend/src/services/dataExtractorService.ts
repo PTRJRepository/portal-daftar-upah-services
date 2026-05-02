@@ -1,5 +1,5 @@
 import { Database } from "../db/client";
-import { ADTRANS_DYNAMIC_PREMI_PATTERNS, mapAdtransPremiField, normalizeAdtransPotonganField } from "./payroll/adtransDocDescMapping";
+import { ADTRANS_DYNAMIC_PREMI_PATTERNS, mapAdtransPremiField, normalizeAdtransPotonganField, normalizeKnownAdtransPremiField } from "./payroll/adtransDocDescMapping";
 import { Config } from "../config";
 import { payrollService } from "./payrollService";
 import { gangService } from "./gangService";
@@ -127,6 +127,12 @@ export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityI
 type ManualAdjustmentMetadataType = 'PREMI' | 'POTONGAN_KOTOR' | 'POTONGAN_BERSIH';
 const DETAIL_TOTAL_MISMATCH_PREMI_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
 type PayrollValueSourceCompareMap = Record<string, { db_ptrj: number | string | boolean | null; active: number | string | boolean | null }>;
+type ManualAdjustmentComparisonRow = {
+    adjustment_type?: unknown;
+    adjustment_name?: unknown;
+    amount?: unknown;
+    metadata_json?: unknown;
+};
 
 function resolveManualAdjustmentMetadataType(value: any): ManualAdjustmentMetadataType | null {
     const normalized = String(value || '').trim().toUpperCase();
@@ -181,6 +187,7 @@ export function attachManualAdjustmentMetadata(
 function normalizeManualCompareFieldIdentity(value: unknown): string {
     return String(value || '')
         .toLowerCase()
+        .replace(/berondol/g, 'brondol')
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '');
 }
@@ -199,6 +206,14 @@ function manualCompareFieldMatches(sourceKey: string, targetFieldName: string, a
     if (!source || !target) return false;
     if (source === target) return true;
 
+    if (adjustmentType === 'PREMI') {
+        const sourceKnownField = normalizeKnownAdtransPremiField(source);
+        const targetKnownField = normalizeKnownAdtransPremiField(target);
+        if (sourceKnownField && targetKnownField && sourceKnownField === targetKnownField) {
+            return true;
+        }
+    }
+
     const typePrefix = adjustmentType === 'PREMI'
         ? 'premi_'
         : adjustmentType === 'POTONGAN_KOTOR'
@@ -214,6 +229,45 @@ function toManualCompareAmount(value: unknown, adjustmentType: string): number {
     return adjustmentType === 'POTONGAN_KOTOR' || adjustmentType === 'POTONGAN_BERSIH'
         ? Math.abs(amount)
         : amount;
+}
+
+function resolveManualAdjustmentCompareAmount(adjustment: ManualAdjustmentComparisonRow): number {
+    const metadata = parseManualAdjustmentMetadata(adjustment.metadata_json);
+    return Number(metadata?.total_amount ?? adjustment.amount) || 0;
+}
+
+function buildManualAdjustmentSourceSyncMetas(adjustments: ManualAdjustmentComparisonRow[] = []): ManualAdjustmentFieldSyncMeta[] {
+    const aggregated = new Map<string, ManualAdjustmentFieldSyncMeta>();
+
+    for (const adjustment of adjustments || []) {
+        const adjustmentType = resolveManualAdjustmentMetadataType(adjustment.adjustment_type);
+        if (!adjustmentType) continue;
+
+        const adjustmentName = String(adjustment.adjustment_name || '');
+        const fieldName = toManualAdjustmentFieldName(adjustmentType, adjustmentName);
+        const amount = toManualCompareAmount(resolveManualAdjustmentCompareAmount(adjustment), adjustmentType);
+        const aggregateKey = `${adjustmentType}:${normalizeManualCompareFieldIdentity(fieldName)}`;
+        const current = aggregated.get(aggregateKey);
+
+        if (!current) {
+            aggregated.set(aggregateKey, {
+                fieldName,
+                adjustmentType,
+                adjustmentName,
+                previousAmount: 0,
+                finalAmount: amount,
+                hadDbValue: false
+            });
+            continue;
+        }
+
+        current.finalAmount += amount;
+        if (adjustmentName) {
+            current.adjustmentName = adjustmentName;
+        }
+    }
+
+    return Array.from(aggregated.values());
 }
 
 export function resolveManualAdjustmentDbPtrjCompareAmount(
@@ -264,6 +318,27 @@ export function attachManualAdjustmentValueSourceComparison(
             valueSourceCompare[alias] = compare;
         }
     }
+}
+
+export function attachManualAdjustmentSourceComparisons(
+    valueSyncFrame: Record<string, "red" | "green">,
+    valueSourceCompare: PayrollValueSourceCompareMap,
+    adjustments: ManualAdjustmentComparisonRow[] = [],
+    dbPremiSource: Record<string, number> = {},
+    dbPotonganSource: Record<string, number> = {}
+): ManualAdjustmentFieldSyncMeta[] {
+    const syncMetas = buildManualAdjustmentSourceSyncMetas(adjustments);
+
+    for (const syncMeta of syncMetas) {
+        attachManualAdjustmentValueSourceComparison(
+            valueSyncFrame,
+            valueSourceCompare,
+            syncMeta,
+            resolveManualAdjustmentDbPtrjCompareAmount(syncMeta, dbPremiSource, dbPotonganSource)
+        );
+    }
+
+    return syncMetas;
 }
 
 export function registerManualAdjustmentMetadataDynamicHeaders(
@@ -1462,6 +1537,15 @@ export class DataExtractorService {
                     valueSourceCompare,
                     syncMeta,
                     resolveManualAdjustmentDbPtrjCompareAmount(syncMeta, dbEmpPremiSource, dbEmpPotonganSource)
+                );
+            }
+            if (!allowManualAdjustments && empAdjustments.length > 0) {
+                attachManualAdjustmentSourceComparisons(
+                    valueSyncFrame,
+                    valueSourceCompare,
+                    empAdjustments,
+                    dbEmpPremiSource,
+                    dbEmpPotonganSource
                 );
             }
 
@@ -2874,7 +2958,7 @@ export class DataExtractorService {
                 const { key: k, title } = this.normalizePotonganName(r.doc_desc || "", r.task_desc, r.task_code);
                 key = k;
                 if (!titleMap[key]) {
-                    if (key.startsWith('KOREKSI')) {
+                    if (String(key).toUpperCase().startsWith('KOREKSI')) {
                         titleMap[key] = title;
                     } else {
                         const taskCode = r.task_code?.trim();
@@ -4414,7 +4498,7 @@ export class DataExtractorService {
                             // For KOREKSI: use key as-is (e.g., "KOREKSI_1", "KOREKSI_2")
                             // For others: use prefixed name (e.g., "potongan_X")
                             let fieldName;
-                            if (key.startsWith("KOREKSI")) {
+                            if (String(key).toUpperCase().startsWith("KOREKSI")) {
                                 fieldName = key; // Keep KOREKSI fields as-is for frontend matching
                             } else if (key.startsWith('potongan_')) {
                                 fieldName = key;
@@ -4505,6 +4589,14 @@ export class DataExtractorService {
                         resolveManualAdjustmentDbPtrjCompareAmount(syncMeta, dbEmpPremiSource, dbEmpPotonganSource)
                     );
                 }
+            } else if (empAdjustments.length > 0) {
+                attachManualAdjustmentSourceComparisons(
+                    valueSyncFrame,
+                    emp.value_source_compare ||= {},
+                    empAdjustments,
+                    dbEmpPremiSource,
+                    dbEmpPotonganSource
+                );
             }
             attachManualAdjustmentMetadata(emp, empAdjustments);
 

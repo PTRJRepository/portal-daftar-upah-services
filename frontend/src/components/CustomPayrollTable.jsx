@@ -21,7 +21,7 @@ import { appendSnapshotVersionToSearchParams, buildPayrollSnapshotCacheKey, norm
 import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 import { resolveJabatanRate } from '../utils/payrollRowAccessors';
 import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
-import { isPayrollNumericField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
+import { isPayrollNumericField, isPayrollTotalDisplayOnlyField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
 import { buildPremiumDetailEdit, validatePremiumDetailMetadata } from '../utils/payrollPremiumDetailEdits';
 import { normalizeManualDetailInputType, resolveManualDetailInputType } from '../utils/manualDetailInputType';
@@ -4910,8 +4910,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
                                     // For gang total rows: if numeric field is undefined, treat as 0
                                     if (isGangTotal && displayVal === undefined) {
-                                        const isNumericColumn = /^(jumlah_|total_|pot_|premi_|lembur_|gaji_|upah_|beras_|jabatan_|masa_|koreksi_|penghasilan_|pph21_|tarif_|astek_|bpjs_|thr_|bonus_|exgratia_|pendapatan_|hari_kerja|kehadiran)/.test(col.field);
-                                        if (isNumericColumn) {
+                                        if (isPayrollNumericField(col.field)) {
                                             displayVal = 0;
                                         }
                                     }
@@ -4979,6 +4978,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                                 if (col.field === 'nama') val = 'GRAND TOTAL';
                                 else if (col.field === 'no') val = '';
                                 else if (col.field === 'emp_code') val = `${employeeRows.length} KARYAWAN`;
+                                else if (isPayrollTotalDisplayOnlyField(col.field)) val = '-';
                                 else if (isPayrollNumericField(col.field)) {
                                     const numericValue = resolveGrandTotalNumericValue({
                                         grandTotal,

@@ -23,7 +23,7 @@ const originalTaskCodeOptionMethods = {
     searchAutomationAdjustmentOptions: taskCodeOptionService.searchAutomationAdjustmentOptions
 };
 
-const getAdjustments = mock(async () => [
+const defaultGetAdjustmentsRows = () => [
     {
         id: 1,
         period_month: 4,
@@ -39,7 +39,10 @@ const getAdjustments = mock(async () => [
         remarks: "PREMI JAGA | (AL0018P1A) (AL) TUNJANGAN JAGA GENSET - (AL) TUNJANGAN JAGA GENSET | 350000 | sync:MANUAL | match:MANUAL",
         metadata_json: "{\"input_type\":\"blok\",\"items\":[{\"subblok\":\"P09/03\",\"gang_code\":\"G1H\",\"jumlah\":350000}],\"total_amount\":350000}"
     }
-]);
+];
+
+let getAdjustmentsRows: any[] = defaultGetAdjustmentsRows();
+const getAdjustments = mock(async () => getAdjustmentsRows);
 
 const listAdjustmentNameOptions = mock(async () => [
     {
@@ -169,6 +172,7 @@ describe("manual adjustment by-api-key route", () => {
     });
 
     beforeEach(() => {
+        getAdjustmentsRows = defaultGetAdjustmentsRows();
         getAdjustments.mockClear();
         listAdjustmentNameOptions.mockClear();
         searchAutomationAdjustmentOptions.mockClear();
@@ -215,6 +219,66 @@ describe("manual adjustment by-api-key route", () => {
             undefined,
             true
         );
+    });
+
+    it("returns fixed DE potongan premi fields for every koreksi manual adjustment", async () => {
+        getAdjustmentsRows = [
+            {
+                id: 2,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0002",
+                nik: "1902050504860002",
+                emp_name: "ANI TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "POTONGAN_KOTOR",
+                adjustment_name: "KOREKSI PANEN",
+                amount: -25000,
+                ad_code: "DE9999",
+                task_code: "DE9999AB1",
+                base_task_code: "DE9999",
+                task_desc: "(DE) KOREKSI PANEN",
+                remarks: "KOREKSI PANEN | DE9999 - (DE) KOREKSI PANEN | -25000 | sync:MANUAL | match:MANUAL"
+            },
+            {
+                id: 3,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0003",
+                nik: "1902050504860003",
+                emp_name: "BAMBANG TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "POTONGAN_KOTOR",
+                adjustment_name: "KOREKSI X",
+                amount: -10000,
+                remarks: "KOREKSI X | (DE) KOREKSI X - (DE) KOREKSI X | -10000 | sync:MANUAL | match:MANUAL"
+            }
+        ];
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=AB1&adjustment_type=POTONGAN_KOTOR",
+            {
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key"
+                }
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.view).toBe("flat");
+        expect(body.data).toHaveLength(2);
+        for (const row of body.data) {
+            expect(row).toMatchObject({
+                ad_code: "DE0004",
+                ad_code_desc: "(DE) POTONGAN PREMI",
+                ad_desc: "(DE) POTONGAN PREMI",
+                task_desc: "(DE) POTONGAN PREMI"
+            });
+        }
     });
 
     it("returns enriched flat rows for API key reads", async () => {

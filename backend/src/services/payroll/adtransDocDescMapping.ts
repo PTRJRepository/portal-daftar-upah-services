@@ -4,8 +4,42 @@ function normalizeUpper(value: string): string {
     return String(value || "").trim().toUpperCase();
 }
 
+function normalizeFieldWords(value: string): string {
+    return String(value || "").replace(/\bBERONDOL\b/gi, "BRONDOL");
+}
+
 function normalizeKey(value: string): string {
-    return normalizeUpper(value).replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+    return normalizeFieldWords(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+}
+
+function stripPremiumFieldPrefix(value: string): string {
+    return value
+        .replace(/^tunjangan_premi_/, "")
+        .replace(/^tunjangan_/, "")
+        .replace(/^premi_/, "");
+}
+
+export function normalizeKnownAdtransPremiField(value: string): string | null {
+    const suffix = stripPremiumFieldPrefix(normalizeKey(value));
+    if (!suffix) return null;
+
+    if (suffix === "jaga_tanggung_jawab") return "premi_jaga_tanggung_jawab";
+
+    if ([
+        "jaga",
+        "jaga_cuci_unit",
+        "jaga_ganset",
+        "jaga_genset",
+        "jaga_genst"
+    ].includes(suffix)) {
+        return "premi_jaga";
+    }
+
+    return null;
 }
 
 export function normalizeAdtransFilter(filter: string): string {
@@ -42,13 +76,10 @@ export function isDynamicPotonganDocDesc(docDesc: string): boolean {
 }
 
 export function normalizeAdtransPremiField(docDesc: string): string {
-    let name = normalizeUpper(docDesc);
-    name = name
-        .replace(/^TUNJANGAN\s*PREMI\s*/i, "")
-        .replace(/^TUNJANGAN\s*/i, "")
-        .replace(/^PREMI\s*/i, "");
+    const knownField = normalizeKnownAdtransPremiField(docDesc);
+    if (knownField) return knownField;
 
-    const normalized = name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    const normalized = stripPremiumFieldPrefix(normalizeKey(docDesc));
     return normalized ? `premi_${normalized}` : "";
 }
 

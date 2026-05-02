@@ -419,6 +419,7 @@ export interface TaxMatrixTotals {
     gaji_pokok_bulanan: number;
     gaji_pokok_ideal: number;
     gaji_pokok_dibayarkan: number;
+    // Display-only automatic HK correction. Kept as 0 in totals.
     koreksi_hk: number;
     astek_084: number;
     bpjs_kesehatan_majikan_4_pct: number;
@@ -446,7 +447,6 @@ const TAX_MATRIX_NUMERIC_FIELDS: Array<keyof Omit<TaxMatrixTotals, 'employee_cou
     'gaji_pokok_bulanan',
     'gaji_pokok_ideal',
     'gaji_pokok_dibayarkan',
-    'koreksi_hk',
     'astek_084',
     'bpjs_kesehatan_majikan_4_pct',
     'beras_jumlah',

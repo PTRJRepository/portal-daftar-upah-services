@@ -189,7 +189,7 @@ export class PayrollDataService {
                     'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
                     'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
                     'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
-                    'upah_bersih', 'koreksi_hk', 'pph21_ter', 'tarif_pajak_ter'
+                    'upah_bersih', 'pph21_ter', 'tarif_pajak_ter'
                 ];
 
                 for (const field of numericFields) totals[field] = 0;

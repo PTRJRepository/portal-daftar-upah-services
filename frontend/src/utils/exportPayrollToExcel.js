@@ -4,7 +4,7 @@
  */
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { isPayrollNumericField, resolveGrandTotalNumericValue } from './payrollGrandTotalValue';
+import { isPayrollNumericField, isPayrollTotalDisplayOnlyField, resolveGrandTotalNumericValue } from './payrollGrandTotalValue';
 
 // Color palette matching ag-grid-professional.css and CustomPayrollTable.css
 const COLORS = {
@@ -436,6 +436,9 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
             if (col.field === 'emp_code') return `${employeeCount} KARYAWAN`;
 
             let val = grandTotal[col.field];
+            if (isPayrollTotalDisplayOnlyField(col.field)) {
+                return '-';
+            }
             if (isPayrollNumericField(col.field)) {
                 const numericValue = resolveGrandTotalNumericValue({
                     grandTotal,

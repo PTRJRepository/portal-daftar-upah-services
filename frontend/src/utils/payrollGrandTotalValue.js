@@ -1,7 +1,13 @@
 const NUMERIC_FIELD_PATTERN = /^(jumlah_|total_|pot_|premi_|lembur_|gaji_|upah_|beras_|jabatan_|masa_|koreksi_|penghasilan_|pph21_|tarif_|astek_|bpjs_|thr_|bonus_|exgratia_|pendapatan_|hari_kerja|kehadiran|taxable_)/;
 const DEDUCTION_SUFFIX = '_pengurang';
+const TOTAL_DISPLAY_ONLY_FIELDS = new Set(['koreksi_hk']);
+
+export function isPayrollTotalDisplayOnlyField(field = '') {
+  return TOTAL_DISPLAY_ONLY_FIELDS.has(field);
+}
 
 export function isPayrollNumericField(field = '') {
+  if (isPayrollTotalDisplayOnlyField(field)) return false;
   return NUMERIC_FIELD_PATTERN.test(field);
 }
 
@@ -36,6 +42,8 @@ const isEmployeeRow = (row) => {
 };
 
 export function resolveGrandTotalNumericValue({ grandTotal = {}, rows = [], field = '', preferRows = false }) {
+  if (isPayrollTotalDisplayOnlyField(field)) return 0;
+
   const sourceField = resolveGrandTotalSourceField(field);
   const employeeRows = Array.isArray(rows) ? rows.filter(isEmployeeRow) : [];
 

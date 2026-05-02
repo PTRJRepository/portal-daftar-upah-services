@@ -4,6 +4,8 @@
  * Moves calculation logic from Backend to Frontend ("Dumb Backend, Smart Frontend").
  */
 
+const DISPLAY_ONLY_TOTAL_FIELDS = new Set(['koreksi_hk']);
+
 export const PayrollAggregator = {
   /**
    * Calculate derived fields for a single employee row.
@@ -266,7 +268,7 @@ export const PayrollAggregator = {
       // Identitas & Absensi
       'jumlah_hk', 'hari_kerja', 'kehadiran', 'total_jam_kerja',
       // Gaji Pokok
-      'gaji_pokok_ideal', 'gaji_pokok_aktual', 'koreksi_hk', 'upah_dasar',
+      'gaji_pokok_ideal', 'gaji_pokok_aktual', 'upah_dasar',
       // Tunjangan
       'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah',
       'total_tunjangan',
@@ -354,6 +356,10 @@ export const PayrollAggregator = {
         const val = flattenedRow[key];
 
         // Skip non-numeric fields
+        if (DISPLAY_ONLY_TOTAL_FIELDS.has(key)) {
+          return;
+        }
+
         if (['nik', 'no', 'id', 'year', 'month', 'emp_code', 'nik_ktp', 'nama', 'emp_name',
              'jenis_kelamin', 'gender', 'status_ptkp', 'kategori_ter', 'gang_code', 'loc_code',
              'task_code', 'task_desc', 'created_at', 'updated_at'].includes(key.toLowerCase())) {

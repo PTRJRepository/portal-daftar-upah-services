@@ -9,6 +9,7 @@ import { luasAreaService } from "../services/luasAreaService";
 import { thumbprintService } from "../services/thumbprintService";
 import { parseBooleanQueryParam } from "../utils/queryParsers";
 import { resolveUserFromHeaders } from "../utils/authBypass";
+import { chooseSummaryDefaultPeriod } from "../utils/summaryDefaultPeriod";
 
 const authService = AuthService.getInstance();
 type SummaryScope = "all" | "rebinmas" | "ijl";
@@ -224,7 +225,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
     // --- Periods ---
     .get("/periods", async ({ query }) => {
         const periods = await summaryService.getAvailablePeriods(query.division);
-        const defaultPeriod = await summaryService.getLatestBaseDataPeriod();
+        const currentPeriod = await summaryService.getLatestBaseDataPeriod();
+        const defaultPeriod = chooseSummaryDefaultPeriod(periods, currentPeriod);
         return { success: true, count: periods.length, periods, default_period: defaultPeriod };
     }, {
         query: t.Object({

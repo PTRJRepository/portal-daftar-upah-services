@@ -69,7 +69,7 @@ describe("calculateTaxMatrixTotals", () => {
 
         expect(totals.employee_count).toBe(2);
         expect(totals.gaji_pokok_bulanan).toBe(3000);
-        expect(totals.koreksi_hk).toBe(-300);
+        expect(totals.koreksi_hk).toBe(0);
         expect(totals.total_premi).toBe(240);
         expect(totals.taxable_pendapatan_lainnya).toBe(1500);
         expect(totals.penghasilan_bruto).toBe(4800);

@@ -47,14 +47,11 @@ export function buildEmployeeDetailPath({
     return buildPath(`/employee/detail?${params.toString()}`);
 }
 
-export function openEmployeeDetailPage(options, openFn = window.open, locationRef = window.location) {
+export function openEmployeeDetailPage(options, openFn = window.open) {
     const detailPath = buildEmployeeDetailPath(options);
     if (!detailPath) return null;
 
-    const opened = openFn(detailPath, '_blank', 'noopener,noreferrer');
-    if (!opened && locationRef) {
-        locationRef.href = detailPath;
-    }
+    openFn(detailPath, '_blank', 'noopener,noreferrer');
 
     return detailPath;
 }
