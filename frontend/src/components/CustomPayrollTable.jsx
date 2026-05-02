@@ -30,6 +30,7 @@ import { getPayrollEffectiveScale, getPayrollResponsiveScaleForWidth } from '../
 import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable, normalizePayrollHeaderGroup } from '../utils/payrollHeaderGroups';
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
+import { compareEmpCodeValues, sortEmployeesByEmpCode } from '../utils/employeeSort';
 import {
     buildPayrollViewportChapters,
     detectActivePayrollChapter,
@@ -352,6 +353,28 @@ const KOREKSI_DEFAULT_AD_CODE = 'DE0004';
 const KOREKSI_DEFAULT_TASK_DESC = '(DE) POTONGAN PREMI';
 const KOREKSI_DEFAULT_INPUT_TYPE = 'blok';
 
+const comparePayrollEmployeeRows = (a, b, sortBy) => {
+    if (sortBy === 'emp_code') {
+        return compareEmpCodeValues(a?.emp_code, b?.emp_code);
+    }
+
+    if (sortBy === 'name') {
+        return String(a?.emp_name || a?.nama || '').localeCompare(String(b?.emp_name || b?.nama || ''), 'en', {
+            numeric: true,
+            sensitivity: 'base'
+        });
+    }
+
+    if (sortBy === 'nik') {
+        return String(a?.nik || '').localeCompare(String(b?.nik || ''), 'en', {
+            numeric: true,
+            sensitivity: 'base'
+        });
+    }
+
+    return 0;
+};
+
 const CustomPayrollTable = memo(function CustomPayrollTable({
     token, month, year, division, gangCode, onViewEmployeeDetail, onOpenHrProfile, fontSize = 100,
     onExportReady = null, refreshTrigger = 0,
@@ -673,7 +696,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
 
             const gCode = gangData.gang_code;
-            const employees = Array.isArray(gangData.employees) ? gangData.employees : [];
+            const employees = sortEmployeesByEmpCode(gangData.employees);
 
             // Add gang header
             processedRows.push({ type: 'gang_header', gang_code: gCode, id: `HEADER_${gCode}` });
@@ -981,7 +1004,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         
         const sortedRows = [];
         let currentGangEmployees = [];
-        let inEmployeeSection = false;
+        const direction = sortOrder === 'asc' ? 1 : -1;
+        const flushEmployeeRows = () => {
+            if (currentGangEmployees.length === 0) return;
+            currentGangEmployees.sort((a, b) => direction * comparePayrollEmployeeRows(a, b, sortBy));
+            sortedRows.push(...currentGangEmployees);
+            currentGangEmployees = [];
+        };
 
         for (let i = 0; i < resultRows.length; i++) {
             const row = resultRows[i];
@@ -989,63 +1018,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (row.type === 'employee') {
                 // Kumpulkan semua employees
                 currentGangEmployees.push(row);
-                inEmployeeSection = true;
             } else {
                 // Bukan employee row (header/total/separator)
                 // Jika sebelumnya ada employee section, sort dan masukkan
-                if (currentGangEmployees.length > 0) {
-                    currentGangEmployees.sort((a, b) => {
-                        let valA, valB;
-
-                        if (sortBy === 'name') {
-                            valA = (a.emp_name || '').toLowerCase();
-                            valB = (b.emp_name || '').toLowerCase();
-                        } else if (sortBy === 'emp_code') {
-                            valA = (a.emp_code || '').toLowerCase();
-                            valB = (b.emp_code || '').toLowerCase();
-                        } else if (sortBy === 'nik') {
-                            valA = (a.nik || '').toLowerCase();
-                            valB = (b.nik || '').toLowerCase();
-                        } else {
-                            return 0;
-                        }
-
-                        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                        return 0;
-                    });
-                    sortedRows.push(...currentGangEmployees);
-                    currentGangEmployees = [];
-                }
+                flushEmployeeRows();
                 sortedRows.push(row);
-                inEmployeeSection = false;
             }
         }
 
         // Jika ada employee section tersisa di akhir
-        if (currentGangEmployees.length > 0) {
-            currentGangEmployees.sort((a, b) => {
-                let valA, valB;
-
-                if (sortBy === 'name') {
-                    valA = (a.emp_name || '').toLowerCase();
-                    valB = (b.emp_name || '').toLowerCase();
-                } else if (sortBy === 'emp_code') {
-                    valA = (a.emp_code || '').toLowerCase();
-                    valB = (b.emp_code || '').toLowerCase();
-                } else if (sortBy === 'nik') {
-                    valA = (a.nik || '').toLowerCase();
-                    valB = (b.nik || '').toLowerCase();
-                } else {
-                    return 0;
-                }
-
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-            sortedRows.push(...currentGangEmployees);
-        }
+        flushEmployeeRows();
 
         return sortedRows;
     }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, stream.isComplete, stream.progress, sortBy, sortOrder]);

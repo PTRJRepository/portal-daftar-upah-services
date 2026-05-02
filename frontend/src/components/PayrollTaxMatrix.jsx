@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getLockedRawTree } from '../services/lockedDivisionService'
+import { compareEmpCodeValues } from '../utils/employeeSort'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
@@ -164,12 +165,17 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
         }
         // Sort
         result = [...result].sort((a, b) => {
+            const direction = sortOrder === 'asc' ? 1 : -1
+            if (sortBy === 'emp_code') {
+                return direction * compareEmpCodeValues(a.emp_code, b.emp_code)
+            }
+
             let aVal = a[sortBy] || ''
             let bVal = b[sortBy] || ''
             if (typeof aVal === 'string') aVal = aVal.toLowerCase()
             if (typeof bVal === 'string') bVal = bVal.toLowerCase()
-            if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1
-            if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1
+            if (aVal < bVal) return -direction
+            if (aVal > bVal) return direction
             return 0
         })
         return result

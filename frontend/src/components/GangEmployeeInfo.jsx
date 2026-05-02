@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getGangAttendanceMatrix } from '../services/employeeDetailService'
+import { compareEmpCodeValues } from '../utils/employeeSort'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
@@ -108,19 +109,22 @@ export default function GangEmployeeInfo({ token, gangCodes, month, year, divisi
     const sortedEmployees = useMemo(() => {
         const sorted = [...filteredEmployees]
         sorted.sort((a, b) => {
+            const direction = sortOrder === 'asc' ? 1 : -1
+
+            if (sortBy === 'emp_code') {
+                return direction * compareEmpCodeValues(a.emp_code, b.emp_code)
+            }
+
             let va, vb
             if (sortBy === 'name') {
                 va = (a.emp_name || '').toLowerCase()
                 vb = (b.emp_name || '').toLowerCase()
-            } else if (sortBy === 'emp_code') {
-                va = (a.emp_code || '').toLowerCase()
-                vb = (b.emp_code || '').toLowerCase()
             } else if (sortBy === 'hk') {
                 va = (a.summary?.total_hk || 0)
                 vb = (b.summary?.total_hk || 0)
             }
-            if (va < vb) return sortOrder === 'asc' ? -1 : 1
-            if (va > vb) return sortOrder === 'asc' ? 1 : -1
+            if (va < vb) return -direction
+            if (va > vb) return direction
             return 0
         })
         return sorted

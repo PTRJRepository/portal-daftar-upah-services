@@ -183,7 +183,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             (Database as any).getInstance = originalGetInstance;
         });
 
-        it("always replaces scoped AUTO_BUFFER even when replace_existing is false", async () => {
+        it("preserves user-edited AUTO_BUFFER rows when reseeding the same scope", async () => {
             const queryOneCalls: SqlCall[] = [];
             const queryCalls: SqlCall[] = [];
 
@@ -197,6 +197,14 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                 },
                 query: async (sql: string, params?: any[]) => {
                     queryCalls.push({ sql, params: params || [] });
+                    if (sql.includes("SELECT emp_code, nik, adjustment_name")) {
+                        return [{
+                            emp_code: "A0001",
+                            nik: null,
+                            adjustment_name: "SPSI",
+                            remarks: "SPSI | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL"
+                        }];
+                    }
                     return [];
                 }
             };
@@ -232,8 +240,10 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             expect(result.replace_existing).toBe(true);
             expect(result.deleted_existing).toBe(2);
-            expect(result.inserted).toBe(3);
+            expect(result.inserted).toBe(2);
             expect(result.updated).toBe(0);
+            expect(result.preserved_manual).toBe(1);
+            expect(result.skipped_manual_conflicts).toBe(1);
             expect(extractorCalls[0]?.[12]).toBe("non_db_ptrj");
 
             expect(queryOneCalls.length).toBe(1);
@@ -242,9 +252,12 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             expect(deleteCall).toBeDefined();
             expect(deleteCall?.params).toEqual([4, 2026, "AB1"]);
             expect(deleteCall?.sql).toContain("adjustment_type = 'AUTO_BUFFER'");
+            expect(deleteCall?.sql).toContain("SYNC:MANUAL");
+            expect(deleteCall?.sql).toContain("MATCH:MANUAL");
 
             const insertCalls = queryCalls.filter((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
-            expect(insertCalls.length).toBe(3);
+            expect(insertCalls.length).toBe(2);
+            expect(insertCalls.some((call) => call.params?.[8] === "SPSI")).toBe(false);
         });
 
         it("uses profile override keyed by NIK before calculating SPSI amount", async () => {
@@ -525,6 +538,54 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
             expect(updateCall).toBeDefined();
             expect(updateCall?.params[0]).toBe("MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH");
+        });
+
+        it("does not validate or rewrite user-edited AUTO_BUFFER remarks", async () => {
+            const extendedQueryCalls: SqlCall[] = [];
+
+            const mockExtendedDb = {
+                query: async (sql: string, params?: any[]) => {
+                    extendedQueryCalls.push({ sql, params: params || [] });
+                    if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
+                        return [];
+                    }
+                    return [];
+                }
+            };
+
+            const mockMainDb = {
+                query: async (sql: string) => {
+                    if (sql.includes("PR_ADTRANS")) {
+                        return [{
+                            emp_code: "F0520",
+                            nik: "1902050504860001",
+                            adjustment_name: "MASA KERJA",
+                            total: 60000
+                        }];
+                    }
+                    return [];
+                }
+            };
+
+            (Database as any).getExtendedInstance = () => mockExtendedDb;
+            (Database as any).getInstance = () => mockMainDb;
+
+            const service = AutoBufferManualAdjustmentSeederService.getInstance();
+            const result = await service.validatePeriod({
+                period_month: 4,
+                period_year: 2026,
+                division_code: "P1A",
+                created_by: "tester"
+            });
+
+            expect(result).toEqual({ processed: 0, updated: 0, matches: 0, misses: 0 });
+
+            const fetchCall = extendedQueryCalls.find((call) => call.sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks"));
+            expect(fetchCall?.sql).toContain("SYNC:MANUAL");
+            expect(fetchCall?.sql).toContain("MATCH:MANUAL");
+
+            const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(updateCall).toBeUndefined();
         });
 
         it("keeps MISS when PTRJ-keyed auto buffer amount differs from db_ptrj PR_ADTRANS", async () => {

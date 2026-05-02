@@ -32,6 +32,13 @@ function slimEmployee(emp: any): any {
     return rest;
 }
 
+function sortedSlimStreamEmployees(employees: readonly any[]): any[] {
+    return sortByEmpCode(employees).map((emp: any) => {
+        const { _phase, _enriched, _loading, ...rest } = emp;
+        return slimEmployee(rest);
+    });
+}
+
 // Helper to get user from header
 async function getUserFromHeader(headers: Record<string, string | undefined>): Promise<User | null> {
     return resolveUserFromHeaders(headers, authService, { allowSystemToken: true });
@@ -2758,16 +2765,13 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             // Send all gangs with names only
                             for (const [gangCodeKey, employees] of gangs) {
                                 const idx = gangOrder.indexOf(gangCodeKey);
-                                const slimEmployees = employees.map((emp: any) => {
-                                    const { _phase, _enriched, _loading, ...rest } = emp;
-                                    return slimEmployee(rest);
-                                });
+                                const slimEmployees = sortedSlimStreamEmployees(employees);
 
                                 controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
                                     gang_code: gangCodeKey,
                                     employees: slimEmployees,
                                     gang_index: idx >= 0 ? idx : gangIndex++,
-                                    employees_count: employees.length,
+                                    employees_count: slimEmployees.length,
                                     phase: 'identity',
                                     is_complete: false
                                 })}\n\n`));
@@ -2793,10 +2797,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             // Send updated gangs
                             for (const [gangCodeKey, employees] of gangs) {
                                 const idx = gangOrder.indexOf(gangCodeKey);
-                                const slimEmployees = employees.map((emp: any) => {
-                                    const { _phase, _enriched, _loading, ...rest } = emp;
-                                    return slimEmployee(rest);
-                                });
+                                const slimEmployees = sortedSlimStreamEmployees(employees);
 
                                 controller.enqueue(encoder.encode(`event: gang_update\ndata: ${JSON.stringify({
                                     gang_code: gangCodeKey,
@@ -2830,17 +2831,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                             // Send final filtered & sorted gangs with gang_totals
                             for (const [gangCodeKey, employees] of gangs) {
                                 const idx = gangOrder.indexOf(gangCodeKey);
-                                const slimEmployees = employees.map((emp: any) => {
-                                    const { _phase, _enriched, _loading, ...rest } = emp;
-                                    return slimEmployee(rest);
-                                });
+                                const slimEmployees = sortedSlimStreamEmployees(employees);
                                 const gangTotals = calculatePayrollTotals(employees, `TOTAL ${gangCodeKey}`);
 
                                 controller.enqueue(encoder.encode(`event: gang\ndata: ${JSON.stringify({
                                     gang_code: gangCodeKey,
                                     employees: slimEmployees,
                                     gang_index: idx >= 0 ? idx : gangIndex++,
-                                    employees_count: employees.length,
+                                    employees_count: slimEmployees.length,
                                     gang_totals: gangTotals,
                                     phase: 'complete',
                                     is_complete: true

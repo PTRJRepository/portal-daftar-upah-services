@@ -11,6 +11,15 @@ import { payrollProfileSeedService } from "./payrollProfileSeedService";
 import { deriveInitialSpsiMember } from "../utils/payrollProfileRules";
 
 const AUTO_BUFFER_ADJUSTMENT_TYPE = "AUTO_BUFFER";
+const AUTO_BUFFER_MANUAL_REMARK_CONDITION = `
+              (
+                UPPER(ISNULL(remarks, '')) LIKE '%SYNC:MANUAL%'
+                OR UPPER(ISNULL(remarks, '')) LIKE '%MATCH:MANUAL%'
+              )
+`;
+const AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION = `
+              NOT ${AUTO_BUFFER_MANUAL_REMARK_CONDITION}
+`;
 
 const AUTO_BUFFER_ADJUSTMENT_NAME = {
     jabatan: "TUNJANGAN JABATAN",
@@ -29,6 +38,32 @@ function normalizeString(value: unknown): string {
 
 function isNumericNik(value: unknown): boolean {
     return /^\d{10,}$/.test(normalizeString(value));
+}
+
+function buildAutoBufferConflictKey(identifier: unknown, adjustmentName: unknown): string {
+    const normalizedIdentifier = normalizeString(identifier).toUpperCase();
+    const normalizedName = normalizeAutoBufferAdjustmentName(adjustmentName);
+    return normalizedIdentifier && normalizedName ? `${normalizedIdentifier}_${normalizedName}` : "";
+}
+
+function addAutoBufferConflictKeys(
+    target: Set<string>,
+    row: Pick<AutoBufferManualAdjustmentSeedEntry, "emp_code" | "nik" | "adjustment_name">
+): void {
+    for (const identifier of [row.emp_code, row.nik]) {
+        const key = buildAutoBufferConflictKey(identifier, row.adjustment_name);
+        if (key) target.add(key);
+    }
+}
+
+function hasAutoBufferConflict(
+    target: Set<string>,
+    row: Pick<AutoBufferManualAdjustmentSeedEntry, "emp_code" | "nik" | "adjustment_name">
+): boolean {
+    return [row.emp_code, row.nik]
+        .map((identifier) => buildAutoBufferConflictKey(identifier, row.adjustment_name))
+        .filter(Boolean)
+        .some((key) => target.has(key));
 }
 
 function serializeAutoBufferMetadata(input: {
@@ -66,7 +101,7 @@ export interface AutoBufferManualAdjustmentSeedInput {
     gang_code?: string;
     use_history_db?: boolean;
     snapshot_version?: number | null;
-    // Backward-compatible request field; seeder now always replaces scoped AUTO_BUFFER rows.
+    // Backward-compatible request field; seeder replaces only seed-owned AUTO_BUFFER rows.
     replace_existing?: boolean;
     value_priority_mode?: string | null;
     created_by?: string;
@@ -312,18 +347,34 @@ export class AutoBufferManualAdjustmentSeederService {
             divisionCode
         );
 
+        const scopeParams = gangCode !== "ALL"
+            ? [periodMonth, periodYear, divisionCode, gangCode]
+            : [periodMonth, periodYear, divisionCode];
+        const gangFilterSql = gangCode !== "ALL" ? "AND gang_code = ?" : "";
+        const preservedManualRows = await db.query<Pick<AutoBufferManualAdjustmentSeedEntry, "emp_code" | "nik" | "adjustment_name">>(`
+            SELECT emp_code, nik, adjustment_name
+            FROM dbo.payroll_manual_adjustments
+            WHERE period_month = ? AND period_year = ?
+              AND division_code = ?
+              AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
+              ${gangFilterSql}
+              AND ${AUTO_BUFFER_MANUAL_REMARK_CONDITION}
+        `, scopeParams);
+        const protectedManualKeys = new Set<string>();
+        for (const row of preservedManualRows) {
+            addAutoBufferConflictKeys(protectedManualKeys, row);
+        }
+
         const countQuery = `
             SELECT COUNT(1) as count
             FROM dbo.payroll_manual_adjustments
             WHERE period_month = ? AND period_year = ?
               AND division_code = ?
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
-              ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+              ${gangFilterSql}
+              AND ${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION}
         `;
-        const countParams = gangCode !== "ALL"
-            ? [periodMonth, periodYear, divisionCode, gangCode]
-            : [periodMonth, periodYear, divisionCode];
-        const countRow = await db.queryOne<{ count: number }>(countQuery, countParams);
+        const countRow = await db.queryOne<{ count: number }>(countQuery, scopeParams);
         const deletedExisting = toNumber(countRow?.count);
 
         const deleteQuery = `
@@ -331,17 +382,21 @@ export class AutoBufferManualAdjustmentSeederService {
             WHERE period_month = ? AND period_year = ?
               AND division_code = ?
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
-              ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+              ${gangFilterSql}
+              AND ${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION}
         `;
-        const deleteParams = gangCode !== "ALL"
-            ? [periodMonth, periodYear, divisionCode, gangCode]
-            : [periodMonth, periodYear, divisionCode];
-        await db.query(deleteQuery, deleteParams);
+        await db.query(deleteQuery, scopeParams);
 
         let inserted = 0;
+        let skippedManualConflicts = 0;
         const updated = 0;
 
         for (const entry of entries) {
+            if (hasAutoBufferConflict(protectedManualKeys, entry)) {
+                skippedManualConflicts += 1;
+                continue;
+            }
+
             await db.query(`
                 INSERT INTO dbo.payroll_manual_adjustments (
                     period_month, period_year, emp_code, nik, emp_name, gang_code, division_code,
@@ -383,6 +438,8 @@ export class AutoBufferManualAdjustmentSeederService {
             inserted,
             updated,
             deleted_existing: deletedExisting,
+            preserved_manual: preservedManualRows.length,
+            skipped_manual_conflicts: skippedManualConflicts,
             replace_existing: true,
             value_priority_mode_source: valuePriorityMode,
             validation
@@ -410,6 +467,7 @@ export class AutoBufferManualAdjustmentSeederService {
               AND division_code = ?
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
               ${gangCode !== "ALL" ? "AND gang_code = ?" : ""}
+              AND ${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION}
         `;
         const fetchParams = gangCode !== "ALL"
             ? [periodMonth, periodYear, divisionCode, gangCode]
