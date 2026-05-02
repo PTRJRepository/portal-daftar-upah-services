@@ -155,13 +155,14 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('payroll-value-compare__meta is-mismatch');
     });
 
-    it('does not render static brondol and SPSI aliases as duplicate dynamic columns', () => {
+    it('renders manual bantu brondol separately while hiding DB_PTRJ brondol aliases', () => {
         mocked.streamMeta = {
-            dynamic_premi_headers: ['premi_brondol', 'premi_brondol_total', 'premi_insentif'],
+            dynamic_premi_headers: ['premi_brondol', 'premi_brondol_total', 'premi_bantu_brondol', 'premi_insentif'],
             dynamic_potongan_headers: ['potongan_SPSI', 'SPSI', 'potongan_lainnya_kasbon'],
             premi_title_map: {
                 premi_brondol: 'PREMI BRONDOL',
                 premi_brondol_total: 'PREMI BRONDOL TOTAL',
+                premi_bantu_brondol: 'PREMI BANTU BRONDOL',
                 premi_insentif: 'PREMI INSENTIF'
             },
             potongan_title_map: {
@@ -177,6 +178,7 @@ describe('CustomPayrollTable render', () => {
             emp_name: 'Test Employee',
             premi_brondol: 125000,
             premi_brondol_total: 125000,
+            premi_bantu_brondol: 15000,
             premi_insentif: 50000,
             pot_spsi: 4000,
             potongan_SPSI: 4000,
@@ -200,6 +202,8 @@ describe('CustomPayrollTable render', () => {
         expect((html.match(/>SPSI \(-\)</g) || []).length).toBe(1);
         expect(html).not.toContain('BRONDOL TOTAL');
         expect(html).not.toContain('data-field="premi_brondol_total"');
+        expect(html).toContain('BANTU BRONDOL');
+        expect(html).toContain('data-field="premi_bantu_brondol"');
         expect(html).not.toContain('data-field="potongan_SPSI"');
         expect(html).not.toContain('data-field="SPSI"');
         expect(html).toContain('INSENTIF');

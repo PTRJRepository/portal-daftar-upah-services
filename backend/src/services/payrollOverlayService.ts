@@ -5,6 +5,10 @@ import { normalizeEffectiveStartDate } from "../utils/payrollProfileRules";
 
 type QueryableDb = Pick<Database, "query" | "queryOne">;
 
+function toSpsiBit(value: boolean | number | string | null | undefined): 0 | 1 {
+    return value === true || value === 1 || value === "1" ? 1 : 0;
+}
+
 export interface SaveProfileOverrideInput {
     emp_code: string;
     nik?: string | null;
@@ -39,7 +43,38 @@ export interface SaveValueOverrideInput {
 export class PayrollOverlayService {
     constructor(private readonly db: QueryableDb = Database.getExtendedInstance()) {}
 
+    private async resolveSpsiMemberBitForInsert(input: SaveProfileOverrideInput): Promise<0 | 1> {
+        if (typeof input.is_spsi_member === "boolean") {
+            return input.is_spsi_member ? 1 : 0;
+        }
+
+        const latestOverride = await this.db.queryOne<{ is_spsi_member: boolean | number | string | null }>(`
+            SELECT TOP 1 is_spsi_member
+            FROM dbo.employee_profile_override_history
+            WHERE emp_code = ?
+              AND is_active_record = 1
+              AND is_spsi_member IS NOT NULL
+            ORDER BY update_index DESC, id DESC
+        `, [input.emp_code]);
+
+        if (latestOverride?.is_spsi_member !== null && latestOverride?.is_spsi_member !== undefined) {
+            return toSpsiBit(latestOverride.is_spsi_member);
+        }
+
+        const latestHistory = await this.db.queryOne<{ is_spsi_member: boolean | number | string | null }>(`
+            SELECT TOP 1 is_spsi_member
+            FROM dbo.history_hr_employee
+            WHERE emp_code = ?
+              AND is_spsi_member IS NOT NULL
+            ORDER BY id DESC
+        `, [input.emp_code]);
+
+        return toSpsiBit(latestHistory?.is_spsi_member);
+    }
+
     async saveProfileOverride(input: SaveProfileOverrideInput) {
+        const isSpsiMemberBit = await this.resolveSpsiMemberBitForInsert(input);
+
         const next = await this.db.queryOne<{ next_index: number }>(`
             SELECT ISNULL(MAX(update_index), 0) + 1 AS next_index
             FROM dbo.employee_profile_override_history
@@ -62,7 +97,7 @@ export class PayrollOverlayService {
         `, [
             input.emp_code,
             input.nik || null,
-            typeof input.is_spsi_member === "boolean" ? (input.is_spsi_member ? 1 : 0) : null,
+            isSpsiMemberBit,
             normalizeEffectiveStartDate(input.effective_start_date),
             input.employee_status_at_change || null,
             next?.next_index || 1,

@@ -166,15 +166,33 @@ const formatSourceCompareValue = (value) => {
 };
 
 const STATIC_PREMI_FIELDS = new Set(['premi_brondol']);
+const STATIC_BRONDOL_FIELD_KEYS = new Set([
+    'brondol',
+    'brondol_adtrans',
+    'brondol_loosefruit',
+    'brondol_total',
+    'premi_brondol',
+    'premi_brondol_adtrans',
+    'premi_brondol_loosefruit',
+    'premi_brondol_total'
+]);
+const STATIC_BRONDOL_LABELS = new Set([
+    'BRONDOL',
+    'BRONDOL ADTRANS',
+    'BRONDOL LOOSEFRUIT',
+    'BRONDOL TOTAL',
+    'PREMI BRONDOL',
+    'PREMI BRONDOL ADTRANS',
+    'PREMI BRONDOL LOOSEFRUIT',
+    'PREMI BRONDOL TOTAL'
+]);
 const STATIC_POTONGAN_FIELDS = new Set(['pot_spsi']);
+
+const normalizeHeaderLabel = (value) => String(value || '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
 
 const isBrondolFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
-    if (!normalized) return false;
-    return normalized === 'brondol'
-        || normalized === 'premi_brondol'
-        || normalized.startsWith('premi_brondol_')
-        || /^premi_.*(^|_)brondol(_|$)/.test(normalized);
+    return STATIC_BRONDOL_FIELD_KEYS.has(normalized);
 };
 
 const isSpsiFieldKey = (value) => {
@@ -189,7 +207,7 @@ const isSpsiFieldKey = (value) => {
 
 const isStaticPremiFieldKey = (value) => STATIC_PREMI_FIELDS.has(normalizeFieldKey(value)) || isBrondolFieldKey(value);
 const isStaticPotonganFieldKey = (value) => STATIC_POTONGAN_FIELDS.has(normalizeFieldKey(value)) || isSpsiFieldKey(value);
-const isBrondolLabel = (value) => /\bBRONDOL\b/i.test(String(value || ''));
+const isStaticBrondolHeader = (label, field) => isBrondolFieldKey(field) || STATIC_BRONDOL_LABELS.has(normalizeHeaderLabel(label));
 const isSpsiLabel = (value) => /\bSPSI\b/i.test(String(value || ''));
 
 const isPremiFieldKey = (value) => normalizeFieldKey(value).startsWith('premi_') && !isStaticPremiFieldKey(value);
@@ -813,7 +831,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 target[label] = normalizedField;
             }
         };
-        const skipStaticPremiHeader = (label, field) => isStaticPremiFieldKey(field) || isBrondolLabel(label);
+        const skipStaticPremiHeader = (label, field) => isStaticPremiFieldKey(field) || isStaticBrondolHeader(label, field);
         const skipStaticPotonganHeader = (label, field) => isStaticPotonganFieldKey(field) || isAutomaticPayrollKoreksiFieldKey(field) || isSpsiLabel(label);
 
         const result = { premi: {}, potongan: {} };
@@ -2970,7 +2988,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             cols.push({ field: 'premi_brondol', headers: [PREMI, null, 'BRONDOL'], w: 80, className: 'text-right' });
 
             Object.entries(effectiveDynamicHeaders.premi)
-                .filter(([label, field]) => !isStaticPremiFieldKey(field) && !isBrondolLabel(label) && (effectiveActivePremiFields.includes(field) || isEditMode))
+                .filter(([label, field]) => !isStaticPremiFieldKey(field) && !isStaticBrondolHeader(label, field) && (effectiveActivePremiFields.includes(field) || isEditMode))
                 .forEach(([label, field]) => {
                     const displayName = label.replace('PREMI ', '');
                     const canonicalName = buildCanonicalManualAdjustmentName('PREMI', label);

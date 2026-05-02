@@ -42,10 +42,15 @@ describe("PayrollOverlayService", () => {
         ]);
     });
 
-    it("keeps SPSI profile value null when profile edit did not include checkbox", async () => {
+    it("preserves latest SPSI profile value when profile edit did not include checkbox", async () => {
+        const queryOneCalls: Array<{ sql: string; params?: any[] | Record<string, any> }> = [];
         const queryCalls: Array<{ sql: string; params?: any[] | Record<string, any> }> = [];
         const db = {
-            async queryOne() {
+            async queryOne(sql: string, params?: any[] | Record<string, any>) {
+                queryOneCalls.push({ sql, params });
+                if (sql.includes("is_spsi_member")) {
+                    return { is_spsi_member: true };
+                }
                 return { next_index: 2 };
             },
             async query(sql: string, params?: any[] | Record<string, any>) {
@@ -63,7 +68,8 @@ describe("PayrollOverlayService", () => {
             change_source: "DAFTAR_UPAH_UI"
         });
 
-        expect(queryCalls[0].params?.[2]).toBeNull();
+        expect(queryOneCalls).toHaveLength(2);
+        expect(queryCalls[0].params?.[2]).toBe(1);
     });
 
     it("resolves latest profile overrides from history rows", async () => {

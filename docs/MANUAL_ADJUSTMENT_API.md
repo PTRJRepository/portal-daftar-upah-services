@@ -79,6 +79,32 @@ Gunakan config yang sama dengan endpoint duplicate/check:
 
 Detail request, response, dan contoh cURL ada di section **4b. Ambil List `DocID` ADTRANS untuk Config Terpilih**.
 
+Untuk kasus **mismatch**: data sudah ada di `db_ptrj`, manual adjustment juga ada, tetapi nominal/detailnya tidak sama dengan yang tersimpan di `payroll_manual_adjustments`, gunakan endpoint komparasi:
+
+```text
+POST /payroll/manual-adjustment/compare-adtrans/by-api-key
+```
+
+Definisi `MISMATCH` pada endpoint ini adalah total nilai `db_ptrj.PR_ADTRANS` + `PR_ADTRANS_ARC` untuk employee+kategori tidak sama dengan nilai di `extend_db_ptrj.dbo.payroll_manual_adjustments`. Response item `MISMATCH` membawa `db_ptrj_doc_desc_details[]` yang berisi `doc_id`, `doc_desc`, dan `amount`. Untuk kebutuhan hapus/reset input Plantware yang salah, ambil `doc_id` dari field itu:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/compare-adtrans/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "filters": ["premi", "koreksi", "potongan"]
+  }' | jq -r '.data.comparisons[]
+    | select(.status == "MISMATCH")
+    | .db_ptrj_doc_desc_details[]
+    | select(.doc_id != null)
+    | .doc_id' | sort -u
+```
+
+Jangan memakai `adtrans-doc-ids` untuk mencari mismatch karena endpoint itu hanya mencari `DocID` berdasarkan periode/scope/config, tanpa membandingkan nominal terhadap manual adjustment. Gunakan `adtrans-doc-ids` setelah scope/config sudah pasti, atau untuk cleanup berdasarkan kategori yang memang ingin dihapus seluruhnya.
+
 ---
 
 ## Daftar Division (Divisi)
@@ -2397,6 +2423,7 @@ Flow usage yang disarankan:
 Catatan penting:
 
 - Response tidak menyertakan nominal, employee, atau `DocDesc`; gunakan `check-adtrans/by-api-key` jika butuh audit detail.
+- Endpoint ini tidak membandingkan nilai dengan `payroll_manual_adjustments`. Untuk mencari `DocID` yang statusnya `MISMATCH` terhadap manual adjustment, gunakan `compare-adtrans/by-api-key` lalu ambil `doc_id` dari `db_ptrj_doc_desc_details[]`.
 - `doc_ids` sudah dibuat unik, jadi `DocID` yang muncul lebih dari satu kali di hasil query hanya dikirim sekali.
 - `division_code` mengikuti normalisasi yang sama dengan `check-adtrans`, misalnya `PG2A`/`2A` dipakai sebagai `P2A` di `PR_ADTRANS.LocCode`.
 - Endpoint memakai `PhyMonth` dan `PhyYear`, bukan `AccMonth`/`AccYear`.
@@ -2587,7 +2614,44 @@ jq '.data.comparisons
 jq '.data.comparisons[]
   | select(.status != "MATCH")
   | {emp_code, category, db_ptrj_amount, extend_db_ptrj_amount, diff, db_ptrj_doc_desc_details, extend_db_ptrj_remarks}'
+
+# Ambil DocID unik untuk cleanup Plantware khusus yang MISMATCH
+jq -r '.data.comparisons[]
+  | select(.status == "MISMATCH")
+  | .db_ptrj_doc_desc_details[]
+  | select(.doc_id != null)
+  | .doc_id' | sort -u
 ```
+
+**DocID mismatch untuk cleanup Plantware:**
+
+Gunakan status `MISMATCH` jika transaksi sudah ada di `db_ptrj` dan record manual adjustment juga ada, tetapi nominalnya berbeda. Dalam kondisi ini, `db_ptrj_doc_desc_details[]` menunjukkan baris Plantware pembentuk total `db_ptrj_amount`; field `doc_id` di detail itulah yang bisa diteruskan ke automation reset/delete Plantware.
+
+Contoh item mismatch:
+
+```json
+{
+  "emp_code": "G0010",
+  "category": "jabatan",
+  "adjustment_name": "AUTO TUNJANGAN JABATAN",
+  "source_amount": 150000,
+  "stored_amount": 100000,
+  "db_ptrj_amount": 150000,
+  "extend_db_ptrj_amount": 100000,
+  "diff": 50000,
+  "status": "MISMATCH",
+  "db_ptrj_doc_desc_details": [
+    {
+      "doc_desc": "(AL) TUNJANGAN JABATAN",
+      "doc_id": "ADAB126040123",
+      "amount": 150000
+    }
+  ],
+  "extend_db_ptrj_remarks": "AUTO TUNJANGAN JABATAN | tunjangan jabatan | 100000 | sync:MISS | match:MISMATCH"
+}
+```
+
+Untuk menghapus input Plantware yang salah, ambil `doc_id` dari `db_ptrj_doc_desc_details[]`, bukan dari manual adjustment. Endpoint ini hanya membaca dan membandingkan; proses delete/reset tetap dilakukan oleh automation terpisah.
 
 **Category → Adjustment Name Mapping:**
 
