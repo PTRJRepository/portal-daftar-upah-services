@@ -13,6 +13,9 @@ const mocked = vi.hoisted(() => ({
         gang_code: 'D1H',
         emp_name: 'Test Employee'
     },
+    streamEmployees: null,
+    streamIsComplete: true,
+    streamProgress: { stage: null },
     streamMeta: {
         dynamic_premi_headers: ['premi_insentif'],
         dynamic_potongan_headers: ['koreksi_denda_panen', 'potongan_lainnya_kasbon'],
@@ -42,17 +45,15 @@ vi.mock('../hooks/usePayrollStream', () => ({
         gangs: [
             {
                 gang_code: 'D1H',
-                employees: [
-                    mocked.streamEmployee
-                ],
+                employees: mocked.streamEmployees || [mocked.streamEmployee],
                 gang_totals: {}
             }
         ],
         meta: mocked.streamMeta,
-        progress: { stage: null },
+        progress: mocked.streamProgress,
         grandTotal: null,
         error: null,
-        isComplete: true,
+        isComplete: mocked.streamIsComplete,
         gangsMap: {},
         startStream: vi.fn(),
         abort: vi.fn(),
@@ -124,6 +125,40 @@ describe('CustomPayrollTable render', () => {
                 year={2026}
             />
         )).not.toThrow();
+    });
+
+    it('keeps streamed employee rows ordered by emp_code while loading', () => {
+        mocked.streamEmployees = [
+            { nik: '2', emp_code: 'A0010', gang_code: 'D1H', nama: 'Ten Employee' },
+            { nik: '1', emp_code: 'A0002', gang_code: 'D1H', nama: 'Two Employee' },
+            { nik: '3', emp_code: 'A0001', gang_code: 'D1H', nama: 'Alpha Employee' }
+        ];
+        mocked.streamIsComplete = false;
+        mocked.streamProgress = { stage: 'attendance_loaded' };
+
+        try {
+            const html = renderToString(
+                <CustomPayrollTable
+                    token="test-token"
+                    division="PG2B"
+                    gangCode="D1H"
+                    month={4}
+                    year={2026}
+                />
+            );
+
+            const alphaIndex = html.indexOf('Alpha Employee');
+            const twoIndex = html.indexOf('Two Employee');
+            const tenIndex = html.indexOf('Ten Employee');
+
+            expect(alphaIndex).toBeGreaterThan(-1);
+            expect(alphaIndex).toBeLessThan(twoIndex);
+            expect(twoIndex).toBeLessThan(tenIndex);
+        } finally {
+            mocked.streamEmployees = null;
+            mocked.streamIsComplete = true;
+            mocked.streamProgress = { stage: null };
+        }
     });
 
     it('shows add-column affordances for premi and both potongan groups in edit mode', () => {

@@ -9,39 +9,39 @@ import { isPayrollNumericField, isPayrollTotalDisplayOnlyField, resolveGrandTota
 // Color palette matching ag-grid-professional.css and CustomPayrollTable.css
 const COLORS = {
     // Header colors
-    headerBg: 'F5F7FA',
-    headerText: '212121',
+    headerBg: 'F8FAFC',
+    headerText: '1E293B',
 
     // Column group backgrounds
-    absensi: 'F5F9FC',
-    upahDasar: 'FAF5FC',
-    tunjangan: 'FFFBF5',
-    premi: 'F5FAF5',
-    potongan: 'F8F8F8',
+    absensi: 'F4F7FA',
+    upahDasar: 'F7F4EF',
+    tunjangan: 'F6F8F2',
+    premi: 'F3F7F6',
+    potongan: 'F8F4F4',
 
     // Highlight colors for totals
-    totalHk: 'E3F2FD',
-    totalHkText: '1565C0',
-    totalTunjangan: 'FFF3E0',
-    totalTunjanganText: 'E65100',
-    totalPremi: 'E8F5E9',
-    totalPremiText: '2E7D32',
-    totalPotongan: 'FFEBEE',
-    totalPotonganText: 'C62828',
-    upahKotor: 'FFFDE7',
-    upahKotorText: 'F57F17',
-    upahBersih: 'E8F5E9',
-    upahBersihText: '1B5E20',
+    totalHk: 'E8EEF5',
+    totalHkText: '1F3A5F',
+    totalTunjangan: 'F4EBDD',
+    totalTunjanganText: '6B4E1F',
+    totalPremi: 'E7F0ED',
+    totalPremiText: '285C4D',
+    totalPotongan: 'F2E5E5',
+    totalPotonganText: '7F2D2D',
+    upahKotor: 'F7F1DF',
+    upahKotorText: '6B541F',
+    upahBersih: 'E3EFEA',
+    upahBersihText: '285C4D',
 
     // Row colors
-    gangHeader: 'E8F5E9',
-    gangTotal: 'E3F2FD',
-    grandTotal: '1a365d',
+    gangHeader: 'EDF4F1',
+    gangTotal: 'E8EEF5',
+    grandTotal: '1F2937',
     grandTotalText: 'FFFFFF',
 
     // Border
-    border: 'E0E0E0',
-    borderDark: 'BDBDBD'
+    border: 'D8DEE6',
+    borderDark: 'A8B1BD'
 };
 
 // Format number with Indonesian locale (dot as thousand separator)
@@ -69,6 +69,34 @@ function formatPayrollExportNumber(field, value) {
     const formatted = formatNumber(value);
     if (formatted === '-') return formatted;
     return NEGATIVE_TOTAL_EXPORT_FIELDS.has(field) ? -Math.abs(formatted) : formatted;
+}
+
+export function cleanPayrollExportEmployeeName(value) {
+    const cleaned = String(value ?? '')
+        .replace(/\s*\([^)]*\)\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return cleaned || '-';
+}
+
+export function formatPayrollExportCellValue(row, col, variant = 'detail') {
+    const field = col?.field;
+    const normalizedVariant = normalizeExportVariant(variant);
+    const val = row?.[field];
+
+    if (normalizedVariant === 'print' && field === 'nama') {
+        return cleanPayrollExportEmployeeName(val);
+    }
+
+    if (field === 'lembur_jam') {
+        return formatDecimal(val);
+    }
+
+    if (typeof val === 'number') {
+        return formatPayrollExportNumber(field, val);
+    }
+
+    return val ?? '-';
 }
 
 /**
@@ -125,6 +153,20 @@ function getTotalColumnStyle(field) {
     return null;
 }
 
+function getHeaderGroupStyle(label) {
+    const normalized = String(label || '').trim().toUpperCase();
+    if (normalized.includes('IDENTITAS')) return { fill: '334155', font: 'FFFFFF' };
+    if (normalized.includes('ABSENSI')) return { fill: 'E8EEF5', font: '1F3A5F' };
+    if (normalized.includes('GAJI') || normalized.includes('UPAH DASAR')) return { fill: 'EDE7DF', font: '5B3A29' };
+    if (normalized.includes('TUNJANGAN')) return { fill: 'EAF2EA', font: '2F5D50' };
+    if (normalized.includes('PREMI')) return { fill: 'EDEAF4', font: '51446F' };
+    if (normalized.includes('PENDAPATAN LAINNYA')) return { fill: 'F6EBDD', font: '7A4E23' };
+    if (normalized.includes('POTONGAN')) return { fill: 'F3E5E5', font: '7F2D2D' };
+    if (normalized.includes('UPAH KOTOR')) return { fill: 'F7F1DF', font: '6B541F' };
+    if (normalized.includes('UPAH BERSIH')) return { fill: 'E8F2EE', font: '285C4D' };
+    return { fill: COLORS.headerBg, font: COLORS.headerText };
+}
+
 function resolveValuePriorityModeLabel(mode) {
     const normalized = String(mode || '').trim().toLowerCase();
     if (normalized === 'db_ptrj_only') return 'DB PTRJ Saja';
@@ -134,7 +176,9 @@ function resolveValuePriorityModeLabel(mode) {
 const UI_ONLY_EXPORT_FIELDS = new Set([
     'checkbox',
     'actions',
-    'selection'
+    'selection',
+    'manual_adjustment_action',
+    'panen_section_disabled'
 ]);
 
 const TAX_DETAIL_EXPORT_FIELDS = new Set([
@@ -147,19 +191,184 @@ const TAX_DETAIL_EXPORT_FIELDS = new Set([
     'upah_kotor_pajak'
 ]);
 
+const OTHER_INCOME_TOTAL_FIELDS = new Set([
+    'pendapatan_lainnya',
+    'total_pendapatan_lainnya',
+    'taxable_pendapatan_lainnya',
+    'total_pendapatan_lainnya_pengurang'
+]);
+
+const OTHER_INCOME_FIELD_ORDER = [
+    'pendapatan_thr',
+    'pendapatan_kontan',
+    'pendapatan_bonus',
+    'pendapatan_custom'
+];
+
+const SUMMARY_EXPORT_FIELDS = new Set([
+    'no',
+    'emp_code',
+    'nik',
+    'nama',
+    'jabatan_estate',
+    'hari_kerja',
+    'jumlah_hk',
+    'gaji_pokok',
+    'upah_pokok',
+    'total_tunjangan',
+    'total_premi',
+    'total_pendapatan_lainnya',
+    'jumlah_upah_kotor',
+    'pot_koreksi',
+    'pot_spsi',
+    'pot_pph21',
+    'total_potongan',
+    'total_potongan_bersih',
+    'upah_bersih'
+]);
+
+const EXPORT_VARIANT_LABELS = {
+    summary: 'RINGKAS',
+    detail: 'DETAIL',
+    print: 'PRINT'
+};
+
+const EXPORT_VARIANT_SHEET_NAMES = {
+    summary: 'Ringkas',
+    detail: 'Detail',
+    print: 'Print'
+};
+
+const WORKBOOK_EXPORT_VARIANTS = ['detail', 'summary', 'print'];
+
+const PRINT_EXPORT_FIELDS = new Set([
+    'emp_code',
+    'nama',
+    'gaji_pokok_aktual',
+    'gaji_pokok_ideal',
+    'koreksi_hk',
+    'beras_jumlah',
+    'jabatan_jumlah',
+    'masa_kerja_jumlah',
+    'lembur_jumlah',
+    'total_tunjangan',
+    'total_premi',
+    'total_pendapatan_lainnya',
+    'jumlah_upah_kotor',
+    'pot_astek',
+    'pot_spsi',
+    'pot_pph21',
+    'total_potongan',
+    'total_potongan_bersih',
+    'upah_bersih'
+]);
+
+function normalizeExportVariant(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'summary' || normalized === 'print') return normalized;
+    return 'detail';
+}
+
+export function resolvePayrollWorkbookSheetVariants() {
+    return [...WORKBOOK_EXPORT_VARIANTS];
+}
+
 function isTaxDetailExportField(field) {
     if (!field) return false;
     if (TAX_DETAIL_EXPORT_FIELDS.has(field)) return true;
     return field.startsWith('taxable_pendapatan_');
 }
 
-export function buildPayrollExportColumns(_rows, columnDefs = []) {
-    return columnDefs.filter((col) => {
+function isOtherIncomeDetailField(field) {
+    if (!field || !field.startsWith('pendapatan_')) return false;
+    if (OTHER_INCOME_TOTAL_FIELDS.has(field)) return false;
+    if (field.endsWith('_pengurang')) return false;
+    return true;
+}
+
+function isPrintExportField(col) {
+    const field = col?.field;
+    if (!field) return false;
+    if (PRINT_EXPORT_FIELDS.has(field)) return true;
+    if (isOtherIncomeDetailField(field)) return true;
+    return field.startsWith('premi_') && field !== 'premi_pph';
+}
+
+function hasPositiveFieldValue(rows, field) {
+    return rows.some((row) => row?.type === 'employee' && Number(row?.[field] || 0) !== 0);
+}
+
+function formatOtherIncomeExportLabel(field) {
+    const raw = field.replace(/^pendapatan_/, '').replace(/_/g, ' ').trim().toUpperCase();
+    const normalized = raw === 'KONTAN' ? 'KONTANAN' : raw;
+    return `${normalized || 'LAINNYA'} (+)`;
+}
+
+function buildOtherIncomeExportColumns(rows, existingFields) {
+    const fields = new Set();
+    rows.forEach((row) => {
+        if (row?.type !== 'employee') return;
+        Object.keys(row).forEach((field) => {
+            if (isOtherIncomeDetailField(field) && hasPositiveFieldValue(rows, field)) {
+                fields.add(field);
+            }
+        });
+    });
+
+    return Array.from(fields)
+        .filter((field) => !existingFields.has(field))
+        .sort((a, b) => {
+            const ai = OTHER_INCOME_FIELD_ORDER.indexOf(a);
+            const bi = OTHER_INCOME_FIELD_ORDER.indexOf(b);
+            if (ai !== -1 || bi !== -1) {
+                if (ai === -1) return 1;
+                if (bi === -1) return -1;
+                return ai - bi;
+            }
+            return a.localeCompare(b);
+        })
+        .map((field) => ({
+            field,
+            headers: ['PENDAPATAN LAINNYA', 'URAIAN', null, formatOtherIncomeExportLabel(field)],
+            w: 96,
+            className: 'text-right'
+        }));
+}
+
+export function buildPayrollExportColumns(rows = [], columnDefs = [], options = {}) {
+    const variant = normalizeExportVariant(options.variant || options.exportVariant);
+    const baseColumns = columnDefs.filter((col) => {
         const field = col?.field;
         if (!field || UI_ONLY_EXPORT_FIELDS.has(field)) return false;
         if (field === 'pot_pph21') return true;
+        if (variant === 'summary' && !SUMMARY_EXPORT_FIELDS.has(field)) return false;
+        if (variant === 'print' && !isPrintExportField(col)) return false;
         return !isTaxDetailExportField(field);
     });
+
+    const existingFields = new Set(baseColumns.map((col) => col.field));
+    const otherIncomeColumns = buildOtherIncomeExportColumns(rows, existingFields);
+    if (otherIncomeColumns.length === 0) return baseColumns;
+
+    const totalIncomeIndex = baseColumns.findIndex((col) => col.field === 'total_pendapatan_lainnya');
+    if (totalIncomeIndex !== -1) {
+        return [
+            ...baseColumns.slice(0, totalIncomeIndex),
+            ...otherIncomeColumns,
+            ...baseColumns.slice(totalIncomeIndex)
+        ];
+    }
+
+    const totalPremiIndex = baseColumns.findIndex((col) => col.field === 'total_premi');
+    if (totalPremiIndex !== -1) {
+        return [
+            ...baseColumns.slice(0, totalPremiIndex + 1),
+            ...otherIncomeColumns,
+            ...baseColumns.slice(totalPremiIndex + 1)
+        ];
+    }
+
+    return [...baseColumns, ...otherIncomeColumns];
 }
 
 /**
@@ -242,8 +451,9 @@ function buildHeaderMerges(enhancedColumnDefs) {
  * @param {Object} grandTotal - Grand total row data
  * @param {Object} meta - Metadata: { division, gangCode, month, year }
  */
-export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
-    const enhancedColumnDefs = buildPayrollExportColumns(rows, columnDefs);
+async function exportPayrollSingleSheetToExcel(rows, columnDefs, grandTotal, meta) {
+    const exportVariant = normalizeExportVariant(meta?.exportVariant);
+    const enhancedColumnDefs = buildPayrollExportColumns(rows, columnDefs, { variant: exportVariant });
 
     let workbook = new ExcelJS.Workbook();
     workbook.creator = 'PT Rebinmas Jaya - Payroll System';
@@ -254,6 +464,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     const periodStr = `${monthNames[meta.month - 1]} ${meta.year}`;
     const sheetName = `Daftar Upah ${meta.division}`;
     const sourceModeLabel = resolveValuePriorityModeLabel(meta?.valuePriorityMode);
+    const variantLabel = EXPORT_VARIANT_LABELS[exportVariant] || EXPORT_VARIANT_LABELS.detail;
 
     const worksheet = workbook.addWorksheet(sheetName.substring(0, 31), {
         pageSetup: {
@@ -266,17 +477,19 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     });
 
     // === TITLE ROW ===
-    const titleRow = worksheet.addRow([`DAFTAR UPAH - ${meta.division} - ${periodStr}`]);
-    titleRow.height = 30;
-    titleRow.getCell(1).font = { size: 16, bold: true, color: { argb: '1a365d' } };
+    const titleRow = worksheet.addRow([`DAFTAR UPAH KARYAWAN ${variantLabel} - ${meta.division} - ${periodStr}`]);
+    titleRow.height = 34;
+    titleRow.getCell(1).font = { size: 16, bold: true, color: { argb: 'FFFFFF' } };
+    titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F172A' } };
     worksheet.mergeCells(1, 1, 1, enhancedColumnDefs.length);
     titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
     // === SUB TITLE ROW ===
     const gangLabel = meta.gangCode === 'ALL' ? 'Semua Gang' : `Gang: ${meta.gangCode}`;
-    const subTitleRow = worksheet.addRow([`${gangLabel} | Sumber Nilai: ${sourceModeLabel}`]);
-    subTitleRow.height = 20;
-    subTitleRow.getCell(1).font = { size: 12, italic: true, color: { argb: '666666' } };
+    const subTitleRow = worksheet.addRow([`${gangLabel} | Format: ${variantLabel} | Sumber Nilai: ${sourceModeLabel}`]);
+    subTitleRow.height = 22;
+    subTitleRow.getCell(1).font = { size: 11, italic: true, color: { argb: '334155' } };
+    subTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E2E8F0' } };
     worksheet.mergeCells(2, 1, 2, enhancedColumnDefs.length);
     subTitleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
@@ -300,11 +513,12 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
         const cell = worksheet.getCell(excelRow, excelCol);
         cell.value = merge.label;
-        cell.font = { bold: true, size: 10, color: { argb: COLORS.headerText } };
+        const headerStyle = getHeaderGroupStyle(merge.label);
+        cell.font = { bold: true, size: 10, color: { argb: headerStyle.font } };
         cell.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: COLORS.headerBg }
+            fgColor: { argb: headerStyle.fill }
         };
         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
         cell.border = {
@@ -326,6 +540,19 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     enhancedColumnDefs.forEach((col, idx) => {
         worksheet.getColumn(idx + 1).width = Math.max(col.w / 7, 8);
     });
+    worksheet.autoFilter = {
+        from: { row: headerStartRow + 3, column: 1 },
+        to: { row: headerStartRow + 3, column: enhancedColumnDefs.length }
+    };
+    worksheet.properties.defaultRowHeight = 20;
+    worksheet.pageSetup = {
+        ...worksheet.pageSetup,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true
+    };
 
     // === DATA ROWS ===
     const dataStartRow = headerStartRow + 4; // After 4 header rows
@@ -354,15 +581,7 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
             };
         } else {
             // Data row (employee or gang_total)
-            const rowData = enhancedColumnDefs.map((col) => {
-                let val = row[col.field];
-                if (col.field === 'lembur_jam') {
-                    return formatDecimal(val);
-                } else if (typeof val === 'number') {
-                    return formatPayrollExportNumber(col.field, val);
-                }
-                return val ?? '-';
-            });
+            const rowData = enhancedColumnDefs.map((col) => formatPayrollExportCellValue(row, col, exportVariant));
 
             const excelRow = worksheet.addRow(rowData);
             excelRow.height = 22;
@@ -475,6 +694,32 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
         });
     }
 
+    // === SIGNATURE BLOCK ===
+    const signatureStartRow = worksheet.rowCount + 3;
+    const signerColumns = [
+        2,
+        Math.max(4, Math.floor(enhancedColumnDefs.length * 0.35)),
+        Math.max(6, Math.floor(enhancedColumnDefs.length * 0.65)),
+        Math.max(8, enhancedColumnDefs.length - 1)
+    ].filter((col, idx, arr) => col <= enhancedColumnDefs.length && arr.indexOf(col) === idx);
+    const signatureLabels = ['Dibuat Oleh,', 'Diperiksa Oleh,', 'Diketahui Oleh,', 'Disetujui Oleh,'];
+    const signatureRoles = ['Admin Payroll', 'HR Manager', 'Senior Manager', 'General Manager'];
+    signerColumns.forEach((col, idx) => {
+        const titleCell = worksheet.getCell(signatureStartRow, col);
+        titleCell.value = signatureLabels[idx] || 'Disetujui Oleh,';
+        titleCell.font = { bold: true, size: 10 };
+        titleCell.alignment = { horizontal: 'center' };
+
+        const nameCell = worksheet.getCell(signatureStartRow + 5, col);
+        nameCell.value = '( ...................................... )';
+        nameCell.alignment = { horizontal: 'center' };
+
+        const roleCell = worksheet.getCell(signatureStartRow + 6, col);
+        roleCell.value = signatureRoles[idx] || '';
+        roleCell.font = { italic: true, size: 9, color: { argb: '64748B' } };
+        roleCell.alignment = { horizontal: 'center' };
+    });
+
     // === FREEZE PANES ===
     worksheet.views = [{
         state: 'frozen',
@@ -486,7 +731,8 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
 
     // === GENERATE FILE ===
     const sourceModeToken = String(meta?.valuePriorityMode || 'non_db_ptrj').trim().toLowerCase() || 'non_db_ptrj';
-    const fileName = `Daftar_Upah_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}_SRC-${sourceModeToken}.xlsx`;
+    const variantToken = EXPORT_VARIANT_LABELS[exportVariant] || EXPORT_VARIANT_LABELS.detail;
+    const fileName = `Daftar_Upah_${variantToken}_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}_SRC-${sourceModeToken}.xlsx`;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -495,6 +741,282 @@ export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
     // Memory Cleaner Frontend: Hapus referensi dari sheet dan workbook yang memakan banyak memori Chrome
     worksheet.spliceRows(1, worksheet.rowCount);
     workbook.removeWorksheet(worksheet.id);
+    // @ts-ignore
+    workbook = null;
+
+    return fileName;
+}
+
+function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, meta, context, exportVariant) {
+    const enhancedColumnDefs = buildPayrollExportColumns(rows, columnDefs, { variant: exportVariant });
+    const variantLabel = EXPORT_VARIANT_LABELS[exportVariant] || EXPORT_VARIANT_LABELS.detail;
+    const sheetName = EXPORT_VARIANT_SHEET_NAMES[exportVariant] || variantLabel;
+
+    const worksheet = workbook.addWorksheet(sheetName.substring(0, 31), {
+        pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+            fitToHeight: 0
+        }
+    });
+
+    const titleRow = worksheet.addRow([`DAFTAR UPAH KARYAWAN ${variantLabel} - ${meta.division} - ${context.periodStr}`]);
+    titleRow.height = 34;
+    titleRow.getCell(1).font = { size: 16, bold: true, color: { argb: 'FFFFFF' } };
+    titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1F2937' } };
+    worksheet.mergeCells(1, 1, 1, enhancedColumnDefs.length);
+    titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const gangLabel = meta.gangCode === 'ALL' ? 'Semua Gang' : `Gang: ${meta.gangCode}`;
+    const subTitleRow = worksheet.addRow([`${gangLabel} | Format: ${variantLabel} | Sumber Nilai: ${context.sourceModeLabel}`]);
+    subTitleRow.height = 22;
+    subTitleRow.getCell(1).font = { size: 11, italic: true, color: { argb: '334155' } };
+    subTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E2E8F0' } };
+    worksheet.mergeCells(2, 1, 2, enhancedColumnDefs.length);
+    subTitleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.addRow([]);
+
+    const headerStartRow = 4;
+    const headerMerges = buildHeaderMerges(enhancedColumnDefs);
+    for (let i = 0; i < 4; i++) {
+        const row = worksheet.addRow(Array(enhancedColumnDefs.length).fill(''));
+        row.height = 22;
+    }
+
+    headerMerges.forEach((merge) => {
+        const excelRow = headerStartRow + merge.row - 1;
+        const excelCol = merge.col;
+        const cell = worksheet.getCell(excelRow, excelCol);
+        const headerStyle = getHeaderGroupStyle(merge.label);
+        cell.value = merge.label;
+        cell.font = { bold: true, size: 10, color: { argb: headerStyle.font } };
+        cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: headerStyle.fill }
+        };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = {
+            top: { style: 'thin', color: { argb: COLORS.border } },
+            bottom: { style: 'thin', color: { argb: COLORS.border } },
+            left: { style: 'thin', color: { argb: COLORS.border } },
+            right: { style: 'thin', color: { argb: COLORS.border } }
+        };
+
+        if (merge.rowSpan > 1 || merge.colSpan > 1) {
+            worksheet.mergeCells(
+                excelRow,
+                excelCol,
+                excelRow + merge.rowSpan - 1,
+                excelCol + merge.colSpan - 1
+            );
+        }
+    });
+
+    enhancedColumnDefs.forEach((col, idx) => {
+        worksheet.getColumn(idx + 1).width = Math.max(col.w / 7, 8);
+    });
+    worksheet.autoFilter = {
+        from: { row: headerStartRow + 3, column: 1 },
+        to: { row: headerStartRow + 3, column: enhancedColumnDefs.length }
+    };
+    worksheet.properties.defaultRowHeight = 20;
+    worksheet.pageSetup = {
+        ...worksheet.pageSetup,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true
+    };
+
+    rows.forEach((row) => {
+        if (row.type === 'gang_header') {
+            const excelRow = worksheet.addRow(Array(enhancedColumnDefs.length).fill(''));
+            excelRow.height = 24;
+            worksheet.mergeCells(excelRow.number, 1, excelRow.number, enhancedColumnDefs.length);
+
+            const cell = excelRow.getCell(1);
+            cell.value = `GANG: ${row.gang_code}`;
+            cell.font = { bold: true, size: 11, color: { argb: '285C4D' } };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: COLORS.gangHeader }
+            };
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+            cell.border = {
+                top: { style: 'medium', color: { argb: COLORS.borderDark } },
+                bottom: { style: 'medium', color: { argb: COLORS.borderDark } }
+            };
+            return;
+        }
+
+        const rowData = enhancedColumnDefs.map((col) => formatPayrollExportCellValue(row, col, exportVariant));
+        const excelRow = worksheet.addRow(rowData);
+        excelRow.height = 22;
+
+        enhancedColumnDefs.forEach((col, idx) => {
+            const cell = excelRow.getCell(idx + 1);
+            const colColor = getColumnColor(col.field);
+            const totalStyle = getTotalColumnStyle(col.field);
+
+            cell.alignment = {
+                horizontal: col.className?.includes('text-right') ? 'right' :
+                    col.className?.includes('text-center') ? 'center' : 'left',
+                vertical: 'middle'
+            };
+            cell.font = { size: 10 };
+            cell.border = {
+                top: { style: 'thin', color: { argb: COLORS.border } },
+                bottom: { style: 'thin', color: { argb: COLORS.border } },
+                left: { style: 'thin', color: { argb: COLORS.border } },
+                right: { style: 'thin', color: { argb: COLORS.border } }
+            };
+
+            if (typeof cell.value === 'number') {
+                cell.numFmt = '#,##0';
+            }
+
+            if (totalStyle) {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: totalStyle.fill }
+                };
+                cell.font = { size: 10, bold: totalStyle.bold, color: { argb: totalStyle.font } };
+            } else if (colColor) {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: colColor }
+                };
+            }
+
+            if (row.type === 'gang_total') {
+                cell.font = { ...cell.font, bold: true };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: COLORS.gangTotal }
+                };
+            }
+        });
+    });
+
+    if (grandTotal) {
+        const employeeCount = rows.filter((row) => row?.type === 'employee').length;
+        const gtRowData = enhancedColumnDefs.map((col) => {
+            if (col.field === 'nama') return 'GRAND TOTAL';
+            if (col.field === 'no') return '';
+            if (col.field === 'emp_code') return `${employeeCount} KARYAWAN`;
+            if (isPayrollTotalDisplayOnlyField(col.field)) return '-';
+
+            if (isPayrollNumericField(col.field)) {
+                const numericValue = resolveGrandTotalNumericValue({
+                    grandTotal,
+                    rows,
+                    field: col.field
+                });
+                return formatPayrollExportNumber(col.field, numericValue);
+            }
+
+            const val = grandTotal[col.field];
+            if (val !== undefined && val !== null && val !== '') return val;
+            return '-';
+        });
+        const gtRow = worksheet.addRow(gtRowData);
+        gtRow.height = 28;
+
+        enhancedColumnDefs.forEach((col, idx) => {
+            const cell = gtRow.getCell(idx + 1);
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: COLORS.grandTotal }
+            };
+            cell.font = { bold: true, size: 11, color: { argb: COLORS.grandTotalText } };
+            cell.alignment = {
+                horizontal: col.className?.includes('text-right') ? 'right' :
+                    col.className?.includes('text-center') ? 'center' : 'left',
+                vertical: 'middle'
+            };
+            cell.border = {
+                top: { style: 'medium', color: { argb: '0d1b2a' } },
+                bottom: { style: 'medium', color: { argb: '0d1b2a' } },
+                left: { style: 'thin', color: { argb: '2d4a6f' } },
+                right: { style: 'thin', color: { argb: '2d4a6f' } }
+            };
+            if (typeof cell.value === 'number') {
+                cell.numFmt = '#,##0';
+            }
+        });
+    }
+
+    const signatureStartRow = worksheet.rowCount + 3;
+    const signerColumns = [
+        2,
+        Math.max(4, Math.floor(enhancedColumnDefs.length * 0.35)),
+        Math.max(6, Math.floor(enhancedColumnDefs.length * 0.65)),
+        Math.max(8, enhancedColumnDefs.length - 1)
+    ].filter((col, idx, arr) => col <= enhancedColumnDefs.length && arr.indexOf(col) === idx);
+    const signatureLabels = ['Dibuat Oleh,', 'Diperiksa Oleh,', 'Diketahui Oleh,', 'Disetujui Oleh,'];
+    const signatureRoles = ['Admin Payroll', 'HR Manager', 'Senior Manager', 'General Manager'];
+    signerColumns.forEach((col, idx) => {
+        const titleCell = worksheet.getCell(signatureStartRow, col);
+        titleCell.value = signatureLabels[idx] || 'Disetujui Oleh,';
+        titleCell.font = { bold: true, size: 10 };
+        titleCell.alignment = { horizontal: 'center' };
+
+        const nameCell = worksheet.getCell(signatureStartRow + 5, col);
+        nameCell.value = '( ...................................... )';
+        nameCell.alignment = { horizontal: 'center' };
+
+        const roleCell = worksheet.getCell(signatureStartRow + 6, col);
+        roleCell.value = signatureRoles[idx] || '';
+        roleCell.font = { italic: true, size: 9, color: { argb: '64748B' } };
+        roleCell.alignment = { horizontal: 'center' };
+    });
+
+    worksheet.views = [{
+        state: 'frozen',
+        xSplit: 2,
+        ySplit: headerStartRow + 3,
+        topLeftCell: 'C' + (headerStartRow + 4),
+        activeCell: 'C' + (headerStartRow + 4)
+    }];
+
+    return worksheet;
+}
+
+export async function exportPayrollToExcel(rows, columnDefs, grandTotal, meta) {
+    let workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PT Rebinmas Jaya - Payroll System';
+    workbook.created = new Date();
+
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const periodStr = `${monthNames[meta.month - 1]} ${meta.year}`;
+    const sourceModeLabel = resolveValuePriorityModeLabel(meta?.valuePriorityMode);
+    const context = { periodStr, sourceModeLabel };
+
+    resolvePayrollWorkbookSheetVariants().forEach((exportVariant) => {
+        addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, meta, context, exportVariant);
+    });
+
+    const sourceModeToken = String(meta?.valuePriorityMode || 'non_db_ptrj').trim().toLowerCase() || 'non_db_ptrj';
+    const fileName = `Daftar_Upah_${meta.division}_${meta.gangCode === 'ALL' ? 'AllGang' : meta.gangCode}_${meta.year}${String(meta.month).padStart(2, '0')}_SRC-${sourceModeToken}.xlsx`;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, fileName);
+
+    workbook.worksheets.slice().forEach((worksheet) => {
+        worksheet.spliceRows(1, worksheet.rowCount);
+        workbook.removeWorksheet(worksheet.id);
+    });
     // @ts-ignore
     workbook = null;
 

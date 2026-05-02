@@ -22,6 +22,7 @@ import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtil
 import { openEmployeeDetailPage } from '../utils/employeeDetailNavigation'
 import { checkReportAccess } from '../services/summaryReportService'
 import { buildSelectedEmployeeRowMap } from '../utils/payrollRowAccessors'
+import { getDaftarUpahDownloadActionCopy } from '../utils/payrollDownloadAction'
 import {
   getAllowedDivisionsForUser,
   isDivisionAllowed,
@@ -283,6 +284,7 @@ export default function MainPage({ lockedDiv = null }) {
       setExportLoading(false)
     }
   }
+  const daftarUpahDownloadAction = getDaftarUpahDownloadActionCopy(exportLoading)
 
   // Handler for viewing employee detail (called from PayrollGrid context menu)
   const handleViewEmployeeDetail = (employeeData) => {
@@ -1803,31 +1805,33 @@ export default function MainPage({ lockedDiv = null }) {
             </div>
           )}
 
-          {/* Export to Excel Button */}
+          {/* Unduh Daftar Upah Button */}
           {isReportGenerated && (
-            <button
-              onClick={handleExportExcel}
-              disabled={exportLoading || !exportHandler}
-              style={{
-                background: exportLoading ? '#6b7280' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                color: '#ffffff',
-                border: 'none',
-                padding: '0.4rem 0.8rem',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                fontWeight: '600',
-                cursor: exportLoading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                height: '36px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-              }}
-              title="Export ke Excel"
-            >
-              <span>{exportLoading ? '⏳' : '📊'}</span>
-              <span>{exportLoading ? 'Exporting...' : 'Export Excel'}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px', border: '1px solid #d8dee6', borderRadius: '10px', background: '#f8fafc' }}>
+              <button
+                onClick={handleExportExcel}
+                disabled={exportLoading || !exportHandler}
+                style={{
+                  background: exportLoading || !exportHandler ? '#f1f5f9' : '#f3faf8',
+                  color: exportLoading || !exportHandler ? '#94a3b8' : '#285c4d',
+                  border: exportLoading || !exportHandler ? '1px solid #d1d5db' : '1px solid #b9cdc8',
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: '8px',
+                  fontSize: '0.76rem',
+                  fontWeight: '800',
+                  cursor: exportLoading || !exportHandler ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  height: '34px',
+                  boxShadow: exportLoading || !exportHandler ? 'none' : '0 4px 12px rgba(40, 92, 77, 0.10)'
+                }}
+                title={daftarUpahDownloadAction.title}
+              >
+                <span>{daftarUpahDownloadAction.icon}</span>
+                <span>{daftarUpahDownloadAction.label}</span>
+              </button>
+            </div>
           )}
 
           {/* Edit Mode Toggle Button */}

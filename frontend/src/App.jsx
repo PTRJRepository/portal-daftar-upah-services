@@ -71,6 +71,7 @@ import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGa
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
 import { getEmployeeRows } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
+import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -262,6 +263,7 @@ const OperationalReportWrapper = () => {
       setExportLoading(false)
     }
   }
+  const daftarUpahDownloadAction = getDaftarUpahDownloadActionCopy(exportLoading)
 
   const handleExportTaxExcel = async () => {
     setTaxExportLoading(true)
@@ -773,20 +775,20 @@ const OperationalReportWrapper = () => {
                 
                 <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
 
-                {/* Export Pajak DOM */}
-                <button onClick={handleExportTaxExcelDom} disabled={taxDomExportLoading} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: taxDomExportLoading ? '#f1f5f9' : 'transparent', color: taxDomExportLoading ? '#94a3b8' : '#059669', cursor: taxDomExportLoading ? 'not-allowed' : 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Unduh Kalkulasi Pajak PPH21 DOM sesuai tampilan UI">
-                  {taxDomExportLoading ? '⏳ Exporting...' : '📥 Export Pajak DOM'}
+                {/* Report Pajak Akunting */}
+                <button onClick={handleExportTaxExcelDom} disabled={taxDomExportLoading} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: taxDomExportLoading ? '1px solid #d1d5db' : '1px solid #c8d2dc', background: taxDomExportLoading ? '#f1f5f9' : '#f8fafc', color: taxDomExportLoading ? '#94a3b8' : '#1f3a5f', cursor: taxDomExportLoading ? 'not-allowed' : 'pointer', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: taxDomExportLoading ? 'none' : '0 6px 14px rgba(31, 58, 95, 0.10)' }} title="Unduh report pajak akunting dari data DOM yang tampil di Daftar Upah">
+                  <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: taxDomExportLoading ? '#e5e7eb' : '#1f3a5f', color: taxDomExportLoading ? '#9ca3af' : '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>TAX</span>
+                  <span>{taxDomExportLoading ? 'Mengunduh Report Pajak...' : 'Unduh Report Pajak Akunting'}</span>
                 </button>
 
-                {/* Laporan Pajak */}
-                <button onClick={handleOpenTaxReport} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: 'transparent', color: '#b45309', cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Buka Halaman Laporan Pajak Tersendiri">
-                  🔍 Laporan Pajak Lengkap
-                </button>
-
-                {/* Export Excel */}
-                <button onClick={handleExportExcel} disabled={!exportHandler || exportLoading} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: exportHandler && !exportLoading ? '#ecfdf5' : 'transparent', color: exportHandler && !exportLoading ? '#059669' : '#94a3b8', cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed', display: 'flex', gap: '8px', alignItems: 'center' }} title="Export grid data yang tampil sekarang ke Excel">
-                  {exportLoading ? '⏳ Loading...' : '⬇️ Export Grid Data'}
-                </button>
+                {/* Unduh Daftar Upah */}
+                <div style={{ padding: '0.45rem', borderRadius: '10px', border: '1px solid #d8dee6', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.02em' }}>UNDUH DAFTAR UPAH</div>
+                  <button onClick={handleExportExcel} disabled={!exportHandler || exportLoading} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: exportHandler && !exportLoading ? '1px solid #b9cdc8' : '1px solid #d1d5db', background: exportHandler && !exportLoading ? '#f3faf8' : '#f1f5f9', color: exportHandler && !exportLoading ? '#285c4d' : '#94a3b8', cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: exportHandler && !exportLoading ? '0 6px 14px rgba(40, 92, 77, 0.10)' : 'none' }} title={daftarUpahDownloadAction.title}>
+                    <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: exportHandler && !exportLoading ? '#2f5d50' : '#e5e7eb', color: exportHandler && !exportLoading ? '#ffffff' : '#9ca3af', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>{daftarUpahDownloadAction.icon}</span>
+                    <span>{daftarUpahDownloadAction.label}</span>
+                  </button>
+                </div>
 
                 {/* Payslip Print */}
                 <button onClick={handlePrintPayslips} disabled={selectedEmployees.length === 0} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: selectedEmployees.length > 0 ? '#eff6ff' : 'transparent', color: selectedEmployees.length > 0 ? '#1d4ed8' : '#94a3b8', cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', gap: '8px', alignItems: 'center' }} title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu dari checkbox tabel'}>
