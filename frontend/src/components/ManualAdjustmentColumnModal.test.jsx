@@ -335,6 +335,94 @@ describe('ManualAdjustmentColumnModal', () => {
         }
     });
 
+    it('saves column-level ADCode and AD_DESC override instead of the selected definition values', async () => {
+        mocked.fetchPremiumDefinitions.mockResolvedValueOnce({
+            success: true,
+            data: [
+                {
+                    adjustment_name: 'PREMI ANGKUT TBS',
+                    ad_code: 'AL3PT2305',
+                    task_desc: '(AL) TUNJANGAN PREMI ANGKUT',
+                    input_type: 'kendaraan',
+                    is_active: true
+                }
+            ]
+        });
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const onSaved = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <ManualAdjustmentColumnModal
+                        isOpen
+                        onClose={() => {}}
+                        onSaved={onSaved}
+                        token="test-token"
+                        division="AB1"
+                    />
+                );
+            });
+            await flushEffects();
+
+            const angkutButton = findButton(container, 'PREMI ANGKUT TBS');
+            expect(angkutButton).toBeTruthy();
+
+            await act(async () => {
+                angkutButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            const overrideToggle = Array.from(container.querySelectorAll('input[type="checkbox"]'))
+                .find((input) => input.closest('label')?.textContent?.includes('Override ADCode/AD_DESC'));
+            expect(overrideToggle).toBeTruthy();
+
+            await act(async () => {
+                overrideToggle.checked = true;
+                overrideToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            await flushEffects();
+
+            const adCodeInput = container.querySelector('input[name="ad_code_override"]');
+            const adDescInput = container.querySelector('input[name="ad_desc_override"]');
+            expect(adCodeInput).toBeTruthy();
+            expect(adDescInput).toBeTruthy();
+
+            await act(async () => {
+                changeInputValue(adCodeInput, 'AL9999AB1');
+                changeInputValue(adDescInput, 'SIMPANG TIGA');
+            });
+            await flushEffects();
+
+            const saveButton = findButton(container, 'Simpan Kolom');
+            expect(saveButton.disabled).toBe(false);
+
+            await act(async () => {
+                saveButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
+            await flushEffects();
+
+            expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({
+                adjustment_type: 'PREMI',
+                adjustment_name: 'PREMI ANGKUT TBS',
+                ad_code: 'AL9999AB1',
+                task_code: 'AL9999AB1',
+                base_task_code: 'AL9999AB1',
+                task_desc: 'SIMPANG TIGA',
+                input_type: 'kendaraan',
+                remarks: 'PREMI ANGKUT TBS | AL9999AB1 - SIMPANG TIGA | 0 | sync:MISS | match:MISMATCH'
+            }));
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
+    });
+
     it('filters premium definitions with local search instead of database presets', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);

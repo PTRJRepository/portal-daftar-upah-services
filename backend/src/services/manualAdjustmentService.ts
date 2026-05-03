@@ -13,6 +13,7 @@ import {
 import { normalizeAutoBufferAdjustmentName } from "./payroll/manualAdjustments/autoBufferAdcodeMap";
 import {
     inferManualAdjustmentAdCodeFromRemarks,
+    updatePipeDelimitedSyncAndMatchStatus,
     updatePipeDelimitedSyncStatus
 } from "../utils/manualAdjustmentRemarkParser";
 import {
@@ -216,6 +217,11 @@ function normalizeAdtransDuplicateDocDesc(value: unknown): string {
 function normalizeAdtransDuplicateAmount(value: unknown): string {
     const amount = Number(value || 0);
     return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
+}
+
+function hasAdtransDuplicateAmount(value: unknown): boolean {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) && Math.abs(amount) > 0.01;
 }
 
 function normalizeStringList(values?: unknown): string[] {
@@ -543,6 +549,8 @@ export function buildAdtransDuplicateReport(
     const normalizedFilters = resolveAdtransCheckFilters(filters, normalizedOptions);
 
     for (const row of rows) {
+        if (!hasAdtransDuplicateAmount(row.amount)) continue;
+
         for (const filter of normalizedFilters) {
             if (!matchesAdtransDuplicateFilter(row.doc_desc || '', filter)) continue;
             if (!matchesSpecificAdtransDocDesc(row.doc_desc || '', normalizedOptions)) continue;
@@ -779,6 +787,8 @@ export type ManualAdjustmentSyncStatusRowResult = {
     task_desc: string;
     old_sync_status: string | null;
     new_sync_status: string | null;
+    match_status: string | null;
+    diff: number | null;
     status: "UPDATED" | "UNCHANGED" | "SKIPPED";
     skip_reason: string | null;
     remarks_before: string | null;
@@ -1272,14 +1282,16 @@ function normalizeSyncStatus(value: unknown): string {
 }
 
 function normalizeManualAdjustmentSyncTypes(values?: string[]): string[] {
-    const allowedTypes = new Set(["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"]);
+    const allowedTypes = new Set(["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"]);
     const aliases: Record<string, string> = {
         PREMI: "PREMI",
         KOREKSI: "POTONGAN_KOTOR",
         POTONGAN_KOTOR: "POTONGAN_KOTOR",
         POTONGAN_UPAH_KOTOR: "POTONGAN_KOTOR",
         POTONGAN_BERSIH: "POTONGAN_BERSIH",
-        POTONGAN_UPAH_BERSIH: "POTONGAN_BERSIH"
+        POTONGAN_UPAH_BERSIH: "POTONGAN_BERSIH",
+        AUTO: "AUTO_BUFFER",
+        AUTO_BUFFER: "AUTO_BUFFER"
     };
 
     const normalized = (values && values.length > 0 ? values : Array.from(allowedTypes))
@@ -1296,6 +1308,12 @@ function resolveManualAdjustmentAdtransCategory(row: Pick<ManualAdjustment, "adj
     if (adjustmentType === "PREMI") return "premi";
     if (adjustmentType === "POTONGAN_KOTOR") return adjustmentName.includes("KOREKSI") ? "koreksi" : "potongan";
     if (adjustmentType === "POTONGAN_BERSIH") return "potongan";
+    if (adjustmentType === "AUTO_BUFFER") {
+        const autoBufferName = normalizeAutoBufferAdjustmentName(adjustmentName);
+        if (autoBufferName === "TUNJANGAN JABATAN") return "jabatan";
+        if (autoBufferName === "MASA KERJA") return "masa kerja";
+        if (autoBufferName === "SPSI") return "spsi";
+    }
     return "";
 }
 
@@ -1836,7 +1854,6 @@ export class ManualAdjustmentService {
             WHERE period_month = ?
               AND period_year = ?
               AND adjustment_type IN (${adjustmentTypes.map(() => "?").join(", ")})
-              AND adjustment_type <> 'AUTO_BUFFER'
               AND remarks IS NOT NULL
               AND remarks LIKE '%sync:%'
         `;
@@ -1878,7 +1895,7 @@ export class ManualAdjustmentService {
         const rows = (await db.query<ManualAdjustment>(query, params))
             .filter((row) => {
                 const type = normalizeText(row.adjustment_type).toUpperCase();
-                return type !== "AUTO_BUFFER" && adjustmentTypes.includes(type);
+                return adjustmentTypes.includes(type);
             });
         const adtransDetails = input.onlyIfAdtransExists
             ? await this.fetchManualAdjustmentSyncAdtransDetails(periodMonth, periodYear, input.divisionCode, rows)
@@ -1890,7 +1907,6 @@ export class ManualAdjustmentService {
             detailsByEmpCode.get(empCode)!.push(detail);
         }
 
-        const remainingAmountByKey = new Map<string, number>();
         let eligibleCount = 0;
         let adtransMatchedCount = 0;
         let updatedCount = 0;
@@ -1903,9 +1919,11 @@ export class ManualAdjustmentService {
             const id = Number(row.id);
             const empCode = normalizeIdentityValue(row.emp_code);
             const estateCode = normalizeIdentityValue(row.division_code);
-            const update = updatePipeDelimitedSyncStatus(row.remarks, targetSyncStatus);
             const amountInfo = resolveManualAdjustmentSyncTargetAmount(row);
             const adCodeFields = resolveManualAdjustmentResponseAdCodeFields(row);
+            const initialUpdate = input.onlyIfAdtransExists
+                ? null
+                : updatePipeDelimitedSyncStatus(row.remarks, targetSyncStatus);
             const baseResult: ManualAdjustmentSyncStatusRowResult = {
                 id,
                 emp_code: empCode,
@@ -1923,8 +1941,10 @@ export class ManualAdjustmentService {
                 ad_code_desc: adCodeFields.ad_code_desc,
                 ad_desc: adCodeFields.ad_desc,
                 task_desc: adCodeFields.task_desc,
-                old_sync_status: update?.oldSyncStatus || null,
-                new_sync_status: update?.newSyncStatus || null,
+                old_sync_status: initialUpdate?.oldSyncStatus || null,
+                new_sync_status: initialUpdate?.newSyncStatus || null,
+                match_status: null,
+                diff: null,
                 status: "SKIPPED",
                 skip_reason: null,
                 remarks_before: row.remarks || null,
@@ -1932,7 +1952,7 @@ export class ManualAdjustmentService {
                 adtrans_details: []
             };
 
-            if (!id || !update) {
+            if (!id) {
                 skippedCount++;
                 resultRows.push({
                     ...baseResult,
@@ -1942,52 +1962,55 @@ export class ManualAdjustmentService {
             }
 
             eligibleCount++;
+            let update = initialUpdate;
 
             if (input.onlyIfAdtransExists) {
                 const empDetails = detailsByEmpCode.get(empCode) || [];
                 const matchingDetails = empDetails.filter((detail) => adtransDetailMatchesManualAdjustment(row, detail));
-                const expectedTexts = buildManualAdjustmentExpectedAdtransTexts(row);
-                const category = resolveManualAdjustmentAdtransCategory(row);
-                const allocationKey = `${empCode}|${expectedTexts[0] || category || "UNKNOWN"}`;
-                if (!remainingAmountByKey.has(allocationKey)) {
-                    remainingAmountByKey.set(
-                        allocationKey,
-                        matchingDetails.reduce((sum, detail) => sum + Math.abs(toNumericAmount(detail.amount)), 0)
-                    );
-                }
-
-                const availableAmount = remainingAmountByKey.get(allocationKey) || 0;
+                const adtransAmountAbs = matchingDetails.reduce((sum, detail) => sum + Math.abs(toNumericAmount(detail.amount)), 0);
                 const targetAmountAbs = Math.abs(toNumericAmount(amountInfo.targetAmount));
                 const adtransDocDetails = matchingDetails.map((detail) => ({
                     doc_desc: detail.doc_desc,
                     doc_id: detail.doc_id,
                     amount: detail.amount
                 }));
-                baseResult.adtrans_amount = availableAmount;
+                const hasAdtrans = matchingDetails.length > 0;
+                const amountsMatch = Math.abs(adtransAmountAbs - targetAmountAbs) <= 0.01;
+                const isZeroWithoutAdtransMatch = !hasAdtrans && targetAmountAbs <= 0.01 && adtransAmountAbs <= 0.01;
+                const isMatch = (hasAdtrans && amountsMatch) || isZeroWithoutAdtransMatch;
+                const nextSyncStatus = isMatch ? "SYNC" : hasAdtrans ? "DIFF" : "MISS";
+                const nextMatchStatus = isMatch ? "MATCH" : "MISMATCH";
+
+                const reconciliationUpdate = updatePipeDelimitedSyncAndMatchStatus(row.remarks, nextSyncStatus, nextMatchStatus);
+                update = reconciliationUpdate;
+                baseResult.old_sync_status = reconciliationUpdate?.oldSyncStatus || null;
+                baseResult.new_sync_status = reconciliationUpdate?.newSyncStatus || null;
+                baseResult.match_status = reconciliationUpdate?.newMatchStatus || null;
+                baseResult.adtrans_amount = adtransAmountAbs;
+                baseResult.diff = adtransAmountAbs - targetAmountAbs;
                 baseResult.adtrans_details = adtransDocDetails;
 
-                if (matchingDetails.length === 0 || availableAmount <= 0.01) {
+                if (!update) {
                     skippedCount++;
                     resultRows.push({
                         ...baseResult,
-                        skip_reason: "ADTRANS_NOT_FOUND"
+                        skip_reason: "SYNC_SEGMENT_NOT_FOUND"
                     });
                     continue;
                 }
 
-                adtransMatchedCount++;
-
-                if (targetAmountAbs > 0.01 && availableAmount + 0.01 < targetAmountAbs) {
-                    skippedCount++;
-                    partialCount++;
-                    resultRows.push({
-                        ...baseResult,
-                        skip_reason: "ADTRANS_AMOUNT_PARTIAL"
-                    });
-                    continue;
+                if (hasAdtrans) {
+                    adtransMatchedCount++;
                 }
+            }
 
-                remainingAmountByKey.set(allocationKey, Math.max(0, availableAmount - targetAmountAbs));
+            if (!update) {
+                skippedCount++;
+                resultRows.push({
+                    ...baseResult,
+                    skip_reason: "SYNC_SEGMENT_NOT_FOUND"
+                });
+                continue;
             }
 
             if (!update.changed) {
@@ -2406,6 +2429,7 @@ export class ManualAdjustmentService {
               AND (${duplicateDocDescConditions})
               ${specificDocDescWhereSql}
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
+            HAVING SUM(ABS(ISNULL(ln.Amount, 0))) > 0.01
 
             UNION ALL
 
@@ -2425,6 +2449,7 @@ export class ManualAdjustmentService {
               AND (${duplicateDocDescConditions})
               ${specificDocDescWhereSql}
             GROUP BY t.ID, t.DocID, t.DocDate, t.DocDesc, t.EmpCode, t.EmpName
+            HAVING SUM(ABS(ISNULL(ln.Amount, 0))) > 0.01
         `;
 
         const [rows, duplicateRows] = await Promise.all([

@@ -57,7 +57,9 @@ export function normalizeAdtransFilter(filter: string): string {
 }
 
 export function isBrondolDocDesc(docDesc: string): boolean {
-    return normalizeUpper(docDesc).includes("BRONDOL");
+    const upper = normalizeUpper(docDesc);
+    if (!upper.includes("BRONDOL")) return false;
+    return !/\bBANTU\b/.test(upper);
 }
 
 export function isDynamicPremiDocDesc(docDesc: string): boolean {

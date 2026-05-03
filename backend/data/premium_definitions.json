@@ -1,7 +1,7 @@
 [
   {
     "adjustment_name": "PREMI JAGA",
-    "ad_code": "(AL0018P1A) (AL) TUNJANGAN JAGA GENSET",
+    "ad_code": "(AL) TUNJANGAN JAGA GENSET",
     "task_desc": "(AL) TUNJANGAN JAGA GENSET",
     "input_type": "blok",
     "is_active": true
@@ -85,8 +85,8 @@
   },
   {
     "adjustment_name": "PREMI ANGKUT TBS",
-    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
-    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT PUPUK / MUAT)",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT TBS)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) DRIVER - ANGKUT TBS)",
     "input_type": "kendaraan",
     "is_active": true
   },

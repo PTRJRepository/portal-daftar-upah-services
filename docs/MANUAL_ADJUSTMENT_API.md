@@ -24,22 +24,22 @@ Gunakan endpoint ini setelah input Plantware selesai. Endpoint akan:
 
 - membaca row manual adjustment dari `extend_db_ptrj.dbo.payroll_manual_adjustments`;
 - mengecek transaksi yang sudah masuk di `db_ptrj` (`PR_ADTRANS` dan `PR_ADTRANS_ARC`);
-- mengubah hanya segmen `sync:` di `remarks`, misalnya `sync:MANUAL` menjadi `sync:SYNC`;
-- tidak mengubah `amount`, `metadata_json`, `adjustment_name`, TaskDesc/ADCode, atau segmen `match:`;
+- mengubah segmen status `sync:` dan `match:` di `remarks` berdasarkan total ADTRANS terkini;
+- tidak mengubah `amount`, `metadata_json`, `adjustment_name`, atau TaskDesc/ADCode;
 - selalu mengembalikan field display ADCode: `ad_code`, `ad_code_desc`, `ad_desc`, dan `task_desc`;
-- melewati row yang belum ada di ADTRANS atau baru masuk sebagian detailnya.
+- memberi status `sync:SYNC | match:MATCH` jika total ADTRANS sama, `sync:DIFF | match:MISMATCH` jika ada transaksi tapi total beda, dan `sync:MISS | match:MISMATCH` jika target non-zero tidak punya transaksi pembanding. Target `0` tanpa transaksi pembanding dihitung sama dengan total `0`, jadi tetap `SYNC`.
 
 Gunakan `dry_run=true` dulu untuk verifikasi. Jika hasilnya sesuai, panggil ulang dengan `dry_run=false`.
 
 Seeder sync-status memproses default:
 
 ```text
-PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH
+PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH, AUTO_BUFFER
 ```
 
-Seeder tidak memproses `AUTO_BUFFER`. Default `only_if_adtrans_exists=true`, jadi row hanya ditandai `sync:SYNC` jika transaksi sudah ditemukan di `db_ptrj.PR_ADTRANS` / archive dan amount-nya cukup; row partial tetap dilewati dengan `skip_reason: ADTRANS_AMOUNT_PARTIAL`.
+Seeder memproses ulang row yang sudah `sync:SYNC`, termasuk `AUTO_BUFFER`, karena nilai Plantware bisa berubah setelah status lama ditulis. Default `only_if_adtrans_exists=true`, jadi hasilnya adalah audit ulang terhadap total `db_ptrj.PR_ADTRANS` / archive untuk employee dan adjustment tersebut.
 
-Catatan eksekusi awal AB1: pada 2026-05-01 sudah dijalankan untuk `period_month=4`, `period_year=2026`, `division_code=AB1`, `adjustment_type=PREMI`, `only_if_adtrans_exists=true`. Hasil apply: 27 row diubah ke `sync:SYNC`, 102 row belum ditemukan di ADTRANS, dan 2 row dilewati karena `ADTRANS_AMOUNT_PARTIAL`.
+Catatan: endpoint versi lama pernah tidak memberi status audit eksplisit untuk row missing/partial. Versi sekarang menulis status audit eksplisit: `SYNC`, `DIFF`, atau `MISS`.
 
 ---
 
@@ -1240,7 +1240,7 @@ POST /backend/upah/payroll/manual-adjustment/seed-sync-status
 | `division_code` / `estate` | string | No | Batasi estate/divisi seperti `AB1`, `IJL`, `P1A`. Jika kosong, proses semua row yang masuk limit. |
 | `gang_code` | string | No | Batasi gang tertentu. |
 | `emp_code` | string | No | Batasi satu employee. |
-| `adjustment_type` | string | No | Comma-separated type. Default semua manual: `PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH`. |
+| `adjustment_type` | string | No | Comma-separated type. Default: `PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH,AUTO_BUFFER`. |
 | `adjustment_types` | string[] | No | Alternatif array untuk `adjustment_type`. |
 | `adjustment_name` | string | No | Batasi nama adjustment spesifik, misalnya `PREMI TBS` atau `KOREKSI PANEN`. |
 | `sync_status` | string | No | Status target, default `SYNC`. |
@@ -1251,7 +1251,33 @@ POST /backend/upah/payroll/manual-adjustment/seed-sync-status
 
 ### Cara Pakai Aman
 
-1. Jalankan dry-run dulu:
+Endpoint ini bisa dipakai untuk scope sempit atau luas:
+
+- **Per divisi/estate**: isi `division_code`, misalnya `AB1`.
+- **Per gang**: isi `division_code` + `gang_code`.
+- **Per employee**: isi `division_code` + `emp_code`, atau pakai `ids` untuk row tertentu.
+- **Seluruh divisi**: kosongkan `division_code`. Backend akan memproses semua row dalam periode yang masuk `limit`.
+- **Disarankan untuk seluruh estate**: jalankan per divisi dalam loop/list. Ini lebih mudah diaudit karena setiap request punya `limit` maksimal 5000 dan response per divisi lebih kecil.
+
+Seeder ini **selalu audit ulang row yang sudah `sync:SYNC`** selama row masuk filter. Jadi jika status lama `SYNC` tetapi target non-zero tidak punya transaksi pembanding di `db_ptrj.PR_ADTRANS` / `PR_ADTRANS_ARC`, row akan menjadi `sync:MISS | match:MISMATCH`. Jika transaksi ada tetapi total nominal berbeda, row akan menjadi `sync:DIFF | match:MISMATCH`. Jika target `0` dan tidak ada transaksi pembanding, total dianggap sama-sama `0`, jadi row tetap `sync:SYNC | match:MATCH`.
+
+1. Jalankan dry-run per divisi dulu:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "adjustment_type": "PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH,AUTO_BUFFER",
+    "only_if_adtrans_exists": true,
+    "dry_run": true
+  }' | jq '.data | {matched_count, eligible_count, adtrans_matched_count, updated_count, unchanged_count, skipped_count}'
+```
+
+2. Review row bermasalah dari dry-run:
 
 ```bash
 curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
@@ -1262,10 +1288,12 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-statu
     "period_year": 2026,
     "division_code": "AB1",
     "dry_run": true
-  }' | jq '.data | {matched_count, updated_count, skipped_count, partial_count}'
+  }' | jq '.data.rows[]
+    | select(.new_sync_status == "DIFF" or .new_sync_status == "MISS" or .skip_reason != null)
+    | {id, emp_code, gang_code, adjustment_type, adjustment_name, old_sync_status, new_sync_status, match_status, target_amount, adtrans_amount, diff, adtrans_details, skip_reason}'
 ```
 
-2. Jika hasilnya benar, apply:
+3. Jika hasil dry-run benar, apply per divisi:
 
 ```bash
 curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
@@ -1277,10 +1305,81 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-statu
     "division_code": "AB1",
     "dry_run": false,
     "created_by": "agent_sync"
-  }' | jq '.data | {matched_count, updated_count, skipped_count, partial_count}'
+  }' | jq '.data | {matched_count, updated_count, unchanged_count, skipped_count}'
 ```
 
-3. Untuk type tertentu:
+4. Untuk gang tertentu:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "gang_code": "G1H",
+    "dry_run": true
+  }' | jq '.data.rows[] | {id, emp_code, adjustment_name, new_sync_status, diff}'
+```
+
+5. Untuk satu employee:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "division_code": "AB1",
+    "emp_code": "G0597",
+    "dry_run": true
+  }' | jq '.data.rows[] | {id, emp_code, adjustment_name, old_sync_status, new_sync_status, target_amount, adtrans_amount, diff}'
+```
+
+6. Untuk seluruh divisi dari API, kosongkan `division_code` dan set `limit`:
+
+```bash
+curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  -d '{
+    "period_month": 4,
+    "period_year": 2026,
+    "adjustment_type": "PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH,AUTO_BUFFER",
+    "limit": 5000,
+    "dry_run": true
+  }' | jq '.data | {matched_count, eligible_count, adtrans_matched_count, updated_count, unchanged_count, skipped_count}'
+```
+
+7. Cara lebih aman untuk semua divisi: panggil per divisi dalam loop:
+
+```powershell
+$headers = @{
+  "Content-Type" = "application/json"
+  "X-API-Key" = $env:API_KEY
+}
+
+@("AB1","AB2","P1A","P1B","P2A","P2B","IJL","DME","ARA","ARC") | ForEach-Object {
+  $body = @{
+    period_month = 4
+    period_year = 2026
+    division_code = $_
+    adjustment_type = "PREMI,POTONGAN_KOTOR,POTONGAN_BERSIH,AUTO_BUFFER"
+    only_if_adtrans_exists = $true
+    dry_run = $true
+    limit = 5000
+  } | ConvertTo-Json
+
+  Invoke-RestMethod -Method Post `
+    -Uri "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" `
+    -Headers $headers `
+    -Body $body
+}
+```
+
+8. Untuk type tertentu:
 
 ```bash
 curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-status/by-api-key" \
@@ -1293,8 +1392,16 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-statu
     "adjustment_type": "PREMI",
     "adjustment_name": "PREMI TBS",
     "dry_run": true
-  }' | jq '.data.rows[] | {id, emp_code, adjustment_name, status, skip_reason, old_sync_status, new_sync_status}'
+  }' | jq '.data.rows[] | {id, emp_code, adjustment_name, status, old_sync_status, new_sync_status, match_status, diff}'
 ```
+
+Untuk testing manual via browser, buka:
+
+```text
+Browser Automation/manual-adjustment-grouped-tester.html
+```
+
+Pilih `Audit sync vs db_ptrj`, jalankan `Dry Run Audit`, lalu filter `DIFF + MISS + skipped`. Tombol `Fill Risk EmpCodes` mengisi batch EmpCode yang pernah ditemukan bermasalah (`G0597`, `J0618`, `J0130`, `L0055`, `L0069`, `L0021`, `L0057`, `A0947`, `A0115`, `B0127`, `B0069`) agar bisa dicek ulang satu per satu terhadap `db_ptrj`.
 
 ### Response Ringkas
 
@@ -1304,7 +1411,7 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-statu
   "message": "Manual adjustment sync-status seeder checked 10 rows and updated 6",
   "data": {
     "seeder": "manual_adjustment_sync_status",
-    "adjustment_types": ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+    "adjustment_types": ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"],
     "period_month": 4,
     "period_year": 2026,
     "target_sync_status": "SYNC",
@@ -1315,20 +1422,26 @@ curl -s -X POST "http://localhost:8002/payroll/manual-adjustment/seed-sync-statu
     "adtrans_matched_count": 7,
     "updated_count": 6,
     "unchanged_count": 1,
-    "skipped_count": 3,
-    "partial_count": 1,
+    "skipped_count": 0,
+    "partial_count": 0,
     "rows": []
   }
 }
 ```
 
-`rows[].skip_reason` penting untuk debugging:
+`rows[].new_sync_status`, `rows[].match_status`, dan `rows[].diff` penting untuk debugging hasil audit. `skip_reason` hanya muncul jika format remarks tidak bisa diubah.
+
+Interpretasi status:
+
+| `new_sync_status` | Arti |
+|-------------------|------|
+| `SYNC` | Transaksi pembanding ditemukan di `db_ptrj` dan total nominal sama dengan target amount. |
+| `DIFF` | Transaksi pembanding ditemukan, tetapi total nominal berbeda. Cek `diff` dan `adtrans_details`. |
+| `MISS` | Target non-zero tidak punya transaksi pembanding yang cocok di `db_ptrj`. Ini harus dianggap masalah walaupun `old_sync_status` sebelumnya `SYNC`. Target `0` tanpa transaksi pembanding tetap `SYNC`. |
 
 | `skip_reason` | Arti |
 |----------------|------|
-| `ADTRANS_NOT_FOUND` | Belum ada transaksi match di Plantware. Jangan tandai sync. |
-| `ADTRANS_AMOUNT_PARTIAL` | Baru sebagian detail masuk Plantware. Tunggu semua detail masuk. |
-| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya segmen `sync:` sehingga tidak diubah. |
+| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya segmen `sync:` atau `match:` sehingga tidak diubah. |
 
 ---
 
@@ -2353,7 +2466,11 @@ emp_code + normalized filter/category + normalized DocDesc + normalized Amount
 
 `DocID` bukan kunci duplikat. `DocID` hanya identitas record untuk menentukan `keep_doc_id` dan `delete_doc_ids`.
 
+Sebelum masuk `duplicate_report`, setiap kandidat `DocID` juga harus punya nilai amount detail yang bermakna di `PR_ADTRANSLN` / `PR_ADTRANSLN_ARC`. Endpoint mengabaikan record yang hanya punya header `PR_ADTRANS.DocDesc` tetapi total detail line amount kosong, `NULL`, atau `0`. Jadi dua `DocID` dengan `DocDesc` sama tidak otomatis duplicate; record lama baru masuk `delete_doc_ids` jika record lama itu juga memiliki amount detail di `PR_ADTRANSLN`.
+
 Contoh: employee `L0073` memiliki dua record `DocDesc = PREMI TBS` dengan `Amount = 1046398`, maka masuk duplicate kategori `premi`. Jika employee yang sama memiliki `PREMI TBS` amount berbeda, itu tidak digabung sebagai duplicate yang sama.
+
+Contoh bukan duplicate: employee punya dua header `DocDesc = PREMI TBS`, tetapi `DocID` lama tidak punya amount detail di `PR_ADTRANSLN` atau amount detailnya `0`. Walaupun `DocDesc` sama, endpoint tidak akan merekomendasikan `DocID` lama itu untuk dihapus sebagai duplicate.
 
 Khusus `filter = premi`, `duplicate_report` hanya menganggap duplicate cleanup untuk `DocDesc` yang diawali `PREMI`, misalnya `PREMI TBS` atau `PREMI INSENTIF PANEN`. `DocDesc` seperti `INSENTIF PANEN` tetap bisa muncul di agregasi/check detail jika match pattern premi, tetapi tidak masuk rekomendasi duplicate cleanup premi karena tidak diawali `PREMI`.
 
@@ -2424,6 +2541,7 @@ Catatan penting:
 
 - Response tidak menyertakan nominal, employee, atau `DocDesc`; gunakan `check-adtrans/by-api-key` jika butuh audit detail.
 - Endpoint ini tidak membandingkan nilai dengan `payroll_manual_adjustments`. Untuk mencari `DocID` yang statusnya `MISMATCH` terhadap manual adjustment, gunakan `compare-adtrans/by-api-key` lalu ambil `doc_id` dari `db_ptrj_doc_desc_details[]`.
+- `DocID` yang hanya punya header `PR_ADTRANS` tetapi tidak punya amount detail bermakna di `PR_ADTRANSLN` / `PR_ADTRANSLN_ARC` tidak dikembalikan untuk cleanup.
 - `doc_ids` sudah dibuat unik, jadi `DocID` yang muncul lebih dari satu kali di hasil query hanya dikirim sekali.
 - `division_code` mengikuti normalisasi yang sama dengan `check-adtrans`, misalnya `PG2A`/`2A` dipakai sebagai `P2A` di `PR_ADTRANS.LocCode`.
 - Endpoint memakai `PhyMonth` dan `PhyYear`, bukan `AccMonth`/`AccYear`.
@@ -2833,16 +2951,15 @@ jq '.data.comparisons[]
 
 ### 6. POST `/payroll/manual-adjustment/sync-status/by-api-key`
 
-Endpoint ini dipakai oleh browser automation atau agent lain setelah selesai input manual adjustment ke Plantware. Tujuannya bukan membuat nominal baru, tetapi memverifikasi data sudah masuk ke `db_ptrj` (`PR_ADTRANS`/`PR_ADTRANS_ARC`) lalu mengubah status `sync:` pada `remarks`.
+Endpoint ini dipakai oleh browser automation atau agent lain setelah selesai input manual adjustment ke Plantware. Tujuannya bukan membuat nominal baru, tetapi memverifikasi data sudah masuk ke `db_ptrj` (`PR_ADTRANS`/`PR_ADTRANS_ARC`) lalu mengubah status `sync:` dan `match:` pada `remarks`.
 
 Aturan penting:
 
-- Hanya memproses `PREMI`, `POTONGAN_KOTOR`, dan `POTONGAN_BERSIH`.
-- Tidak memproses `AUTO_BUFFER`.
-- Hanya mengubah segmen pipe `sync:<status>` dari `remarks.split("|")`; segmen lain seperti adjustment name, task desc/ADCode, amount, dan `match:` tidak diubah.
+- Memproses `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, dan `AUTO_BUFFER`.
+- Mengubah segmen pipe `sync:<status>` dan `match:<status>` dari `remarks.split("|")`; segmen lain seperti adjustment name, task desc/ADCode, dan amount tidak diubah.
 - Response setiap row harus punya `ad_code`, `ad_code_desc`, `ad_desc`, dan `task_desc` yang tidak null. Nilai diambil dari kolom structured jika ada, lalu parse remarks, lalu fallback `backend/data/premium_definitions.json`, lalu fallback terakhir `adjustment_name`.
-- Jika `only_if_adtrans_exists=true`, row hanya diubah menjadi `sync:SYNC` kalau transaksi terkait sudah ditemukan di `db_ptrj`.
-- Untuk premi yang punya `metadata_json` detail, pembanding nominal memakai total detail metadata. Jika baru sebagian detail/subblok yang terinput di Plantware, response memberi `skip_reason: "ADTRANS_AMOUNT_PARTIAL"` dan remarks tidak diubah.
+- Jika `only_if_adtrans_exists=true`, total transaksi terkait dijumlahkan dulu. Row menjadi `sync:SYNC | match:MATCH` jika total sama, `sync:DIFF | match:MISMATCH` jika ada transaksi tapi total beda, dan `sync:MISS | match:MISMATCH` jika target non-zero tidak ada transaksi pembanding. Target `0` tanpa transaksi pembanding dihitung sebagai total `0`, jadi tetap `SYNC`.
+- Untuk premi yang punya `metadata_json` detail, pembanding nominal memakai total detail metadata. Jika baru sebagian detail/subblok yang terinput di Plantware, row ditandai `sync:DIFF`, bukan dilewati.
 
 Jangan tertukar dengan `sync-adtrans/by-api-key`. Endpoint `sync-adtrans` membuat atau mengubah data manual adjustment dari ADTRANS. Endpoint `sync-status` hanya menandai row manual adjustment yang sudah berhasil diinput ke Plantware.
 
@@ -2855,7 +2972,7 @@ Jangan tertukar dengan `sync-adtrans/by-api-key`. Endpoint `sync-adtrans` membua
 | `division_code` / `estate` | string | no | Estate/LocCode seperti `AB1`; disarankan selalu isi |
 | `gang_code` | string | no | Filter gang tertentu |
 | `emp_code` | string | no | Filter employee tertentu |
-| `adjustment_type` | string | no | `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, atau comma-separated |
+| `adjustment_type` | string | no | `PREMI`, `POTONGAN_KOTOR`, `POTONGAN_BERSIH`, `AUTO_BUFFER`, atau comma-separated |
 | `adjustment_types` | string[] | no | Alternatif array untuk type |
 | `adjustment_name` | string | no | Filter nama adjustment |
 | `ids` | number[] | no | Target row spesifik `payroll_manual_adjustments.id` |
@@ -2871,16 +2988,17 @@ Jangan tertukar dengan `sync-adtrans/by-api-key`. Endpoint `sync-adtrans` membua
 - Untuk `PREMI`, kategori ADTRANS adalah dokumen premi dinamis.
 - Untuk `POTONGAN_KOTOR`, kategori ADTRANS adalah `koreksi` jika nama adjustment mengandung `KOREKSI`; selain itu dianggap `potongan`.
 - Untuk `POTONGAN_BERSIH`, kategori ADTRANS dianggap `potongan`.
+- Untuk `AUTO_BUFFER`, kategori ADTRANS adalah `jabatan`, `masa kerja`, atau `spsi` berdasarkan `adjustment_name`.
 - Matching memakai employee (`emp_code`), LocCode/estate, kategori DocDesc, dan teks TaskDesc/ADCode dari remarks/definition jika tersedia.
-- Jika `metadata_json` punya detail, `target_amount` memakai total detail metadata. Ini penting untuk premi per subblok: row baru boleh `SYNC` kalau nominal ADTRANS sudah menutup total detail yang seharusnya diinput.
+- Jika `metadata_json` punya detail, `target_amount` memakai total detail metadata. Ini penting untuk premi per subblok: row baru menjadi `SYNC` hanya kalau total ADTRANS sama dengan total detail yang seharusnya diinput.
 
 **Flow browser automation yang disarankan:**
 
 1. Ambil data input dari `GET /payroll/manual-adjustment/by-api-key?view=grouped&metadata_only=true`.
 2. Browser automation input satu atau beberapa employee/detail ke Plantware.
 3. Panggil endpoint ini dengan `only_if_adtrans_exists=true` dan `dry_run=true` untuk preview.
-4. Jika `updated_count` sesuai dan `partial_count=0`, panggil lagi dengan `dry_run=false`.
-5. Jika ada `ADTRANS_AMOUNT_PARTIAL`, lanjutkan input detail/subblok yang belum masuk; jangan paksa `sync:SYNC`.
+4. Review row yang akan menjadi `SYNC`, `DIFF`, atau `MISS`.
+5. Jika hasil audit sesuai, panggil lagi dengan `dry_run=false`.
 
 **Contoh dry run untuk AB1 premi:**
 
@@ -2955,7 +3073,7 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api
   }'
 ```
 
-**Contoh response partial detail:**
+**Contoh response nominal detail berbeda:**
 
 ```json
 {
@@ -2964,8 +3082,8 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api
     "matched_count": 1,
     "eligible_count": 1,
     "adtrans_matched_count": 1,
-    "updated_count": 0,
-    "partial_count": 1,
+    "updated_count": 1,
+    "partial_count": 0,
     "rows": [
       {
         "id": 14,
@@ -2980,11 +3098,13 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api
         "ad_desc": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
         "task_desc": "(AL) TUNJANGAN PREMI ((PM) PRUNING)",
         "old_sync_status": "MANUAL",
-        "new_sync_status": "SYNC",
-        "status": "SKIPPED",
-        "skip_reason": "ADTRANS_AMOUNT_PARTIAL",
+        "new_sync_status": "DIFF",
+        "match_status": "MISMATCH",
+        "diff": -150000,
+        "status": "UPDATED",
+        "skip_reason": null,
         "remarks_before": "PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 500000 | sync:MANUAL | match:MANUAL",
-        "remarks_after": null
+        "remarks_after": "PREMI PRUNING | AL3PM0601P1A - PRUNING MANUAL | 500000 | sync:DIFF | match:MISMATCH"
       }
     ]
   }
@@ -3001,7 +3121,7 @@ curl -X POST "http://localhost:8002/payroll/manual-adjustment/sync-status/by-api
 | `updated_count` | Row yang remarks-nya benar-benar diubah |
 | `unchanged_count` | Row yang sudah berada di target `sync_status` |
 | `skipped_count` | Row yang dilewati karena tidak memenuhi syarat |
-| `partial_count` | Row detail/metadata yang baru sebagian nominalnya ditemukan di ADTRANS |
+| `partial_count` | Field kompatibilitas lama; audit nominal berbeda sekarang ditulis sebagai `sync:DIFF` |
 | `rows[]` | Detail keputusan per row, termasuk `remarks_before`, `remarks_after`, dan `skip_reason` |
 
 Field ADCode per `rows[]`:
@@ -3017,9 +3137,7 @@ Field ADCode per `rows[]`:
 
 | skip_reason | Arti |
 |-------------|------|
-| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya format pipe `sync:<status>` |
-| `ADTRANS_NOT_FOUND` | Belum ada transaksi cocok di `db_ptrj` |
-| `ADTRANS_AMOUNT_PARTIAL` | Ada transaksi cocok, tapi nominal belum menutup total row/detail metadata |
+| `SYNC_SEGMENT_NOT_FOUND` | Remarks tidak punya format pipe `sync:<status>` atau `match:<status>` |
 
 ---
 

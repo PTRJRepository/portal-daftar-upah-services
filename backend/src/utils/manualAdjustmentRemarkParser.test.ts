@@ -3,6 +3,7 @@ import {
     inferManualAdjustmentAdCodeFromRemarks,
     normalizeManualAdjustmentPresetName,
     parsePipeDelimitedRemarks,
+    updatePipeDelimitedSyncAndMatchStatus,
     updatePipeDelimitedSyncStatus
 } from "./manualAdjustmentRemarkParser";
 
@@ -155,5 +156,38 @@ describe("updatePipeDelimitedSyncStatus", () => {
     it("returns null when remarks are not pipe-delimited or have no sync segment", () => {
         expect(updatePipeDelimitedSyncStatus("manual note", "SYNC")).toBeNull();
         expect(updatePipeDelimitedSyncStatus("PREMI TBS | (AL) TASK | 1000 | match:MANUAL", "SYNC")).toBeNull();
+    });
+});
+
+describe("updatePipeDelimitedSyncAndMatchStatus", () => {
+    it("updates sync and match segments while preserving all other remarks segments", () => {
+        const remarks = "PREMI JAGA | AL0018 - JAGA | 350000 | sync:SYNC | match:MATCH";
+
+        expect(updatePipeDelimitedSyncAndMatchStatus(remarks, "DIFF", "MISMATCH")).toEqual({
+            remarks: "PREMI JAGA | AL0018 - JAGA | 350000 | sync:DIFF | match:MISMATCH",
+            oldSyncStatus: "SYNC",
+            newSyncStatus: "DIFF",
+            oldMatchStatus: "MATCH",
+            newMatchStatus: "MISMATCH",
+            changed: true
+        });
+    });
+
+    it("returns unchanged status when sync and match already match the target values", () => {
+        const remarks = "SPSI | potongan spsi | 4000 | sync:MISS | match:MISMATCH";
+
+        expect(updatePipeDelimitedSyncAndMatchStatus(remarks, "miss", "mismatch")).toEqual({
+            remarks,
+            oldSyncStatus: "MISS",
+            newSyncStatus: "MISS",
+            oldMatchStatus: "MISMATCH",
+            newMatchStatus: "MISMATCH",
+            changed: false
+        });
+    });
+
+    it("returns null when either status segment is missing", () => {
+        expect(updatePipeDelimitedSyncAndMatchStatus("PREMI | AL001 | 1000 | sync:MISS", "SYNC", "MATCH")).toBeNull();
+        expect(updatePipeDelimitedSyncAndMatchStatus("PREMI | AL001 | 1000 | match:MISMATCH", "SYNC", "MATCH")).toBeNull();
     });
 });

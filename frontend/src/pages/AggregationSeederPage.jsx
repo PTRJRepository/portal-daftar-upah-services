@@ -32,6 +32,65 @@ import {
 } from '../services/historyService';
 import '../styles/aggregation-seeder.css';
 
+const MANUAL_SYNC_ADJUSTMENT_TYPES = ['PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH', 'AUTO_BUFFER'];
+const MANUAL_SYNC_LIMIT = 5000;
+const MANUAL_SYNC_KNOWN_DIVISIONS = [
+    'PG1A',
+    'PG1B',
+    'PG2A',
+    'PG2B',
+    'PGE',
+    'AB1',
+    'AB2',
+    'ARA',
+    'ARC',
+    'DME',
+    'IJL',
+    'INF',
+    'NRS',
+    'WKS_AR',
+    'WKS_PG',
+    'WORKSHOP',
+    'MILL'
+];
+
+function manualSyncDivisionGroupKey(value) {
+    const code = String(value || '').trim().toUpperCase();
+    const aliases = {
+        '1A': 'P1A',
+        P1A: 'P1A',
+        PG1A: 'P1A',
+        '1B': 'P1B',
+        P1B: 'P1B',
+        PG1B: 'P1B',
+        '2A': 'P2A',
+        P2A: 'P2A',
+        PG2A: 'P2A',
+        '2B': 'P2B',
+        P2B: 'P2B',
+        PG2B: 'P2B',
+        ARB1: 'AB1',
+        ARB2: 'AB2',
+        AREC: 'ARC'
+    };
+    return aliases[code] || code;
+}
+
+function buildManualSyncTargetDivisions(selectedDivision, availableDivisions) {
+    if (selectedDivision !== 'ALL') return [selectedDivision];
+
+    const seen = new Set();
+    return [...MANUAL_SYNC_KNOWN_DIVISIONS, ...availableDivisions]
+        .map((item) => String(item || '').trim().toUpperCase())
+        .filter((item) => item && item !== 'ALL')
+        .filter((item) => {
+            const key = manualSyncDivisionGroupKey(item);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
 export default function AggregationSeederPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
 
@@ -324,9 +383,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
             return;
         }
 
-        const targetDivisions = division === 'ALL'
-            ? divisions.filter((item) => item && item !== 'ALL')
-            : [division];
+        const targetDivisions = buildManualSyncTargetDivisions(division, divisions);
 
         if (targetDivisions.length === 0) {
             addLog('ERROR: No target division available for manual adjustment sync status seeder.', 'error');
@@ -336,15 +393,21 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
         const scopeLabel = division === 'ALL'
             ? `ALL divisions (${targetDivisions.length})`
             : division;
-        const confirmMsg = `Update sync status remarks for PREMI, KOREKSI/POTONGAN_KOTOR, and POTONGAN_BERSIH in ${scopeLabel} period ${formatMonthName(month)} ${year}?\n\nOnly rows matched to PR_ADTRANS will be updated.`;
+        const confirmMsg = `Update sync status remarks for PREMI, KOREKSI/POTONGAN_KOTOR, POTONGAN_BERSIH, and AUTO_BUFFER in ${scopeLabel} period ${formatMonthName(month)} ${year}?\n\nRows will be rechecked against current PR_ADTRANS/PR_ADTRANS_ARC totals. Existing sync:SYNC rows can become sync:DIFF or sync:MISS if db_ptrj no longer matches. Target 0 without db_ptrj transaction stays sync:SYNC.`;
         if (!window.confirm(confirmMsg)) return;
 
         setIsManualSyncSeeding(true);
         addLog('='.repeat(40), 'info');
-        addLog('Starting Manual Adjustment Sync Status seeder...');
+        addLog('Starting Manual Adjustment Sync Status audit/update...');
         addLog(`Period: ${formatMonthName(month)} ${year}`);
         addLog(`Scope: ${scopeLabel}`);
-        addLog('Types: PREMI, POTONGAN_KOTOR, POTONGAN_BERSIH');
+        addLog(`Types: ${MANUAL_SYNC_ADJUSTMENT_TYPES.join(', ')}`);
+        addLog('Method: recheck every matching row against PR_ADTRANS/PR_ADTRANS_ARC totals, including old sync:SYNC rows.');
+        addLog('Result status: SYNC when totals match, DIFF when ADTRANS exists but amount differs, MISS when non-zero target has no matching ADTRANS. Target 0 without ADTRANS stays SYNC.');
+        addLog(`Limit per division request: ${MANUAL_SYNC_LIMIT} rows`);
+        if (division === 'ALL') {
+            addLog(`Target divisions: ${targetDivisions.join(', ')}`);
+        }
 
         let successCount = 0;
         let failedCount = 0;
@@ -355,7 +418,10 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
             updated_count: 0,
             unchanged_count: 0,
             skipped_count: 0,
-            partial_count: 0
+            sync_count: 0,
+            diff_count: 0,
+            miss_count: 0,
+            old_sync_problem_count: 0
         };
 
         try {
@@ -366,10 +432,11 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         period_month: month,
                         period_year: year,
                         division_code: divisionCode,
-                        adjustment_types: ['PREMI', 'POTONGAN_KOTOR', 'POTONGAN_BERSIH'],
+                        adjustment_types: MANUAL_SYNC_ADJUSTMENT_TYPES,
                         sync_status: 'SYNC',
                         only_if_adtrans_exists: true,
                         dry_run: false,
+                        limit: MANUAL_SYNC_LIMIT,
                         created_by: user?.username || 'seeder_ui'
                     });
 
@@ -387,12 +454,36 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                     aggregate.updated_count += Number(data.updated_count || 0);
                     aggregate.unchanged_count += Number(data.unchanged_count || 0);
                     aggregate.skipped_count += Number(data.skipped_count || 0);
-                    aggregate.partial_count += Number(data.partial_count || 0);
+                    if (Number(data.matched_count || 0) >= MANUAL_SYNC_LIMIT) {
+                        addLog(`${divisionCode}: WARNING matched rows reached limit ${MANUAL_SYNC_LIMIT}. Run this division with narrower gang/employee scope if needed.`, 'warn');
+                    }
+                    const rows = Array.isArray(data.rows) ? data.rows : [];
+                    const syncCount = rows.filter((row) => String(row?.new_sync_status || '').toUpperCase() === 'SYNC').length;
+                    const diffCount = rows.filter((row) => String(row?.new_sync_status || '').toUpperCase() === 'DIFF').length;
+                    const missCount = rows.filter((row) => String(row?.new_sync_status || '').toUpperCase() === 'MISS').length;
+                    const oldSyncProblemRows = rows.filter((row) => {
+                        const oldStatus = String(row?.old_sync_status || '').toUpperCase();
+                        const newStatus = String(row?.new_sync_status || '').toUpperCase();
+                        return oldStatus === 'SYNC' && newStatus && newStatus !== 'SYNC';
+                    });
+                    aggregate.sync_count += syncCount;
+                    aggregate.diff_count += diffCount;
+                    aggregate.miss_count += missCount;
+                    aggregate.old_sync_problem_count += oldSyncProblemRows.length;
 
                     addLog(
-                        `${divisionCode}: matched=${Number(data.matched_count || 0)}, updated=${Number(data.updated_count || 0)}, skipped=${Number(data.skipped_count || 0)}, partial=${Number(data.partial_count || 0)}`,
-                        'success'
+                        `${divisionCode}: matched=${Number(data.matched_count || 0)}, updated=${Number(data.updated_count || 0)}, sync=${syncCount}, diff=${diffCount}, miss=${missCount}, skipped=${Number(data.skipped_count || 0)}`,
+                        diffCount || missCount || oldSyncProblemRows.length ? 'warn' : 'success'
                     );
+                    if (oldSyncProblemRows.length > 0) {
+                        addLog(`${divisionCode}: WARNING ${oldSyncProblemRows.length} row lama sync:SYNC berubah menjadi DIFF/MISS setelah cek db_ptrj.`, 'error');
+                        oldSyncProblemRows.slice(0, 5).forEach((row) => {
+                            addLog(
+                                `  id=${row.id} emp=${row.emp_code} type=${row.adjustment_type} name=${row.adjustment_name} old=${row.old_sync_status} new=${row.new_sync_status} target=${row.target_amount} db_ptrj=${row.adtrans_amount} diff=${row.diff}`,
+                                'error'
+                            );
+                        });
+                    }
                 } catch (error) {
                     failedCount += 1;
                     const message = error?.response?.data?.error || error?.message || 'Sync status seeder failed';
@@ -412,8 +503,11 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
             addLog(`Total ADTRANS matched: ${aggregate.adtrans_matched_count}`);
             addLog(`Total updated: ${aggregate.updated_count}`);
             addLog(`Total unchanged: ${aggregate.unchanged_count}`);
+            addLog(`Total SYNC: ${aggregate.sync_count}`);
+            addLog(`Total DIFF: ${aggregate.diff_count}`);
+            addLog(`Total MISS: ${aggregate.miss_count}`);
+            addLog(`Old sync:SYNC changed to DIFF/MISS: ${aggregate.old_sync_problem_count}`, aggregate.old_sync_problem_count > 0 ? 'error' : 'success');
             addLog(`Total skipped: ${aggregate.skipped_count}`);
-            addLog(`Total partial: ${aggregate.partial_count}`);
         } finally {
             setIsManualSyncSeeding(false);
         }
@@ -857,7 +951,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         className="agg-btn"
                         style={{ backgroundColor: '#2563eb', borderColor: '#1d4ed8', color: 'white', marginTop: '8px' }}
                     >
-                        {isManualSyncSeeding ? 'Updating Sync Status...' : 'Seed Sync Status Manual Adj'}
+                        {isManualSyncSeeding ? 'Updating Sync Status...' : 'Update Sync Status Manual Adj'}
                     </button>
 
                     <button

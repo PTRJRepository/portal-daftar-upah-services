@@ -124,6 +124,103 @@ export function getManualAdjustmentsForEmployee(index: ManualAdjustmentIdentityI
     return result;
 }
 
+type JoinDateOverlayRow = {
+    emp_code?: unknown;
+    join_date?: unknown;
+};
+
+function addJoinDateRows(target: Map<string, string>, rows: JoinDateOverlayRow[] = []): void {
+    for (const row of rows || []) {
+        const empCode = normalizeManualAdjustmentIdentityKey(row.emp_code);
+        const joinDate = row.join_date;
+        if (!empCode || !joinDate || target.has(empCode)) continue;
+        target.set(empCode, String(joinDate));
+    }
+}
+
+export function applyJoinDateSourcesToEmployees(
+    employees: Array<{ emp_code?: unknown; join_date?: any }>,
+    sources: {
+        profileOverrideRows?: JoinDateOverlayRow[];
+        valueOverrideRows?: JoinDateOverlayRow[];
+        historyRows?: JoinDateOverlayRow[];
+    }
+): void {
+    const joinDateMap = new Map<string, string>();
+    addJoinDateRows(joinDateMap, sources.profileOverrideRows);
+    addJoinDateRows(joinDateMap, sources.valueOverrideRows);
+    addJoinDateRows(joinDateMap, sources.historyRows);
+
+    for (const emp of employees || []) {
+        const empCode = normalizeManualAdjustmentIdentityKey(emp.emp_code);
+        const joinDate = joinDateMap.get(empCode);
+        if (joinDate) {
+            emp.join_date = joinDate;
+        }
+    }
+}
+
+export function buildLatestProfileJoinDateQuery(empCodeList: string): string {
+    return `
+        SELECT emp_code, join_date
+        FROM (
+            SELECT
+                RTRIM(emp_code) as emp_code,
+                effective_start_date as join_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY RTRIM(emp_code)
+                    ORDER BY update_index DESC, id DESC
+                ) as rn
+            FROM dbo.employee_profile_override_history
+            WHERE RTRIM(emp_code) IN (${empCodeList})
+              AND effective_start_date IS NOT NULL
+              AND is_active_record = 1
+        ) latest
+        WHERE rn = 1
+    `;
+}
+
+export function buildLatestValueJoinDateQuery(empCodeList: string): string {
+    return `
+        SELECT emp_code, join_date
+        FROM (
+            SELECT
+                RTRIM(emp_code) as emp_code,
+                text_value as join_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY RTRIM(emp_code)
+                    ORDER BY update_index DESC, id DESC
+                ) as rn
+            FROM dbo.payroll_value_override_history
+            WHERE RTRIM(emp_code) IN (${empCodeList})
+              AND field_name = 'join_date'
+              AND text_value IS NOT NULL
+              AND is_active_record = 1
+        ) latest
+        WHERE rn = 1
+    `;
+}
+
+function buildLatestHistoryJoinDateQuery(empCodeList: string): string {
+    return `
+        SELECT emp_code, join_date
+        FROM (
+            SELECT
+                RTRIM(emp_code) as emp_code,
+                join_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY RTRIM(emp_code)
+                    ORDER BY id DESC
+                ) as rn
+            FROM dbo.history_hr_employee
+            WHERE RTRIM(emp_code) IN (${empCodeList})
+              AND join_date IS NOT NULL
+        ) latest
+        WHERE rn = 1
+          AND join_date IS NOT NULL
+    `;
+}
+
 export function pickStaticPremiForManualBuffer(source: Record<string, number>): Record<string, number> {
     const brondol = Number(
         source?.brondol
@@ -842,68 +939,20 @@ export class DataExtractorService {
             if (empCodeList) {
                 try {
                     const extendDb = Database.getExtendedInstance();
-                    const joinDateMap = new Map<string, string>();
+                    // Priority 1: profile override from current edit mode.
+                    const profileJoinRows = await extendDb.query<any>(buildLatestProfileJoinDateQuery(empCodeList));
 
-                    // Priority 1: period/value override
-                    const valueOverrideRows = await extendDb.query<any>(`
-                        SELECT emp_code, text_value as join_date
-                        FROM dbo.payroll_value_override_history
-                        WHERE RTRIM(emp_code) IN (${empCodeList})
-                          AND field_name = 'join_date'
-                          AND is_active_record = 1
-                    `);
-                    for (const row of valueOverrideRows || []) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        const joinDate = row.join_date;
-                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
-                        joinDateMap.set(empCode, joinDate);
-                    }
-
-                    // Priority 2: profile override
-                    const profileJoinRows = await extendDb.query<any>(`
-                        SELECT p.emp_code, p.effective_start_date as join_date
-                        FROM dbo.employee_profile_override_history p
-                        INNER JOIN (
-                            SELECT emp_code, MAX(id) as max_id
-                            FROM dbo.employee_profile_override_history
-                            WHERE RTRIM(emp_code) IN (${empCodeList})
-                              AND effective_start_date IS NOT NULL
-                            GROUP BY emp_code
-                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
-                    `);
-                    for (const row of profileJoinRows || []) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        const joinDate = row.join_date;
-                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
-                        joinDateMap.set(empCode, joinDate);
-                    }
+                    // Priority 2: legacy period/value override fallback.
+                    const valueOverrideRows = await extendDb.query<any>(buildLatestValueJoinDateQuery(empCodeList));
 
                     // Priority 3: HR history base
-                    const historyJoinRows = await extendDb.query<any>(`
-                        SELECT h.emp_code, h.join_date
-                        FROM dbo.history_hr_employee h
-                        INNER JOIN (
-                            SELECT emp_code, MAX(id) as max_id
-                            FROM dbo.history_hr_employee
-                            WHERE RTRIM(emp_code) IN (${empCodeList})
-                              AND join_date IS NOT NULL
-                            GROUP BY emp_code
-                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
-                        WHERE h.join_date IS NOT NULL
-                    `);
-                    for (const row of historyJoinRows || []) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        const joinDate = row.join_date;
-                        if (!empCode || !joinDate || joinDateMap.has(empCode)) continue;
-                        joinDateMap.set(empCode, joinDate);
-                    }
+                    const historyJoinRows = await extendDb.query<any>(buildLatestHistoryJoinDateQuery(empCodeList));
 
-                    for (const emp of employees) {
-                        const joinDate = joinDateMap.get(String(emp.emp_code || '').trim().toUpperCase());
-                        if (joinDate) {
-                            emp.join_date = joinDate;
-                        }
-                    }
+                    applyJoinDateSourcesToEmployees(employees, {
+                        profileOverrideRows: profileJoinRows,
+                        valueOverrideRows,
+                        historyRows: historyJoinRows
+                    });
                 } catch (e: any) {
                     warn(CATEGORY, `⚠️ Join date enrichment skipped: ${e.message}`);
                 }
@@ -3938,94 +3987,43 @@ export class DataExtractorService {
             }
 
             // [JOIN_DATE] Get join_date with override support
-            // Priority: 1) payroll_value_override_history (edit mode),
-            //           2) employee_profile_override_history.effective_start_date,
-            //           3) history_hr_employee (MAX id per employee)
+            // Priority: 1) employee_profile_override_history.effective_start_date (current edit mode),
+            //           2) payroll_value_override_history legacy join_date fallback,
+            //           3) history_hr_employee seed base.
             let joinDateFound = 0;
             try {
                 const extendDb = Database.getExtendedInstance();
 
-                // First: Check payroll_value_override_history for join_date overrides
-                const overrideRows = await withTimeout('Join date lookup (value override)',
-                    extendDb.query<any>(`
-                        SELECT emp_code, text_value as join_date
-                        FROM dbo.payroll_value_override_history
-                        WHERE RTRIM(emp_code) IN (${empCodeList})
-                          AND field_name = 'join_date'
-                          AND is_active_record = 1
-                    `),
+                const profileOverrideRows = await withTimeout('Join date lookup (profile override latest)',
+                    extendDb.query<any>(buildLatestProfileJoinDateQuery(empCodeList)),
                     5000
                 );
 
-                const joinDateMap = new Map<string, string>();
+                const overrideRows = await withTimeout('Join date lookup (legacy value override latest)',
+                    extendDb.query<any>(buildLatestValueJoinDateQuery(empCodeList)),
+                    5000
+                );
                 if (overrideRows && overrideRows.length > 0) {
-                    for (const row of overrideRows) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        if (empCode && !joinDateMap.has(empCode)) {
-                            joinDateMap.set(empCode, row.join_date);
-                        }
-                    }
                     debug(CATEGORY, `📋 Join date from value override: ${overrideRows.length} overrides found`);
                 }
 
-                // Second: Check employee_profile_override_history for effective_start_date overrides (MAX id per employee)
-                const profileOverrideRows = await withTimeout('Join date lookup (profile override MAX id)',
-                    extendDb.query<any>(`
-                        SELECT p.emp_code, p.effective_start_date as join_date
-                        FROM dbo.employee_profile_override_history p
-                        INNER JOIN (
-                            SELECT emp_code, MAX(id) as max_id
-                            FROM dbo.employee_profile_override_history
-                            WHERE RTRIM(emp_code) IN (${empCodeList})
-                              AND effective_start_date IS NOT NULL
-                            GROUP BY emp_code
-                        ) latest ON p.emp_code = latest.emp_code AND p.id = latest.max_id
-                    `),
-                    5000
-                );
                 if (profileOverrideRows && profileOverrideRows.length > 0) {
-                    for (const row of profileOverrideRows) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        // Profile override takes precedence over history_hr_employee but not over value override
-                        if (empCode && !joinDateMap.has(empCode)) {
-                            joinDateMap.set(empCode, row.join_date);
-                        }
-                    }
-                    debug(CATEGORY, `📋 Join date from profile override (MAX id): ${profileOverrideRows.length} found`);
+                    debug(CATEGORY, `📋 Join date from profile override latest: ${profileOverrideRows.length} found`);
                 }
 
-                // Third: Fill remaining from history_hr_employee (MAX id per employee)
-                const historyRows = await withTimeout('Join date lookup (history_hr_employee MAX id)',
-                    extendDb.query<any>(`
-                        SELECT h.emp_code, h.join_date
-                        FROM dbo.history_hr_employee h
-                        INNER JOIN (
-                            SELECT emp_code, MAX(id) as max_id
-                            FROM dbo.history_hr_employee
-                            WHERE RTRIM(emp_code) IN (${empCodeList})
-                              AND join_date IS NOT NULL
-                            GROUP BY emp_code
-                        ) latest ON h.emp_code = latest.emp_code AND h.id = latest.max_id
-                        WHERE h.join_date IS NOT NULL
-                    `),
+                const historyRows = await withTimeout('Join date lookup (history_hr_employee latest)',
+                    extendDb.query<any>(buildLatestHistoryJoinDateQuery(empCodeList)),
                     5000
                 );
 
-                if (historyRows) {
-                    for (const row of historyRows) {
-                        const empCode = String(row.emp_code || '').trim().toUpperCase();
-                        // Only set if not already in map (override takes precedence)
-                        if (empCode && !joinDateMap.has(empCode)) {
-                            joinDateMap.set(empCode, row.join_date);
-                        }
-                    }
-                }
+                applyJoinDateSourcesToEmployees(employees, {
+                    profileOverrideRows,
+                    valueOverrideRows: overrideRows,
+                    historyRows
+                });
 
-                // Apply to employees
                 for (const emp of employees) {
-                    const empCodeKey = String(emp.emp_code || '').trim().toUpperCase();
-                    if (joinDateMap.has(empCodeKey)) {
-                        emp.join_date = joinDateMap.get(empCodeKey);
+                    if (emp.join_date) {
                         joinDateFound++;
                     }
                 }

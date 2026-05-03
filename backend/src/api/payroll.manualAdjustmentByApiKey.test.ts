@@ -102,7 +102,7 @@ const seedSyncStatusPeriod = mock(async () => ({
     seeder: "manual_adjustment_sync_status",
     period_month: 4,
     period_year: 2026,
-    adjustment_types: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+    adjustment_types: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"],
     target_sync_status: "SYNC",
     only_if_adtrans_exists: true,
     dry_run: false,

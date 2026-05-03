@@ -194,4 +194,27 @@ describe("AB1 pruning seed payload builder", () => {
         expect(payloads.every((payload) => payload.division_code !== "2A")).toBe(true);
         expect(payloads.filter((payload) => payload.division_code === "P2A").every((payload) => payload.gang_code === "C3H")).toBe(true);
     });
+
+    it("builds only selected raking gang payloads from the real raking sub-block file", () => {
+        const filePath = join(import.meta.dir, "../../backend/data/raking_sub_block_detail.json");
+        const estates = parseEstateJsonBlocks(readFileSync(filePath, "utf-8"));
+
+        const payloads = buildRakingSeedPayloads(estates, {
+            targetEstates: ["P1A"],
+            targetGangs: ["A1H"],
+            importTag: "SEED_IMPORT_RAKING"
+        });
+        const summary = payloads.reduce<{ employees: number; totalAmount: number; detailItems: number }>((acc, payload) => {
+            const metadata = JSON.parse(payload.metadata_json);
+            acc.employees += 1;
+            acc.totalAmount += payload.amount;
+            acc.detailItems += metadata.items.length;
+            return acc;
+        }, { employees: 0, totalAmount: 0, detailItems: 0 });
+
+        expect(summary).toEqual({ employees: 27, totalAmount: 16499000, detailItems: 45 });
+        expect(payloads.every((payload) => payload.division_code === "P1A")).toBe(true);
+        expect(payloads.every((payload) => payload.gang_code === "A1H")).toBe(true);
+        expect(payloads.every((payload) => JSON.parse(payload.metadata_json).items.every((item: any) => item.gang_code === "A1H"))).toBe(true);
+    });
 });

@@ -50,6 +50,16 @@ function getTargetDivisions(): string[] {
     return parsed.length ? Array.from(new Set(parsed)) : DEFAULT_TARGET_DIVISIONS;
 }
 
+function getTargetGangs(): string[] {
+    const raw = getArgValue("--gangs") || getArgValue("--gang");
+    if (!raw) return [];
+
+    return Array.from(new Set(raw
+        .split(",")
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean)));
+}
+
 function payloadSummary(payloads: PruningSeedPayload[]) {
     const byDivision = new Map<string, { employees: number; detail_items: number; total_amount: number }>();
 
@@ -149,14 +159,17 @@ async function insertRow(db: Database, payload: PruningSeedPayload): Promise<num
 
 async function seedRakingData() {
     const targetDivisions = getTargetDivisions();
+    const targetGangs = getTargetGangs();
     const filePath = join(import.meta.dir, "../../backend/data/raking_sub_block_detail.json");
     const estates = parseEstateJsonBlocks(readFileSync(filePath, "utf-8"));
     const payloads = buildRakingSeedPayloads(estates, {
         targetEstates: targetDivisions,
+        targetGangs,
         importTag: IMPORT_TAG
     });
 
     console.log("Raking seed summary:");
+    console.log(JSON.stringify({ targetDivisions, targetGangs: targetGangs.length ? targetGangs : "ALL" }, null, 2));
     console.log(JSON.stringify(payloadSummary(payloads), null, 2));
     console.log("Sample payloads:");
     console.log(JSON.stringify(payloads.slice(0, 3).map((payload) => ({

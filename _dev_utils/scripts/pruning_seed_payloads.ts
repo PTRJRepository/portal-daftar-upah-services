@@ -50,6 +50,7 @@ export interface BuildRakingSeedPayloadOptions {
     targetEstates: string[];
     importTag?: string;
     defaultGangCode?: string;
+    targetGangs?: string[];
 }
 
 interface BuildSubBlockPremiumSeedPayloadOptions {
@@ -60,6 +61,7 @@ interface BuildSubBlockPremiumSeedPayloadOptions {
     taskDesc: string;
     defaultGangCode?: string;
     defaultGangCodeByDivision?: Record<string, string>;
+    targetGangs?: string[];
 }
 
 type EmployeeAccumulator = {
@@ -184,6 +186,7 @@ function buildSubBlockPremiumSeedPayloads(
     options: BuildSubBlockPremiumSeedPayloadOptions
 ): PruningSeedPayload[] {
     const targetEstateSet = new Set((options.targetEstates || []).map(normalizeSeedDivisionCode).filter(Boolean));
+    const targetGangSet = new Set((options.targetGangs || []).map(normalizeText).filter(Boolean));
     const importTag = normalizeText(options.importTag || "SEED_IMPORT_PREMI_DETAIL") || "SEED_IMPORT_PREMI_DETAIL";
 
     if (targetEstateSet.size === 0) {
@@ -206,6 +209,7 @@ function buildSubBlockPremiumSeedPayloads(
                 || normalizeText(options.defaultGangCode);
             const gangCode = normalizeText(gang.Gang) || fallbackGangCode;
             if (!gangCode) continue;
+            if (targetGangSet.size > 0 && !targetGangSet.has(gangCode)) continue;
 
             for (const detail of gang.Details || []) {
                 const empCode = normalizeText(detail.Empcode);

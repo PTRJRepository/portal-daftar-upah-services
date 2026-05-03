@@ -9,7 +9,7 @@ describe("ManualAdjustmentSyncStatusSeederService", () => {
         (manualAdjustmentService as any).updateManualAdjustmentSyncStatus = originalUpdateManualAdjustmentSyncStatus;
     });
 
-    it("defaults to seeding sync status for all non-auto-buffer manual adjustment types", async () => {
+    it("defaults to seeding sync status for manual adjustment and auto-buffer types", async () => {
         const updateManualAdjustmentSyncStatus = mock(async () => ({
             period_month: 4,
             period_year: 2026,
@@ -41,7 +41,7 @@ describe("ManualAdjustmentSyncStatusSeederService", () => {
             divisionCode: "AB1",
             gangCode: undefined,
             empCode: undefined,
-            adjustmentTypes: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+            adjustmentTypes: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"],
             adjustmentName: undefined,
             ids: undefined,
             syncStatus: "SYNC",
@@ -52,7 +52,7 @@ describe("ManualAdjustmentSyncStatusSeederService", () => {
         });
         expect(result).toMatchObject({
             seeder: "manual_adjustment_sync_status",
-            adjustment_types: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"],
+            adjustment_types: ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"],
             updated_count: 6,
             partial_count: 1
         });

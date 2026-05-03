@@ -19,6 +19,11 @@ describe("ADTRANS DocDesc mapping rules", () => {
         expect(mapAdtransPremiField("PREMI BRONDOL")).toBe("brondol");
     });
 
+    it("keeps premi bantu brondol as a separate dynamic premium", () => {
+        expect(isDynamicPremiDocDesc("PREMI BANTU BRONDOL")).toBe(true);
+        expect(mapAdtransPremiField("PREMI BANTU BRONDOL")).toBe("premi_bantu_brondol");
+    });
+
     it("treats koreksi as dynamic potongan upah kotor", () => {
         expect(isDynamicPotonganDocDesc("KOREKSI PANEN")).toBe(true);
         expect(normalizeAdtransPotonganField("KOREKSI PANEN")).toEqual({ key: "koreksi_panen", title: "KOREKSI PANEN" });

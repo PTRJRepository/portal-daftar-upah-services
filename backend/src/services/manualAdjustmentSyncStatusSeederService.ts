@@ -3,7 +3,7 @@ import {
     type ManualAdjustmentSyncStatusUpdateResult
 } from "./manualAdjustmentService";
 
-const DEFAULT_MANUAL_SYNC_ADJUSTMENT_TYPES = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"];
+const DEFAULT_MANUAL_SYNC_ADJUSTMENT_TYPES = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH", "AUTO_BUFFER"];
 
 export type ManualAdjustmentSyncStatusSeedInput = {
     period_month: number;

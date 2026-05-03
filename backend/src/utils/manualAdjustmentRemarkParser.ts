@@ -20,6 +20,15 @@ export interface PipeDelimitedSyncStatusUpdate {
     changed: boolean;
 }
 
+export interface PipeDelimitedSyncAndMatchStatusUpdate {
+    remarks: string;
+    oldSyncStatus: string;
+    newSyncStatus: string;
+    oldMatchStatus: string;
+    newMatchStatus: string;
+    changed: boolean;
+}
+
 function normalizeSpaces(value: unknown): string {
     return String(value || "").trim().replace(/\s+/g, " ");
 }
@@ -189,6 +198,52 @@ export function updatePipeDelimitedSyncStatus(value: unknown, status: unknown): 
         remarks: segments.join(" | "),
         oldSyncStatus,
         newSyncStatus,
+        changed: true
+    };
+}
+
+export function updatePipeDelimitedSyncAndMatchStatus(
+    value: unknown,
+    syncStatus: unknown,
+    matchStatus: unknown
+): PipeDelimitedSyncAndMatchStatusUpdate | null {
+    const originalRemarks = String(value || "").trim();
+    if (!originalRemarks || !originalRemarks.includes("|")) return null;
+
+    const newSyncStatus = normalizeSpaces(syncStatus).toUpperCase();
+    const newMatchStatus = normalizeSpaces(matchStatus).toUpperCase();
+    if (!newSyncStatus || !newMatchStatus) return null;
+
+    const segments = originalRemarks.split("|").map((segment) => segment.trim());
+    const syncSegmentIndex = segments.findIndex((segment) => /^sync:\s*\w+$/i.test(segment));
+    const matchSegmentIndex = segments.findIndex((segment) => /^match:\s*\w+$/i.test(segment));
+    if (syncSegmentIndex < 0 || matchSegmentIndex < 0) return null;
+
+    const oldSyncStatus = segments[syncSegmentIndex].match(/^sync:\s*(\w+)$/i)?.[1]?.toUpperCase();
+    const oldMatchStatus = segments[matchSegmentIndex].match(/^match:\s*(\w+)$/i)?.[1]?.toUpperCase();
+    if (!oldSyncStatus || !oldMatchStatus) return null;
+
+    const changed = oldSyncStatus !== newSyncStatus || oldMatchStatus !== newMatchStatus;
+    if (!changed) {
+        return {
+            remarks: originalRemarks,
+            oldSyncStatus,
+            newSyncStatus,
+            oldMatchStatus,
+            newMatchStatus,
+            changed: false
+        };
+    }
+
+    segments[syncSegmentIndex] = `sync:${newSyncStatus}`;
+    segments[matchSegmentIndex] = `match:${newMatchStatus}`;
+
+    return {
+        remarks: segments.join(" | "),
+        oldSyncStatus,
+        newSyncStatus,
+        oldMatchStatus,
+        newMatchStatus,
         changed: true
     };
 }

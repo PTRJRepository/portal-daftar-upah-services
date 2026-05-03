@@ -159,7 +159,9 @@
       "Bash(npx vitest *)",
       "PowerShell(Get-Content *)",
       "Bash(python3 *)",
-      "mcp__plugin_playwright_playwright__browser_navigate"
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "PowerShell(git reset *)",
+      "PowerShell(codex *)"
     ],
     "deny": [],
     "ask": [],
