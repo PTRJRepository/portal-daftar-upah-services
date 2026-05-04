@@ -828,8 +828,10 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                 addLog(`Rows parsed: ${summary?.total_rows ?? total_employees}`);
                 addLog(`Would insert: ${records_inserted}`);
                 addLog(`Would update: ${records_updated}`);
-                addLog(`Skipped: ${records_skipped}`);
+                addLog(`Would skip/no write: ${records_skipped}`);
                 addLog(`Already same: ${summary?.already_same ?? 0}`);
+                addLog(`Validation skipped: ${summary?.skipped ?? 0}`);
+                addLog(`Warnings: ${summary?.warnings ?? 0}`);
 
                 if (summary?.by_action) {
                     addLog('Action summary:');
