@@ -396,6 +396,47 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('Detail');
     });
 
+    it('does not show premium detail action when the cell has no effective value', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: ['premi_pruning'],
+            dynamic_potongan_headers: [],
+            premi_title_map: {
+                premi_pruning: 'PREMI PRUNING'
+            },
+            potongan_title_map: {}
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            premi_pruning: 0,
+            total_premi: 0,
+            manual_adjustment_metadata: {
+                premi_pruning: {
+                    input_type: 'blok',
+                    items: [],
+                    total_amount: 0
+                }
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        const cellHtml = findFirstCellHtml(html, 'premi_pruning');
+        expect(cellHtml).toContain('-');
+        expect(cellHtml).not.toContain('title="Lihat detail pekerjaan"');
+        expect(cellHtml).not.toContain('Detail');
+    });
+
     it('shows premium detail action when only manual adjustment metadata declares the field', () => {
         mocked.streamMeta = {
             dynamic_premi_headers: [],
@@ -616,6 +657,47 @@ describe('CustomPayrollTable render', () => {
         expect(html).toContain('50.000');
         expect(html).toContain('title="Lihat detail koreksi"');
         expect(html).toContain('Detail');
+    });
+
+    it('does not show koreksi detail action when the cell has no effective value', () => {
+        mocked.streamMeta = {
+            dynamic_premi_headers: [],
+            dynamic_potongan_headers: ['koreksi_panen'],
+            premi_title_map: {},
+            potongan_title_map: {
+                koreksi_panen: 'KOREKSI PANEN'
+            }
+        };
+        mocked.streamEmployee = {
+            nik: '3171',
+            emp_code: 'B0001',
+            gang_code: 'D1H',
+            emp_name: 'Test Employee',
+            koreksi_panen: 0,
+            potongan_upah_kotor_total: 0,
+            manual_adjustment_metadata: {
+                koreksi_panen: {
+                    input_type: 'blok',
+                    items: [],
+                    total_amount: 0
+                }
+            }
+        };
+
+        const html = renderToString(
+            <CustomPayrollTable
+                token="test-token"
+                division="PG2B"
+                gangCode="D1H"
+                month={4}
+                year={2026}
+            />
+        );
+
+        const cellHtml = findFirstCellHtml(html, 'koreksi_panen');
+        expect(cellHtml).toContain('-');
+        expect(cellHtml).not.toContain('title="Lihat detail koreksi"');
+        expect(cellHtml).not.toContain('Detail');
     });
 
     it('shows koreksi detail action when only manual adjustment metadata declares the field', () => {

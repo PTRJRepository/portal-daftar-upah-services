@@ -3007,7 +3007,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             const hasDbMetadata = !!edit?.metadata_json || !!storedMetadata;
                             const hasFallbackMetadata = !!popupMetadata?.legacy_source;
                             const popupStoredAmount = Number(popupMetadata?.amount ?? mismatch?.amount ?? displayVal) || 0;
-                            const hasStructuredDetail = row.type === 'employee' && inputType !== 'amount' && (premiumDef || addedColumn || popupMetadata);
+                            const hasEffectiveDetailValue = Number(displayVal || 0) !== 0;
+                            const hasStructuredDetail = row.type === 'employee' && inputType !== 'amount' && hasEffectiveDetailValue && (premiumDef || addedColumn || popupMetadata);
                             const popupDetailValidation = popupMetadata
                                 ? validatePremiumDetailMetadata(popupMetadata, inputType)
                                 : null;
@@ -3363,7 +3364,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         input_type: inputType,
                         remarks: addedColumn?.remarks
                     } : null;
-                    const detailButton = row.type === 'employee' ? (
+                    const hasEffectiveDetailValue = Number(displayVal || 0) !== 0;
+                    const detailButton = row.type === 'employee' && hasEffectiveDetailValue ? (
                         <button
                                 type="button"
                                 title={isEditMode ? (mismatch ? `Alasan tanda merah: ${buildManualDetailMismatchReason(mismatch)}` : 'Edit detail koreksi') : 'Lihat detail koreksi'}
