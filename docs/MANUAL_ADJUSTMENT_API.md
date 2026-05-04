@@ -138,6 +138,26 @@ Division dikelompokkan menjadi **Real Divisions** dan **Virtual Divisions**.
 | `WORKSHOP` | Workshop All | - | `/^(HMC\|AMC)$/i` | AMC dan HMC |
 | `MILL` | Palm Oil Mill | - | `/^M\d*$/i` | Gang mulai dengan M |
 
+### Cara Mengakses Virtual Division
+
+Untuk endpoint manual adjustment, virtual division diakses lewat parameter `division_code` seperti divisi biasa, tetapi gunakan **kode canonical virtual** di bawah ini. Jangan memakai nama display panjang jika automation belum menormalisasi alias.
+
+| Kebutuhan | `division_code` yang dipakai | Alias/nama yang sering disebut | Source real division | Gang yang masuk |
+|-----------|------------------------------|--------------------------------|----------------------|-----------------|
+| Infrastruktur / INFRA | `INF` | `INFRA`, `INFRASTRUKTUR` | `PG1A` | Gang berawalan `IN`, termasuk `INF`/`INT` |
+| Nursery | `NRS` | `NURSERY`, `B2N` | `PG1B` | `B2N` |
+| Workshop P.G / Parit Gunung | `WKS_PG` | `WORKSHOP PG`, `WORKSHOP PGE`, `WORKSHOP P.G`, `AMC` | `PG1A` | `AMC` |
+| Workshop A.R / Air Ruak / ARE | `WKS_AR` | `WORKSHOP AR`, `WORKSHOP ARE`, `HMC` | `AB2` | `HMC` |
+| Workshop gabungan | `WORKSHOP` | `WORKSHOP_ALL` | `PG1A` + `AB2` | `AMC` dan `HMC` |
+
+Catatan penting:
+
+- Untuk INFRA, parameter yang paling aman adalah `division_code=INF`, bukan `INFRA`.
+- Untuk Nursery, parameter yang paling aman adalah `division_code=NRS`, bukan `NURSERY`.
+- Untuk Workshop PG/P.G/PGE, gunakan `division_code=WKS_PG`. Jangan gunakan `division_code=PGE` karena `PGE` adalah real division **Plasma Energi**, bukan virtual Workshop Parit Gunung.
+- Untuk Workshop ARE/Air Ruak, gunakan `division_code=WKS_AR`.
+- Jika response `view=grouped`, field `estate`/`estate_code` berisi kode virtual/source yang tersimpan, sedangkan field `division_code` pada employee adalah turunan dari `gang_code`.
+
 ## Get adjustment untuk Employee yang MISSING
 
 Ketika employee missing adjustment (tidak ada di daftar upah), gunakan endpoint ini untuk mendapatkan/callback adjustment yang sudah ada:
@@ -263,6 +283,36 @@ curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month
 # Filter by division + gang (spesifik)
 curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=AB1&gang_code=H1H" \
   -H "X-API-Key: ${API_KEY}"
+```
+
+### Contoh Filter Virtual Division
+
+```bash
+# INFRA / Infrastruktur
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=INF" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Nursery
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=NRS" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Workshop P.G / Parit Gunung / PGE wording (gang AMC)
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=WKS_PG" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Workshop A.R / Air Ruak / ARE wording (gang HMC)
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=WKS_AR" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Semua workshop: AMC + HMC
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=WORKSHOP" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+Untuk response siap dipakai browser automation, tambahkan `view=grouped`. Untuk hanya mengambil premi/detail terbaru yang punya metadata, tambahkan `adjustment_type=PREMI&metadata_only=true`.
+
+```bash
+curl -s "http://localhost:8002/payroll/manual-adjustment/by-api-key?period_month=4&period_year=2026&division_code=INF&adjustment_type=PREMI&metadata_only=true&view=grouped" \
   -H "X-API-Key: ${API_KEY}"
 ```
 

@@ -1866,23 +1866,23 @@ export default function MainPage({ lockedDiv = null }) {
             <button
               onClick={handlePrintPayslip}
               style={{
-                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                color: '#ffffff',
-                border: 'none',
-                padding: '0.4rem 0.8rem',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                fontWeight: '600',
+                background: '#f8fafc',
+                color: '#1f3a5f',
+                border: '1px solid #c8d2dc',
+                padding: '0.45rem 0.75rem',
+                borderRadius: '8px',
+                fontSize: '0.76rem',
+                fontWeight: '800',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.3rem',
-                height: '36px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                gap: '0.45rem',
+                height: '38px',
+                boxShadow: '0 4px 12px rgba(31, 58, 95, 0.10)'
               }}
               title={`Print Slip Gaji untuk ${selectedEmployees.length} karyawan`}
             >
-              <span>🖨️</span>
+              <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: '#1f3a5f', color: '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>SLIP</span>
               <span>Print Slip Gaji ({selectedEmployees.length})</span>
             </button>
           )}

@@ -93,19 +93,27 @@
 /* Watermark Styling */
 .payslip-watermark {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-30deg);
-    font-size: 60pt;
-    font-weight: 900;
-    color: rgba(0, 0, 0, 0.07);
-    white-space: nowrap;
+    inset: -8mm;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 18mm;
+    align-content: center;
+    justify-items: center;
+    gap: 4mm 2mm;
+    transform: rotate(-28deg);
     z-index: 0;
     pointer-events: none;
     text-transform: uppercase;
-    letter-spacing: 4px;
     user-select: none;
     -webkit-user-select: none;
+}
+
+.payslip-watermark__tile {
+    font-size: 13pt;
+    font-weight: 900;
+    color: rgba(0, 0, 0, 0.035);
+    white-space: nowrap;
+    letter-spacing: 1.5px;
 }
 
 /* Ensure content stays above watermark */
@@ -311,6 +319,16 @@
     background: #f9fafb;
     padding: 0.5mm 1mm;
     border-left: 2px solid #000;
+}
+
+.payslip-income-deduction-note {
+    font-size: 5.8pt;
+    line-height: 1.15;
+    color: #333;
+    font-style: italic;
+    margin: 0.5mm 0 0.7mm 2mm;
+    padding: 0.5mm 0 0 1mm;
+    border-left: 1px solid #999;
 }
 
 /* THR Note Section */
@@ -639,7 +657,11 @@
     }
 
     .payslip-watermark {
-        font-size: 72pt !important;
+        transform: rotate(-28deg) !important;
+    }
+
+    .payslip-watermark__tile {
+        color: rgba(0, 0, 0, 0.03) !important;
     }
 }
 

@@ -77,6 +77,24 @@ export async function updatePtkpTax(token, periodYear) {
 }
 
 /**
+ * Dry-run PTKP Tax update from parsed Excel JSON
+ */
+export async function previewExcelPtkpTax(token, periodYear, includeNameFallback = true, parsedFilePath = null) {
+    const body = {
+        period_year: periodYear,
+        include_name_fallback: includeNameFallback,
+        ...(parsedFilePath && { parsed_file_path: parsedFilePath })
+    };
+
+    const response = await axios.post('payroll/history/ptkp/excel-preview', body, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+    return response.data;
+}
+
+/**
  * Preview PTKP Tax update
  */
 export async function previewPtkpTax(token, periodYear) {

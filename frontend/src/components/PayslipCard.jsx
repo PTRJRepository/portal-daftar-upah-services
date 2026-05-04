@@ -14,6 +14,16 @@ const getMonthName = (month) => {
     return months[month] || ''
 }
 
+const formatIncomeKeyLabel = (key) => {
+    return key
+        .replace(/^pendapatan_/, '')
+        .replace(/_/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+const isPositiveAmount = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0
+
 /**
  * PayslipCard - Compact payslip component for printing (4 per A4)
  * @param {Object} props
@@ -148,44 +158,75 @@ export default function PayslipCard({ data, month, year }) {
         potBersihList.push({ label: 'Premi PPh (+)', value: premiPph, isCredit: true })
     }
 
+    // --- THR & OTHER INCOMES ---
+    const otherIncomeItems = []
+    const otherIncomeSeen = new Set()
+    const pushOtherIncome = (label, amount, type = null) => {
+        const value = Number(amount) || 0
+        if (value <= 0) return
+        const cleanLabel = String(label || type || 'Pendapatan Lainnya').trim()
+        const cleanType = type ? String(type).trim().toUpperCase() : ''
+        const key = `${cleanType}:${cleanLabel}`.toLowerCase()
+        if (otherIncomeSeen.has(key)) return
+        otherIncomeSeen.add(key)
+        otherIncomeItems.push({ name: cleanLabel, amount: value, type: cleanType })
+    }
+
+    pushOtherIncome('THR', getNum('thr_jumlah') || getNum('pendapatan_thr'), 'THR')
+    pushOtherIncome('Bonus', getNum('bonus_jumlah') || getNum('pendapatan_bonus'), 'BONUS')
+    pushOtherIncome('Custom', getNum('pendapatan_custom'), 'CUSTOM')
+    pushOtherIncome('Pendapatan Tidak Tetap', getNum('pendapatan_tidak_tetap'), 'CUSTOM')
+
+    if (Array.isArray(payroll.other_incomes)) {
+        payroll.other_incomes.forEach((income) => {
+            const type = String(income?.type || '').trim().toUpperCase()
+            const label = income?.name || income?.income_name || type || 'Pendapatan Lainnya'
+            pushOtherIncome(label, income?.amount, type || null)
+        })
+    }
+
+    const excludedOtherIncomeKeys = new Set([
+        'pendapatan_thr',
+        'pendapatan_bonus',
+        'pendapatan_custom',
+        'pendapatan_tidak_tetap',
+        'pendapatan_lainnya',
+        'total_pendapatan_lainnya',
+    ])
+
+    Object.entries(payroll).forEach(([key, val]) => {
+        if (!key.startsWith('pendapatan_') || excludedOtherIncomeKeys.has(key)) return
+        if (!isPositiveAmount(val)) return
+        const label = formatIncomeKeyLabel(key)
+        pushOtherIncome(label, val, label.toUpperCase())
+    })
+
+    const totalOtherIncome = getNum('total_pendapatan_lainnya') || getNum('pendapatan_lainnya') || otherIncomeItems.reduce((sum, item) => sum + item.amount, 0)
+    const detailedOtherIncomeTotal = otherIncomeItems.reduce((sum, item) => sum + item.amount, 0)
+
+    if (otherIncomeItems.length === 0 && totalOtherIncome > 0) {
+        pushOtherIncome('Pendapatan Lainnya', totalOtherIncome, null)
+    } else if (totalOtherIncome > detailedOtherIncomeTotal) {
+        pushOtherIncome('Lainnya', totalOtherIncome - detailedOtherIncomeTotal, null)
+    }
+
+    const thrList = otherIncomeItems.filter((item) => item.type === 'THR' || item.name.toUpperCase().includes('THR'))
+    const otherIncomeDeductionTotal = otherIncomeItems.reduce((sum, item) => sum + item.amount, 0)
+
     // Total Kotor includes Gross regular + THR/Bonus
-    const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (totalPotKotor + potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + premiPph);
+    const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (totalPotKotor + potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + otherIncomeDeductionTotal + premiPph);
     const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
     // upahBersih should be Gross - Total Potongan Bersih
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 
-    // --- THR & OTHER INCOMES ---
-    let thrList = []
-    let bonusList = []
-    let customList = []
-
-    if (payroll.other_incomes && Array.isArray(payroll.other_incomes)) {
-        // API format: nested other_incomes array
-        const otherIncomes = payroll.other_incomes
-        thrList = otherIncomes.filter(inc => inc.type === 'THR' || inc.name?.toUpperCase().includes('THR'))
-        bonusList = otherIncomes.filter(inc => inc.type === 'BONUS' || inc.name?.toUpperCase().includes('BONUS'))
-        customList = otherIncomes.filter(inc => inc.type === 'CUSTOM' || (!thrList.includes(inc) && !bonusList.includes(inc) && inc.amount > 0))
-    } else {
-        // UI format: flat fields like thr_jumlah, bonus_jumlah, etc
-        const thrAmount = getNum('thr_jumlah') || getNum('pendapatan_thr')
-        const bonusAmount = getNum('bonus_jumlah') || getNum('pendapatan_bonus')
-        const customAmount = getNum('pendapatan_tidak_tetap') || getNum('pendapatan_kontan')
-
-        if (thrAmount > 0) {
-            thrList = [{ name: 'THR', amount: thrAmount, type: 'THR' }]
-        }
-        if (bonusAmount > 0) {
-            bonusList = [{ name: 'Bonus', amount: bonusAmount, type: 'BONUS' }]
-        }
-        if (customAmount > 0) {
-            customList = [{ name: 'Pendapatan Lainnya', amount: customAmount, type: 'CUSTOM' }]
-        }
-    }
-
     return (
         <div className="payslip-card">
             {/* Watermark */}
-            <div className="payslip-watermark">PT REBINMAS JAYA</div>
+            <div className="payslip-watermark" aria-hidden="true">
+                {Array.from({ length: 18 }, (_, idx) => (
+                    <span key={idx} className="payslip-watermark__tile">REBINMAS</span>
+                ))}
+            </div>
 
             {/* Header */}
             <div className="payslip-card-header">
@@ -299,23 +340,11 @@ export default function PayslipCard({ data, month, year }) {
                         </div>
                     )}
 
-                    {(thrList.length > 0 || bonusList.length > 0 || customList.length > 0) && (
+                    {otherIncomeItems.length > 0 && (
                         <>
                             <div className="payslip-subheader">Pendapatan Lainnya:</div>
-                            {thrList.map((item, idx) => (
-                                <div key={`thr-${idx}`} className="payslip-item payslip-item-indent">
-                                    <span className="payslip-item-label" style={{ fontWeight: 'bold' }}>- {item.name || 'THR'}</span>
-                                    <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
-                                </div>
-                            ))}
-                            {bonusList.map((item, idx) => (
-                                <div key={`bonus-${idx}`} className="payslip-item payslip-item-indent">
-                                    <span className="payslip-item-label">- {item.name || 'Bonus'}</span>
-                                    <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
-                                </div>
-                            ))}
-                            {customList.map((item, idx) => (
-                                <div key={`cust-${idx}`} className="payslip-item payslip-item-indent">
+                            {otherIncomeItems.map((item, idx) => (
+                                <div key={`other-income-${idx}`} className="payslip-item payslip-item-indent">
                                     <span className="payslip-item-label">- {item.name}</span>
                                     <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
                                 </div>
@@ -389,6 +418,21 @@ export default function PayslipCard({ data, month, year }) {
                                     </React.Fragment>
                                 );
                             })}
+                        </>
+                    )}
+
+                    {otherIncomeItems.length > 0 && (
+                        <>
+                            <div className="payslip-subheader">Pendapatan Lainnya Dibayar:</div>
+                            {otherIncomeItems.map((item, idx) => (
+                                <div key={`other-income-deduction-${idx}`} className="payslip-item payslip-item-indent">
+                                    <span className="payslip-item-label">- {item.name}</span>
+                                    <span className="payslip-item-value payslip-negative">{formatCurrency(item.amount)}</span>
+                                </div>
+                            ))}
+                            <div className="payslip-income-deduction-note">
+                                <strong>Sudah dibayarkan.</strong> Pendapatan lainnya ditambahkan ke bruto untuk perhitungan, lalu dikurangkan lagi dari THP karena sudah dibayarkan sebelumnya.
+                            </div>
                         </>
                     )}
 

@@ -16,6 +16,7 @@ import { historySeederService, SeederOptions, HistorySeederService } from "../se
 import { Config } from "../config";
 import { currentPeriodService } from "../services/currentPeriodService";
 import { ptkpTaxService } from "../services/ptkpTaxService";
+import { ptkpExcelDryRunService } from "../services/ptkpExcelDryRunService";
 import { upahBersihDetailService, FilterMode } from "../services/upahBersihDetailService";
 import {
     getForwardAuthorizationHeader,
@@ -718,6 +719,48 @@ export const historyRoutes = new Elysia({ prefix: "/payroll/history" })
     }, {
         body: t.Object({
             period_year: t.Numeric()
+        })
+    })
+
+    // Dry-run PTKP update from parsed Excel JSON.
+    // Mirrors the PTKP update response shape but does not write to the database.
+    .post("/ptkp/excel-preview", async ({ body, headers, set }) => {
+        const authHeader = getForwardAuthorizationHeader(headers);
+        if (!authHeader) {
+            set.status = 401;
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const {
+            period_year,
+            parsed_file_path,
+            include_name_fallback = false
+        } = body as {
+            period_year: number;
+            parsed_file_path?: string;
+            include_name_fallback?: boolean;
+        };
+
+        try {
+            console.log(`[HistoryRoutes] Starting PTKP Excel dry-run for year ${period_year}`);
+            return await ptkpExcelDryRunService.previewFromParsedExcel({
+                year: period_year,
+                parsedFilePath: parsed_file_path,
+                includeNameFallback: include_name_fallback
+            });
+        } catch (error: any) {
+            console.error("[HistoryRoutes] PTKP Excel dry-run error:", error);
+            set.status = 500;
+            return {
+                success: false,
+                error: error.message || "Failed to preview Excel PTKP update"
+            };
+        }
+    }, {
+        body: t.Object({
+            period_year: t.Numeric(),
+            parsed_file_path: t.Optional(t.String()),
+            include_name_fallback: t.Optional(t.Boolean())
         })
     })
 

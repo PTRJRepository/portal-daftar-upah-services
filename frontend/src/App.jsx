@@ -791,8 +791,9 @@ const OperationalReportWrapper = () => {
                 </div>
 
                 {/* Payslip Print */}
-                <button onClick={handlePrintPayslips} disabled={selectedEmployees.length === 0} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: selectedEmployees.length > 0 ? '#eff6ff' : 'transparent', color: selectedEmployees.length > 0 ? '#1d4ed8' : '#94a3b8', cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', gap: '8px', alignItems: 'center' }} title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu dari checkbox tabel'}>
-                  🖨️ Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}
+                <button onClick={handlePrintPayslips} disabled={selectedEmployees.length === 0} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: selectedEmployees.length > 0 ? '1px solid #c8d2dc' : '1px solid #d1d5db', background: selectedEmployees.length > 0 ? '#f8fafc' : '#f1f5f9', color: selectedEmployees.length > 0 ? '#1f3a5f' : '#94a3b8', cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: selectedEmployees.length > 0 ? '0 6px 14px rgba(31, 58, 95, 0.10)' : 'none' }} title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu dari checkbox tabel'}>
+                  <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: selectedEmployees.length > 0 ? '#1f3a5f' : '#e5e7eb', color: selectedEmployees.length > 0 ? '#ffffff' : '#9ca3af', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>SLIP</span>
+                  <span>Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}</span>
                 </button>
 
               </div>

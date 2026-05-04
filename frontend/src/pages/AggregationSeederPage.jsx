@@ -27,6 +27,7 @@ import {
     getSeederProgress,
     resetSeeder,
     formatMonthName,
+    previewExcelPtkpTax,
     previewPtkpTax,
     updatePtkpTax
 } from '../services/historyService';
@@ -118,6 +119,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
     const [showSummary, setShowSummary] = useState(false);
     const [seederProgress, setSeederProgress] = useState(null);
     const [isPtkpRunning, setIsPtkpRunning] = useState(false);
+    const [ptkpOperation, setPtkpOperation] = useState(null);
 
     // Log ref for auto-scroll
     const logEndRef = useRef(null);
@@ -770,6 +772,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
         }
 
         setIsPtkpRunning(true);
+        setPtkpOperation('rice-preview');
         addLog('='.repeat(40), 'info');
         addLog(`🔍 Previewing PTKP Update for Year ${year}...`);
 
@@ -792,6 +795,59 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
             addLog(`❌ Preview error: ${e.message}`, 'error');
         } finally {
             setIsPtkpRunning(false);
+            setPtkpOperation(null);
+        }
+    };
+
+    // Run Excel PTKP dry-run
+    const handlePreviewExcelPtkp = async () => {
+        if (isPtkpRunning) return;
+        if (historyConnectionStatus !== 'connected') {
+            addLog('ERROR: History DB not connected. Cannot dry-run Excel PTKP.', 'error');
+            return;
+        }
+
+        setIsPtkpRunning(true);
+        setPtkpOperation('excel-dry-run');
+        addLog('='.repeat(40), 'info');
+        addLog(`DRY RUN Excel PTKP for Year ${year}...`);
+
+        try {
+            const res = await previewExcelPtkpTax(token, year, true);
+            if (res.success) {
+                const {
+                    parsed_file_path,
+                    total_employees,
+                    records_inserted,
+                    records_updated,
+                    records_skipped,
+                    summary
+                } = res.data;
+                addLog('DRY RUN only - no database changes were made.', 'warn');
+                addLog(`Parsed JSON: ${parsed_file_path}`);
+                addLog(`Rows parsed: ${summary?.total_rows ?? total_employees}`);
+                addLog(`Would insert: ${records_inserted}`);
+                addLog(`Would update: ${records_updated}`);
+                addLog(`Skipped: ${records_skipped}`);
+                addLog(`Already same: ${summary?.already_same ?? 0}`);
+
+                if (summary?.by_action) {
+                    addLog('Action summary:');
+                    Object.entries(summary.by_action).forEach(([action, count]) => {
+                        addLog(`   - ${action}: ${count}`);
+                    });
+                }
+            } else {
+                addLog(`Excel PTKP dry-run failed: ${res.error}`, 'error');
+                if (res.errors?.length > 0) {
+                    res.errors.forEach(err => addLog(`   - ${err}`, 'error'));
+                }
+            }
+        } catch (e) {
+            addLog(`Excel PTKP dry-run error: ${e.message}`, 'error');
+        } finally {
+            setIsPtkpRunning(false);
+            setPtkpOperation(null);
         }
     };
 
@@ -808,6 +864,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
         }
 
         setIsPtkpRunning(true);
+        setPtkpOperation('update');
         addLog('='.repeat(40), 'info');
         addLog(`🚀 Starting PTKP Update for Year ${year}...`);
 
@@ -829,6 +886,7 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
             addLog(`❌ Update error: ${e.message}`, 'error');
         } finally {
             setIsPtkpRunning(false);
+            setPtkpOperation(null);
         }
     };
 
@@ -1106,20 +1164,35 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                         Update dan kalkulasi status Penghasilan Tidak Kena Pajak (PTKP) tahunan berdasarkan Data Karyawan. Update ini dipengaruhi oleh 'Tahun' yang dipilih di parameter atas.
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <button
                             onClick={handlePreviewPtkp}
                             disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
-                                flex: 1,
+                                flex: '1 1 140px',
                                 backgroundColor: '#f0fdf4',
                                 borderColor: '#bbf7d0',
                                 color: '#166534',
                             }}
                             title="Preview data karyawan dan distribusi PTKP pajak (Tidak mengubah database)"
                         >
-                            {isPtkpRunning ? '⏳ Previewing...' : '🔍 Preview PTKP'}
+                            {isPtkpRunning && ptkpOperation === 'rice-preview' ? '⏳ Previewing...' : '🔍 Preview PTKP'}
+                        </button>
+
+                        <button
+                            onClick={handlePreviewExcelPtkp}
+                            disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
+                            className="agg-btn"
+                            style={{
+                                flex: '1 1 170px',
+                                backgroundColor: '#eff6ff',
+                                borderColor: '#bfdbfe',
+                                color: '#1d4ed8',
+                            }}
+                            title="Dry-run update PTKP dari JSON parsing Excel tanpa mengubah database"
+                        >
+                            {isPtkpRunning && ptkpOperation === 'excel-dry-run' ? 'Dry-running...' : 'DRY RUN Excel PTKP'}
                         </button>
 
                         <button
@@ -1127,14 +1200,14 @@ export default function AggregationSeederPage({ onBack, initialMonth, initialYea
                             disabled={isPtkpRunning || isHistoryRunning || isRunning || isAutoBufferSeeding || isManualSyncSeeding || historyConnectionStatus !== 'connected'}
                             className="agg-btn"
                             style={{
-                                flex: 2,
+                                flex: '2 1 190px',
                                 backgroundColor: '#db2777',
                                 borderColor: '#be185d',
                                 color: 'white',
                             }}
                             title="Update Master PTKP untuk seluruh karyawan di tahun yang dipilih"
                         >
-                            {isPtkpRunning ? '⏳ Updating...' : '📝 Execute PTKP Update'}
+                            {isPtkpRunning && ptkpOperation === 'update' ? '⏳ Updating...' : '📝 Execute PTKP Update'}
                         </button>
                     </div>
 
