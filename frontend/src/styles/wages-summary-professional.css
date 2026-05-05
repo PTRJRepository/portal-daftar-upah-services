@@ -35,8 +35,10 @@
     display: block; /* Standard block for screen */
 }
 
-tr.no-print {
-    display: table-row !important;
+@media screen {
+    tr.no-print {
+        display: table-row !important;
+    }
 }
 
 /* =============================================
@@ -1040,6 +1042,12 @@ tr.no-print {
     td.print-only,
     td.print-show {
         display: table-cell !important;
+    }
+
+    tr.no-print,
+    th.no-print,
+    td.no-print {
+        display: none !important;
     }
 
     /* Body and container reset */
