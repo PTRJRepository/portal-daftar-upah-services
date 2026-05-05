@@ -47,14 +47,38 @@ describe('PayslipCard', () => {
 
         expect((html.match(/Kontan Panen/g) || []).length).toBeGreaterThanOrEqual(2);
         expect(html).toContain('Sudah dibayarkan');
-        expect(html).toContain('Pendapatan lainnya ditambahkan ke bruto');
+        expect(html).toContain('ditambahkan ke Upah Kotor');
+        expect(html).toContain('dikurangkan dari Upah Bersih');
     });
 
-    it('renders a subtle repeated Rebinmas watermark pattern', () => {
+    it('renders a subtle repeated Rebinmas Jaya watermark pattern', () => {
         const html = renderToString(
             <PayslipCard data={basePayslipData} month={4} year={2026} />
         );
 
         expect((html.match(/payslip-watermark__tile/g) || []).length).toBeGreaterThanOrEqual(8);
+        expect((html.match(/payslip-watermark__tile">REBINMAS JAYA/g) || []).length).toBeGreaterThanOrEqual(8);
+    });
+
+    it('does not show koreksi detail rows but still includes koreksi in fallback total deductions', () => {
+        const html = renderToString(
+            <PayslipCard
+                data={{
+                    ...basePayslipData,
+                    payroll_data: {
+                        ...basePayslipData.payroll_data,
+                        total_potongan: 0,
+                        pot_koreksi: 75000,
+                        koreksi_denda_panen: 25000,
+                        pot_spsi: 10000,
+                    },
+                }}
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).not.toMatch(/Pot\. Upah Kotor|Koreksi DENDA PANEN|Koreksi Denda Panen|>\s*Koreksi\s*</);
+        expect(html).toContain('85.000');
     });
 });

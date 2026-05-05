@@ -1,0 +1,69 @@
+
+> payroll-frontend@0.1.0 dev
+> vite --host 127.0.0.1 --port 5178
+
+🌐 Network mode detected, using IP: localhost
+Proxy configuration: {
+  isDev: false,
+  backendTarget: 'http://localhost:8002',
+  isProxyMode: undefined,
+  basePath: '/',
+  envVars: {
+    VITE_BACKEND_HOST: undefined,
+    BACKEND_HOST: undefined,
+    VITE_BACKEND_PORT: undefined,
+    BACKEND_PORT: undefined,
+    DEV_MODE: undefined,
+    VITE_DEV_MODE: undefined,
+    VITE_BASE_PATH: undefined
+  }
+}
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m447[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5178[22m/[39m
+[2m14.38.44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AnalysisReportPage.jsx[22m
+[2m14.39.08[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ImpactReportPage.jsx[22m
+[2m14.39.36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PayrollAnalysisPage.jsx[22m
+[2m14.39.42[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ProductivityReportPage.jsx[22m
+[2m14.39.51[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CostHKComparisonReport.jsx[22m
+[2m14.40.01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/GangComparisonReportPage.jsx[22m
+[2m14.40.09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MillProductionReport.jsx[22m
+[2m14.41.29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OtherIncomesPage.jsx[22m
+[2m14.41.38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OtherIncomesPage.jsx[22m
+[2m14.42.51[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OtherIncomesPage.jsx[22m
+[2m14.43.15[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/report-print-foundation.css[22m
+[2m14.43.36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SummaryReportPage.jsx[22m
+[2m14.43.56[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/WagesSummaryRebinmasPage.jsx[22m
+[2m14.44.45[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OtherIncomesPage.jsx[22m
+[2m14.45.20[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OtherIncomesPage.jsx[22m
+[2m14.46.01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/report-print-foundation.css[22m
+[2m14.48.58[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SummaryReportPage.jsx, /src/pages/PayslipPrintPage.jsx, /src/pages/AnalysisReportPage.jsx, /src/pages/WagesSummaryIJLPage.jsx, /src/pages/WagesSummaryRebinmasPage.jsx[22m
+[2m14.49.12[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SummaryReportPage.jsx[22m
+[2m14.49.31[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/WagesSummaryRebinmasPage.jsx[22m
+[2m14.49.50[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/WagesSummaryIJLPage.jsx[22m
+[2m14.50.39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/PayrollHistoryComparison.jsx[22m
+[2m14.51.22[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AnalysisReportPage.jsx[22m
+[2m14.51.43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ImpactReportPage.jsx[22m
+[2m14.56.39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PayrollAnalysisPage.jsx[22m
+[2m14.56.51[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ProductivityReportPage.jsx[22m
+[2m14.57.01[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/PayslipCard.jsx[22m
+[2m14.57.13[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/CostHKComparisonReport.jsx[22m
+[2m14.57.30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/GangComparisonReportPage.jsx[22m
+[2m14.57.42[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MillProductionReport.jsx[22m
+[2m14.57.44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/payslip-print.css[22m
+[2m14.57.59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/payslip-print.css[22m
+[2m15.02.37[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/payslip-print.css[22m
+[2m15.02.55[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PayslipPrintPage.jsx[22m
+[2m15.05.09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/HighEarnerReportPage.jsx[22m
+[2m15.05.17[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/employee/EmployeeDetailPage.jsx[22m
+[2m15.05.34[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SalaryRangeDetailPage.jsx[22m
+[2m15.06.10[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/employee/EmployeeDetailPage.css[22m
+[2m15.06.12[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/GangAttendanceMatrix.jsx[22m
+[2m15.06.21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/employee/EmployeeDetailPage.css[22m
+[2m15.06.31[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/GangOvertimeMatrix.jsx[22m
+[2m15.06.47[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AnalysisReportPage.jsx, /src/pages/WagesSummaryRebinmasPage.jsx, /src/pages/PayrollAnalysisPage.jsx, /src/components/common/PrintModeSelector.jsx[22m
+[2m15.09.29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/employee/EmployeeDetailPage.jsx[22m
+[2m15.09.44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/AnalysisReportPage.jsx, /src/pages/WagesSummaryRebinmasPage.jsx, /src/pages/PayrollAnalysisPage.jsx, /src/components/common/PrintModeSelector.jsx[22m
+[2m15.12.08[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/common/CompactPeriodScroll.jsx[22m
+[2m15.17.44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/WagesSummaryRebinmasPage.jsx[22m

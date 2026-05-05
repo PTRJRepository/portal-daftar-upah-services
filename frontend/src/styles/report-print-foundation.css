@@ -32,7 +32,101 @@
   text-align: center;
 }
 
+.report-watermark {
+  display: none;
+}
+
+@page {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@page report-landscape {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@page report-thr {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  @page report-thr {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  .thr-print-document {
+    page: report-thr;
+  }
+
+  .wsp-document,
+  .sw-document,
+  .phc-container,
+  .cost-hk-report,
+  .gang-report-content,
+  .mill-report-container,
+  .summary-report-grid-container,
+  .comparison-report-container {
+    position: relative !important;
+    isolation: isolate !important;
+    page: report-landscape;
+  }
+
+  .thr-print-document {
+    page: report-thr !important;
+  }
+
+  .report-watermark {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    pointer-events: none !important;
+    user-select: none !important;
+    z-index: 0 !important;
+  }
+
+  .report-watermark ~ * {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .report-watermark__mark {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transform: rotate(-28deg) !important;
+    opacity: 0.07 !important;
+    filter: grayscale(1) !important;
+  }
+
+  .report-watermark__image {
+    width: 54mm !important;
+    max-width: 24vw !important;
+    height: auto !important;
+    object-fit: contain !important;
+    margin-bottom: 3mm !important;
+  }
+
+  .report-watermark__text {
+    color: #000 !important;
+    font-size: 28pt !important;
+    font-weight: 900 !important;
+    letter-spacing: 6pt !important;
+    line-height: 1 !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+  }
+
   .report-print-meta-grid {
     display: flex !important;
     flex-wrap: wrap !important;
@@ -69,30 +163,35 @@
   }
 
   .wsp-table-wrapper,
-  .phc-table-container {
+  .phc-table-container,
+  .cost-hk-table-wrapper {
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
   }
 
   .wsp-table,
-  .phc-table {
+  .phc-table,
+  .cost-hk-table {
     page-break-inside: auto !important;
     break-inside: auto !important;
   }
 
   .wsp-table thead,
-  .phc-table thead {
+  .phc-table thead,
+  .cost-hk-table thead {
     display: table-header-group !important;
   }
 
   .wsp-table tfoot,
-  .phc-table tfoot {
+  .phc-table tfoot,
+  .cost-hk-table tfoot {
     display: table-footer-group !important;
   }
 
   .wsp-table tr,
-  .phc-table tr {
+  .phc-table tr,
+  .cost-hk-table tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
@@ -100,7 +199,9 @@
   .wsp-table th,
   .wsp-table td,
   .phc-table th,
-  .phc-table td {
+  .phc-table td,
+  .cost-hk-table th,
+  .cost-hk-table td {
     overflow-wrap: break-word !important;
     word-break: normal !important;
   }

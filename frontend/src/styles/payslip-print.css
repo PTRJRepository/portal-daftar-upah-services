@@ -4,11 +4,11 @@
  */
 
 /* ============================================
-   PRINT PAGE SETUP - FORCE PORTRAIT
+   PRINT PAGE SETUP - PAYSLIP ONLY
    ============================================ */
-@page {
-    size: A4 portrait !important;
-    margin: 5mm !important;
+@page payslip-portrait {
+    size: A4 portrait;
+    margin: 0;
 }
 
 /* ============================================
@@ -44,7 +44,7 @@
     min-height: 297mm;
     background: white;
     margin: 0 auto 20px auto;
-    padding: 5mm;
+    padding: 3mm;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     box-sizing: border-box;
     page-break-after: always;
@@ -65,9 +65,9 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 2mm;
-    width: 200mm;
-    height: 287mm;
+    gap: 1.5mm;
+    width: 100%;
+    height: 100%;
     page-break-inside: avoid;
     box-sizing: border-box;
 }
@@ -76,13 +76,13 @@
    INDIVIDUAL PAYSLIP CARD
    ============================================ */
 .payslip-card {
-    border: 1.5px solid #000;
-    padding: 2mm;
+    border: 1px solid #000;
+    padding: 1.3mm;
     background: white;
     display: flex;
     flex-direction: column;
-    font-size: 7pt;
-    line-height: 1.2;
+    font-size: 6.2pt;
+    line-height: 1.12;
     height: 100%;
     page-break-inside: avoid;
     position: relative;
@@ -95,11 +95,11 @@
     position: absolute;
     inset: -8mm;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 18mm;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: 21mm;
     align-content: center;
     justify-items: center;
-    gap: 4mm 2mm;
+    gap: 3mm 2mm;
     transform: rotate(-28deg);
     z-index: 0;
     pointer-events: none;
@@ -109,11 +109,11 @@
 }
 
 .payslip-watermark__tile {
-    font-size: 13pt;
+    font-size: 10.5pt;
     font-weight: 900;
-    color: rgba(0, 0, 0, 0.035);
+    color: rgba(0, 0, 0, 0.04);
     white-space: nowrap;
-    letter-spacing: 1.5px;
+    letter-spacing: 0;
 }
 
 /* Ensure content stays above watermark */
@@ -132,48 +132,48 @@
    ============================================ */
 .payslip-card-header {
     text-align: center;
-    border-bottom: 2px double #000;
-    padding-bottom: 0.5mm;
-    margin-bottom: 1mm;
+    border-bottom: 1.5px double #000;
+    padding-bottom: 0.3mm;
+    margin-bottom: 0.6mm;
     flex-shrink: 0;
 }
 
 .payslip-card-company {
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 900;
     color: #000;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
 }
 
 .payslip-card-title {
-    font-size: 8pt;
+    font-size: 7pt;
     font-weight: 850;
-    margin: 0.3mm 0;
-    letter-spacing: 1px;
+    margin: 0.15mm 0;
+    letter-spacing: 0;
     text-transform: uppercase;
     border-bottom: 1px solid #000;
     display: inline-block;
-    padding: 0 3mm 0.3mm 3mm;
+    padding: 0 2mm 0.2mm 2mm;
 }
 
 .payslip-card-period {
-    font-size: 7.5pt;
+    font-size: 6.5pt;
     color: #000;
     font-weight: 700;
-    margin-top: 0.3mm;
+    margin-top: 0.15mm;
 }
 
 /* ============================================
    EMPLOYEE INFO (2-column grid)
    ============================================ */
 .payslip-card-info {
-    margin-bottom: 1mm;
+    margin-bottom: 0.6mm;
     display: grid;
     grid-template-columns: 1.2fr 0.8fr;
-    gap: 0 2mm;
-    font-size: 6.5pt;
-    padding: 1.5mm;
+    gap: 0 1.2mm;
+    font-size: 5.9pt;
+    padding: 0.8mm;
     border: 1px solid #000;
     background: #fafafa;
     flex-shrink: 0;
@@ -182,25 +182,25 @@
 .payslip-info-row {
     display: flex;
     justify-content: flex-start;
-    margin-bottom: 0.3mm;
+    margin-bottom: 0.15mm;
 }
 
 .payslip-info-label {
     font-weight: 800;
     color: #000;
-    min-width: 45px;
-    font-size: 6.5pt;
+    min-width: 36px;
+    font-size: 5.9pt;
 }
 
 .payslip-info-value {
     flex: 1;
     text-align: left;
-    padding-left: 1mm;
+    padding-left: 0.6mm;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 600;
-    font-size: 6.5pt;
+    font-size: 5.9pt;
 }
 
 /* Address toggle styling */
@@ -236,11 +236,11 @@
    ============================================ */
 .payslip-card-content {
     display: flex;
-    gap: 2mm;
+    gap: 1.2mm;
     flex: 1;
     border-top: 1px solid #000;
     border-bottom: 1px solid #000;
-    padding: 1mm 0;
+    padding: 0.6mm 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -256,28 +256,28 @@
 /* Column Header - Solid black bg, white text for B&W contrast */
 .payslip-column-header {
     font-weight: 900;
-    font-size: 7.5pt;
+    font-size: 6.4pt;
     text-align: center;
     background: #000;
     color: #fff;
-    padding: 1mm;
-    margin-bottom: 1mm;
+    padding: 0.55mm;
+    margin-bottom: 0.5mm;
     border: 1px solid #000;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     flex-shrink: 0;
 }
 
 .payslip-subheader {
-    font-size: 7pt;
+    font-size: 6.2pt;
     font-weight: 800;
     color: #000;
-    margin-top: 0.5mm;
-    margin-bottom: 0.3mm;
+    margin-top: 0.25mm;
+    margin-bottom: 0.15mm;
     border-bottom: 0.5px solid #ddd;
-    padding-bottom: 0.3mm;
+    padding-bottom: 0.15mm;
     text-decoration: underline;
 }
 
@@ -285,13 +285,13 @@
 .payslip-item {
     display: flex;
     justify-content: space-between;
-    font-size: 7pt;
-    margin-bottom: 0.3mm;
-    line-height: 1.2;
+    font-size: 6.1pt;
+    margin-bottom: 0.15mm;
+    line-height: 1.12;
 }
 
 .payslip-item-indent {
-    padding-left: 2mm;
+    padding-left: 1.2mm;
 }
 
 .payslip-item-label {
@@ -304,48 +304,48 @@
 .payslip-item-value {
     text-align: right;
     font-family: 'Roboto Mono', 'Consolas', monospace;
-    min-width: 45px;
+    min-width: 34px;
     font-weight: 700;
 }
 
 /* Tax breakdown - smaller italic text */
 .payslip-tax-breakdown {
-    font-size: 6pt !important;
-    line-height: 1.2 !important;
+    font-size: 5.3pt !important;
+    line-height: 1.1 !important;
     color: #333 !important;
     font-style: italic;
-    margin-top: 0.3mm;
-    margin-bottom: 0.5mm;
+    margin-top: 0.2mm;
+    margin-bottom: 0.3mm;
     background: #f9fafb;
-    padding: 0.5mm 1mm;
+    padding: 0.35mm 0.7mm;
     border-left: 2px solid #000;
 }
 
 .payslip-income-deduction-note {
-    font-size: 5.8pt;
-    line-height: 1.15;
+    font-size: 5.3pt;
+    line-height: 1.1;
     color: #333;
     font-style: italic;
-    margin: 0.5mm 0 0.7mm 2mm;
-    padding: 0.5mm 0 0 1mm;
+    margin: 0.35mm 0 0.45mm 1.2mm;
+    padding: 0.35mm 0 0 0.7mm;
     border-left: 1px solid #999;
 }
 
 /* THR Note Section */
 .payslip-note-section {
-    margin-top: 1mm;
-    padding: 1mm;
+    margin-top: 0.5mm;
+    padding: 0.6mm;
     border: 0.5px dashed #000;
     background: #fff;
-    font-size: 6pt;
-    line-height: 1.2;
+    font-size: 5.4pt;
+    line-height: 1.1;
 }
 
 .payslip-note-text {
-    font-size: 6pt;
+    font-size: 5.4pt;
     font-style: italic;
     color: #000;
-    line-height: 1.2;
+    line-height: 1.1;
     text-align: justify;
 }
 
@@ -364,8 +364,8 @@
     display: flex;
     justify-content: space-between;
     font-weight: 900;
-    font-size: 7.5pt;
-    padding-top: 0.5mm;
+    font-size: 6.5pt;
+    padding-top: 0.35mm;
     border-top: 1px solid #000;
 }
 
@@ -374,9 +374,9 @@
    ============================================ */
 .payslip-card-footer {
     text-align: center;
-    margin: 1mm 0 0 0;
-    padding: 1.5mm 2mm;
-    border: 2px solid #000;
+    margin: 0.6mm 0 0 0;
+    padding: 0.8mm 1.2mm;
+    border: 1.5px solid #000;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -388,15 +388,15 @@
 }
 
 .payslip-thp-label {
-    font-size: 8pt;
+    font-size: 6.8pt;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
     color: #fff;
 }
 
 .payslip-thp-value {
-    font-size: 11pt;
+    font-size: 9pt;
     font-weight: 950;
     font-family: 'Roboto Mono', 'Consolas', monospace;
     color: #fff;
@@ -427,7 +427,7 @@
     display: flex;
     justify-content: space-around;
     margin-top: auto;
-    padding-top: 1mm;
+    padding-top: 0.6mm;
     flex-shrink: 0;
 }
 
@@ -437,20 +437,20 @@
 }
 
 .payslip-sig-label {
-    font-size: 6pt;
+    font-size: 5.5pt;
     font-weight: 800;
-    margin-bottom: 2mm;
+    margin-bottom: 1.3mm;
 }
 
 .payslip-sig-line {
     border-bottom: 1px solid #000;
     width: 65%;
     margin: 0 auto;
-    margin-bottom: 0.3mm;
+    margin-bottom: 0.2mm;
 }
 
 .payslip-sig-name {
-    font-size: 6pt;
+    font-size: 5.5pt;
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -604,6 +604,7 @@
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
+        page: payslip-portrait;
     }
 
     .payslip-a4-page {
@@ -612,7 +613,7 @@
         min-width: 210mm !important;
         min-height: 297mm !important;
         margin: 0 auto !important;
-        padding: 5mm !important;
+        padding: 3mm !important;
         box-shadow: none !important;
         page-break-after: always !important;
         border: none !important;
@@ -620,6 +621,7 @@
         display: block !important;
         position: relative !important;
         transform: none !important;
+        page: payslip-portrait;
     }
 
     .payslip-a4-page:last-child {
@@ -627,12 +629,12 @@
     }
 
     .payslip-grid {
-        width: 200mm !important;
-        height: 287mm !important;
+        width: 100% !important;
+        height: 100% !important;
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
         grid-template-rows: 1fr 1fr !important;
-        gap: 2mm !important;
+        gap: 1.5mm !important;
         position: relative !important;
     }
 
@@ -644,10 +646,10 @@
         box-sizing: border-box !important;
         display: flex !important;
         flex-direction: column !important;
-        padding: 2mm !important;
-        border: 1.5px solid #000 !important;
-        font-size: 7pt !important;
-        line-height: 1.2 !important;
+        padding: 1.3mm !important;
+        border: 1px solid #000 !important;
+        font-size: 6.2pt !important;
+        line-height: 1.12 !important;
     }
 
     .payslip-card-content,
@@ -661,7 +663,7 @@
     }
 
     .payslip-watermark__tile {
-        color: rgba(0, 0, 0, 0.03) !important;
+        color: rgba(0, 0, 0, 0.035) !important;
     }
 }
 

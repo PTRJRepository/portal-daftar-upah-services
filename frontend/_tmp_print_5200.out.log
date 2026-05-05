@@ -1,0 +1,24 @@
+
+> payroll-frontend@0.1.0 dev
+> vite --host 127.0.0.1 --port 5200
+
+🌐 Network mode detected, using IP: localhost
+Proxy configuration: {
+  isDev: false,
+  backendTarget: 'http://localhost:8002',
+  isProxyMode: undefined,
+  basePath: '/',
+  envVars: {
+    VITE_BACKEND_HOST: undefined,
+    BACKEND_HOST: undefined,
+    VITE_BACKEND_PORT: undefined,
+    BACKEND_PORT: undefined,
+    DEV_MODE: undefined,
+    VITE_DEV_MODE: undefined,
+    VITE_BASE_PATH: undefined
+  }
+}
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m350[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5200[22m/[39m

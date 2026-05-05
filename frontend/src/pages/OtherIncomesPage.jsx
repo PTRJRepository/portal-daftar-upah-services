@@ -25,7 +25,6 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
     const [gangMembersLoading, setGangMembersLoading] = useState(false);
     const [gangMembersSummary, setGangMembersSummary] = useState(null);
     const [blacklistData, setBlacklistData] = useState([]);
-    const [printOrientation, setPrintOrientation] = useState('portrait');
     const [previewType, setPreviewType] = useState('MAIN');
 
     const RELIGION_OPTIONS = [
@@ -289,6 +288,23 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             <div style="width:23%"><div style="font-size:1.1em;">Disetujui Oleh,</div><div style="height:60px; border-bottom:1pt solid #000; width:85%; margin:0 auto 5px;"></div><div style="font-weight:bold; text-transform:uppercase; font-size:1.1em;">( .................... )</div><div style="font-size:1.1em; font-weight:bold;">Senior Manager</div></div>
         </div>`;
 
+    const getPrintWatermarkStyle = () => `
+        .print-watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
+        .print-watermark-inner { display: flex; flex-direction: column; align-items: center; transform: rotate(-28deg); opacity: 0.07; filter: grayscale(1); }
+        .print-watermark img { width: 54mm; max-width: 24vw; height: auto; margin-bottom: 3mm; }
+        .print-watermark-text { color: #000; font-size: 28pt; font-weight: 900; letter-spacing: 6pt; line-height: 1; }
+        .print-content { position: relative; z-index: 1; }
+    `;
+
+    const getPrintWatermarkHTML = () => `
+        <div class="print-watermark" aria-hidden="true">
+            <div class="print-watermark-inner">
+                <img src="/images/rebinmas.webp" alt="" />
+                <div class="print-watermark-text">REBINMAS</div>
+            </div>
+        </div>
+    `;
+
     const getReportHTML = (data, orient = 'landscape') => {
         const cleanName = (name) => (name || '').split('(')[0].trim();
         // THR usually targets the next month's holiday, so we display month + 1
@@ -348,10 +364,12 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                 .fit { width: 1%; white-space: nowrap; }
                 .name-col { width: auto; min-width: 100px; }
                 .num { font-size: 0.95em; letter-spacing: -0.2px; }
+                ${getPrintWatermarkStyle()}
             </style>
-            
+            ${getPrintWatermarkHTML()}
+            <div class="print-content">
             <div class="header-container">
-                <img src="/logo.png" class="logo" alt="Logo" onerror="this.style.display='none'" />
+                <img src="/images/rebinmas.webp" class="logo" alt="Logo" onerror="this.style.display='none'" />
                 <div class="co">PT. REBINMAS JAYA</div>
             </div>
             
@@ -453,7 +471,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         }).join('')}
                 </tbody>
                 <tfoot><tr><th colspan="11" class="tr">TOTAL KESELURUHAN (Rp)</th><th class="tr fit num">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th><th class="tr fit num">-</th><th class="fit"></th><th class="tr fit num">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
-            </table>${getSigs()}`;
+            </table>${getSigs()}</div>`;
     };
 
     const getBankListHTML = (data) => {
@@ -485,7 +503,10 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
             .gh { background-color: #e2e8f0; font-weight: 800; text-align: left; padding: 6px; border: 1pt solid #000; -webkit-print-color-adjust: exact;}
             .gang-sub { background-color: #f9fafb; font-weight: bold; font-style: italic; -webkit-print-color-adjust: exact; }
             .gs-tot { background-color: #fef3c7; font-weight: bold; font-style: italic; -webkit-print-color-adjust: exact;}
+            ${getPrintWatermarkStyle()}
         </style>
+        ${getPrintWatermarkHTML()}
+        <div class="print-content">
         <div class="tit">LIST PEMBAYARAN BANK - THR</div>
         <div class="sub-tit">PERIODE: ${mName.toUpperCase()} ${displayYear} | UNIT: ${division}</div>
         <table>
@@ -534,7 +555,7 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
         }).join('')}
             </tbody>
             <tfoot><tr><th colspan="5" class="tr">TOTAL TRANSFER KESELURUHAN</th><th class="tr">${formatCurrency(data.reduce((a, c) => a + (Number(c.amount) || 0), 0))}</th></tr></tfoot>
-        </table>${getSigs()}`;
+        </table>${getSigs()}</div>`;
     };
 
     const reportColumns = useMemo(() => [
@@ -642,14 +663,14 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
 
     const handleDownloadPDF = () => {
         const element = document.createElement('div');
-        element.innerHTML = previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData);
+        element.innerHTML = previewType === 'MAIN' ? getReportHTML(displayData, 'portrait') : getBankListHTML(displayData);
 
         const opt = {
             margin: [10, 5, 10, 5],
             filename: `${previewType === 'MAIN' ? 'Laporan_THR' : 'Bank_List_THR'}_${division}_${month}_${year}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, logging: false },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: previewType === 'MAIN' ? printOrientation : 'portrait' }
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
         html2pdf().set(opt).from(element).save();
@@ -789,11 +810,11 @@ const OtherIncomesPage = ({ initialMonth, initialYear, initialDivision }) => {
                     <ReportTable columns={reportColumns} data={displayData} footerData={footerData} footerLabel="TOTAL" footerLabelColSpan={8} statusBar={<><strong>Total:</strong> {displayData.length} karyawan</>} />
                 </div>
             </div>
-            {isPreviewModalOpen && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', padding: '2rem' }}><div style={{ background: 'white', flex: 1, display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Preview {previewType === 'MAIN' ? 'Laporan Utama' : 'Bank List'}</h2><div style={{ display: 'flex', gap: '1rem' }}>{previewType === 'MAIN' && <select value={printOrientation} onChange={e => setPrintOrientation(e.target.value)}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>}<button onClick={() => { const win = window.open('', '_blank'); win.document.write(`<html><body>${previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData)}<script>window.onload=function(){window.print();}</script></body></html>`); win.document.close(); }} style={{ background: '#6366f1', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Print PDF</button>
+            {isPreviewModalOpen && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', padding: '2rem' }}><div style={{ background: 'white', flex: 1, display: 'flex', flexDirection: 'column', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Preview {previewType === 'MAIN' ? 'Laporan Utama' : 'Bank List'}</h2><div style={{ display: 'flex', gap: '1rem' }}><button onClick={() => { const win = window.open('', '_blank'); win.document.write(`<html><body>${previewType === 'MAIN' ? getReportHTML(displayData, 'portrait') : getBankListHTML(displayData)}<script>window.onload=function(){window.print();}</script></body></html>`); win.document.close(); }} style={{ background: '#6366f1', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Print PDF</button>
                 <button onClick={handleDownloadPDF} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}><FileDown size={16} /> Save to PDF</button>
                 {previewType === 'BANK' && <button onClick={handleExportBankList} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
                 {previewType === 'MAIN' && <button onClick={handleExportTHR} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Export Excel</button>}
-                <button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, printOrientation) : getBankListHTML(displayData) }} /></div></div>}
+                <button onClick={() => setIsPreviewModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={24} /></button></div></div><div style={{ flex: 1, overflow: 'auto', padding: '2rem', background: '#f3f4f6' }} dangerouslySetInnerHTML={{ __html: previewType === 'MAIN' ? getReportHTML(displayData, 'portrait') : getBankListHTML(displayData) }} /></div></div>}
 
             {isBlacklistModalOpen && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

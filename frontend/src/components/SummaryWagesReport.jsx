@@ -1,7 +1,10 @@
 import React, { useMemo, useEffect } from 'react';
 import '../styles/summary-wages-print.css';
 import PrintModeSelector from './common/PrintModeSelector';
+import ReportWatermark from './common/ReportWatermark';
 import { initPrintMode } from '../utils/printOptimizer';
+import { printReport } from '../utils/printPageSetup';
+import '../styles/report-print-foundation.css';
 
 /**
  * SummaryWagesReport - A custom print-ready financial statement component
@@ -71,7 +74,7 @@ export default function SummaryWagesReport({
 
     // Handle print
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'landscape' });
     };
 
     if (loading) {
@@ -105,6 +108,7 @@ export default function SummaryWagesReport({
 
             {/* Document (Paper) */}
             <div className="sw-document">
+                <ReportWatermark />
                 {/* Letterhead */}
                 <header className="sw-letterhead">
                     <h1 className="sw-company-name">{companyName}</h1>

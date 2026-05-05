@@ -11,7 +11,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchGangs, fetchDivisions } from '../services/gangService';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 import { initPrintMode } from '../utils/printOptimizer';
 import { TrendingUp, Clock, AlertTriangle, ChevronDown, Printer, Download, RefreshCw, Filter } from 'lucide-react';
 
@@ -332,7 +336,7 @@ export default function PayrollAnalysisPage({
     return Array.from(headers);
   }, [rawData]);
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => printReport({ orientation: 'landscape' });
 
   return (
     <div className="wsp-container">
@@ -368,6 +372,7 @@ export default function PayrollAnalysisPage({
       </div>
 
       <div className="wsp-document" id="printable-analysis">
+        <ReportWatermark />
         {/* Header */}
         <div className="wsp-letterhead">
           <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
@@ -377,6 +382,16 @@ export default function PayrollAnalysisPage({
             {division === 'ALL' ? 'SEMUA UNIT OPERASIONAL' : `DIVISI: ${division}`}
             {gang && gang !== 'ALL' && ` | GANG: ${gang}`}
           </div>
+          <ReportPrintMetadata
+            mode="Payroll Analysis"
+            source="Payroll API"
+            scope={division === 'ALL' ? 'Semua Unit Operasional' : division}
+            items={[
+              { label: 'Gang', value: gang && gang !== 'ALL' ? gang : '' },
+              { label: 'Tab', value: activeTab?.toUpperCase() }
+            ]}
+            note="KPI mengikuti data periode; tab dan nilai minimal menyaring detail karyawan yang terlihat."
+          />
         </div>
 
         {/* KPI Grid */}

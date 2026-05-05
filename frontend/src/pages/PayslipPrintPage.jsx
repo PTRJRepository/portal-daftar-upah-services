@@ -6,6 +6,7 @@ import PayslipCard from '../components/PayslipCard';
 import { generatePDF } from '../utils/pdfGenerator';
 import { Download, Printer, ArrowLeft, FileText, Database, RefreshCw } from 'lucide-react';
 import { buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/payslip-print.css';
 
 /**
@@ -192,7 +193,7 @@ export default function PayslipPrintPage() {
     }, [token, empCodes.join(','), month, year, useHistory, snapshotVersion, division]);
 
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'portrait', margin: '0' });
     };
 
     const handleSaveHistory = async () => {

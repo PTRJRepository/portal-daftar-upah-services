@@ -1,3 +1,5 @@
+import { ensureReportPrintPageSetup } from './printPageSetup';
+
 /**
  * ============================================
  * PRINT OPTIMIZER UTILITY
@@ -82,6 +84,7 @@ export function initPrintMode() {
  */
 export function printReport() {
     // Add a small delay to ensure styles are applied
+    ensureReportPrintPageSetup({ orientation: 'landscape' });
     setTimeout(() => {
         window.print();
     }, 100);
@@ -96,6 +99,7 @@ export function printWithMode(mode) {
 
     // Apply temporary mode
     applyPrintMode(mode);
+    ensureReportPrintPageSetup({ orientation: 'landscape' });
 
     // Print after styles are applied
     setTimeout(() => {

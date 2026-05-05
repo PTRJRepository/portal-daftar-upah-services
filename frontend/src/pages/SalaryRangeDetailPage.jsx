@@ -4,11 +4,16 @@
  * Format landscape compact dengan breakdown lengkap
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import MonthSelector from '../components/common/MonthSelector';
 import LoadingScreen from '../components/common/LoadingScreen';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import { fetchReportRowsSimple } from '../services/payrollService';
+import { buildSalaryRangeRows, REPORT_ROWS_FETCH_LIMIT } from '../utils/payrollReportFilters';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 
 const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -17,7 +22,8 @@ const SalaryRangeDetailPage = ({
   onBack,
   initialMonth = new Date().getMonth() + 1,
   initialYear = new Date().getFullYear(),
-  initialMinSalary = 6000000
+  initialMinSalary = 6000000,
+  initialMaxSalary = null
 }) => {
     const { token } = useAuth();
 
@@ -25,14 +31,15 @@ const SalaryRangeDetailPage = ({
     const [month, setMonth] = useState(initialMonth);
     const [year, setYear] = useState(initialYear);
     const [minSalary, setMinSalary] = useState(initialMinSalary);
-    const [maxSalary, setMaxSalary] = useState(null);
+    const [maxSalary, setMaxSalary] = useState(initialMaxSalary);
 
     // Sync state with props when they change (fix navigation freeze)
     useEffect(() => {
         if (initialMonth !== undefined) setMonth(initialMonth);
         if (initialYear !== undefined) setYear(initialYear);
         if (initialMinSalary !== undefined) setMinSalary(initialMinSalary);
-    }, [initialMonth, initialYear, initialMinSalary]);
+        if (initialMaxSalary !== undefined) setMaxSalary(initialMaxSalary);
+    }, [initialMonth, initialYear, initialMinSalary, initialMaxSalary]);
 
     // State for data
     const [data, setData] = useState([]);
@@ -49,45 +56,49 @@ const SalaryRangeDetailPage = ({
         { value: 11, label: 'November' }, { value: 12, label: 'Desember' }
     ];
 
-    // Fetch data
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
+        if (!token) {
+            setLoading(false);
+            setError('Token autentikasi tidak tersedia');
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
-            const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002';
-            const params = new URLSearchParams({
-                month: String(month),
-                year: String(year),
-                min_salary: String(minSalary)
-            });
-            if (maxSalary) params.append('max_salary', String(maxSalary));
+            const result = await fetchReportRowsSimple(token, {
+                month,
+                year,
+                skip: 0,
+                limit: REPORT_ROWS_FETCH_LIMIT,
+                summary_only: 'true',
+            }, true);
 
-            const response = await fetch(
-                `${apiUrl}/payroll/report/salary-range-detail?${params}`,
-                {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }
-            );
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Failed to fetch data');
+            if (Array.isArray(result)) {
+                throw new Error('Gagal mengambil data payroll report');
             }
 
-            const result = await response.json();
-            setData(result.data || []);
-            setMeta(result.meta);
+            const report = buildSalaryRangeRows(result?.data || [], {
+                minSalary,
+                maxSalary,
+            });
+            setData(report.data);
+            setMeta({
+                ...(result?.meta || {}),
+                ...report.meta,
+                source_count: result?.data?.length || 0,
+            });
         } catch (err) {
             console.error(err);
-            setError(err.message);
+            setError(err.response?.data?.error || err.message || 'Gagal mengambil data');
         } finally {
             setLoading(false);
         }
-    };
+    }, [token, month, year, minSalary, maxSalary]);
 
     useEffect(() => {
         fetchData();
-    }, [month, year, minSalary, maxSalary]);
+    }, [fetchData]);
 
     // Helper: Format currency
     const formatCurrency = (num) => {
@@ -143,7 +154,7 @@ const SalaryRangeDetailPage = ({
                 </div>
 
                 <div className="right-section">
-                    <button onClick={() => window.print()} className="wsp-btn">
+                    <button onClick={() => printReport({ orientation: 'landscape' })} className="wsp-btn">
                         PRINT
                     </button>
                 </div>
@@ -165,6 +176,16 @@ const SalaryRangeDetailPage = ({
                         Periode: {periodLabel} | Gaji Bersih &gt; Rp {formatCurrency(minSalary)}
                         {maxSalary && ` - Rp ${formatCurrency(maxSalary)}`}
                     </div>
+                    <ReportPrintMetadata
+                        mode="Salary Range Detail"
+                        source="Payroll Report API"
+                        scope="Karyawan"
+                        items={[
+                            { label: 'Min', value: `Rp ${formatCurrency(minSalary)}` },
+                            { label: 'Max', value: maxSalary ? `Rp ${formatCurrency(maxSalary)}` : '' }
+                        ]}
+                        note="Daftar menampilkan karyawan dalam range upah bersih yang dipilih."
+                    />
                     {meta && (
                         <div className="wsp-meta" style={{ fontSize: '0.8rem', color: '#666' }}>
                             Total Karyawan: {meta.count} | Total Upah Bersih: Rp {formatCurrency(meta.sum_upah_bersih)}

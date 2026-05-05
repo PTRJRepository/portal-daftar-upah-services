@@ -10,6 +10,10 @@ import {
 } from '../services/wagesService';
 import { fetchDivisions } from '../services/gangService';
 import PrintSignature from './common/PrintSignature';
+import ReportPrintMetadata from './common/ReportPrintMetadata';
+import ReportWatermark from './common/ReportWatermark';
+import { getReportDivisionSummary } from '../utils/divisionPresentation';
+import { printReport } from '../utils/printPageSetup';
 import './PayrollHistoryComparison.css';
 import '../styles/report-print-foundation.css';
 
@@ -153,6 +157,11 @@ export default function PayrollHistoryComparison({
         });
         return Array.from(groups).sort((a, b) => Number(a) - Number(b));
     }, [comparisonData, division, getAsistensi]);
+
+    const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
+        division,
+        rows: filteredData
+    }), [division, filteredData]);
     
     const handleExport = () => {
         if (!filteredData.length) return;
@@ -220,6 +229,7 @@ export default function PayrollHistoryComparison({
     
     return (
         <div className="phc-container">
+            <ReportWatermark />
             {/* Print Header */}
             <div className="phc-print-header only-print">
                 <h1 className="phc-print-title">SUMMARY WAGES COMPARISON REPORT</h1>
@@ -239,14 +249,13 @@ export default function PayrollHistoryComparison({
                         <strong>Dicetak pada:</strong> {new Date().toLocaleString('id-ID')}
                     </div>
                 </div>
-                <div className="report-print-meta-grid">
-                    <span className="report-source-badge">Mode: Wages Verification</span>
-                    <span className="report-source-badge">Sumber: PR_EMPWAGES</span>
-                    <span className="report-source-badge">Pembanding: Upah Bersih</span>
-                </div>
-                <div className="report-print-note">
-                    Detail Wages hanya tersedia untuk nilai net wages yang bisa dibandingkan dengan daftar upah.
-                </div>
+                <ReportPrintMetadata
+                    mode="Wages Verification"
+                    source="PR_EMPWAGES"
+                    items={[{ label: 'Pembanding', value: 'Upah Bersih' }]}
+                    scope={reportDivisionSummary}
+                    note="Detail Wages hanya tersedia untuk nilai net wages yang bisa dibandingkan dengan daftar upah."
+                />
             </div>
 
             {/* Header */}
@@ -263,7 +272,7 @@ export default function PayrollHistoryComparison({
                     </span>
                 </div>
                 <div className="phc-header-right">
-                    <button onClick={() => window.print()} className="phc-btn phc-btn-print">
+                    <button onClick={() => printReport({ orientation: 'landscape' })} className="phc-btn phc-btn-print">
                         🖨️ Cetak Laporan
                     </button>
                     <button onClick={handleExport} className="phc-btn phc-btn-export" disabled={!filteredData.length}>

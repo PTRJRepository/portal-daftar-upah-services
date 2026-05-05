@@ -8,7 +8,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchImpactReport, fetchAvailablePeriods, updateLuasArea } from '../services/summaryReportService';
 import PrintSignature from '../components/common/PrintSignature';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
 import { getSourceModeLabel } from '../utils/reportPresentationLabels';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 import '../styles/report-print-foundation.css';
 
@@ -296,7 +299,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
 
     // Handle print
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'landscape' });
     };
 
     // Handle Luas Area Change
@@ -709,6 +712,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
             ) : (
                 /* Paper Document */
                 <div className="wsp-document">
+                    <ReportWatermark />
                     {/* Letterhead */}
                     <div className="wsp-letterhead">
                         <img
@@ -725,16 +729,12 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
                             {estateType === 'non-ijl' && ' - ESTATE REBINMAS'}
                         </div>
                         <div className="wsp-report-period">{periodLabel}</div>
-                        <div className="report-print-meta-grid">
-                            <span className="report-source-badge">Mode: Impact</span>
-                            <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Impact API' })}</span>
-                            <span className="report-source-badge">
-                                Scope: {estateType === 'all' ? 'Semua Estate' : estateType === 'ijl' ? 'IJL' : 'Rebinmas'}
-                            </span>
-                        </div>
-                        <div className="report-print-note">
-                            Grand total mengikuti data yang terlihat setelah filter estate pada report ini.
-                        </div>
+                        <ReportPrintMetadata
+                            mode="Impact"
+                            source={getSourceModeLabel({ sourceMode: 'Impact API' })}
+                            scope={estateType === 'all' ? 'Semua Estate' : estateType === 'ijl' ? 'IJL' : 'Rebinmas'}
+                            note="Grand total mengikuti data yang terlihat setelah filter estate pada report ini."
+                        />
                     </div>
 
                     {/* Main Table (Top) */}

@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary } from '../services/summaryReportService';
 import ImpactReportPage from './ImpactReportPage';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 
 export default function WagesSummaryRebinmasPage({ onBack }) {
@@ -449,7 +450,7 @@ export default function WagesSummaryRebinmasPage({ onBack }) {
 
     // Handle print
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'landscape' });
     };
 
     // Handle export CSV

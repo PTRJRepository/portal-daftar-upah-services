@@ -11,9 +11,15 @@ import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fe
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
 import { otherIncomesService } from '../services/otherIncomesService';
+import { getDivisionTypeLabel } from '../utils/reportPresentationLabels';
+import { getReportDivisionSummary } from '../utils/divisionPresentation';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
+import '../styles/report-print-foundation.css';
 
 // Company information by division
 const COMPANY_INFO = {
@@ -224,6 +230,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         if (!groupFilter) return mergedSummaryData;
         return mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
     }, [mergedSummaryData, groupFilter, division, getAsistensi]);
+
+    const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
+        division,
+        divisionType,
+        rows: filteredSummaryData
+    }), [division, divisionType, filteredSummaryData]);
 
     // Recalculate Grand Total based on filtered data (always recalculate to include edited values)
     const filteredGrandTotal = useMemo(() => {
@@ -558,11 +570,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const handleSavePDF = () => {
         const element = document.getElementById('summary-report-content');
         const filename = `Summary_Report_${division || 'ALL'}_${month}_${year}.pdf`;
-        generatePDF(element, filename);
+        generatePDF(element, filename, {
+            jsPDF: { orientation: reportMode === 'thr' ? 'portrait' : 'landscape' }
+        });
     };
 
     // Handle Print
-    const handlePrint = () => window.print();
+    const handlePrint = () => printReport({
+        orientation: reportMode === 'thr' ? 'portrait' : 'landscape'
+    });
 
     // Handle Export CSV
     const handleExport = () => {
@@ -779,7 +795,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             ) : error ? (
                 <div className="wsp-error">! {error}</div>
             ) : (
-                <div className="wsp-document" id="summary-report-content">
+                <div className={`wsp-document ${reportMode === 'thr' ? 'thr-print-document' : ''}`} id="summary-report-content">
+                    <ReportWatermark />
                     {/* Letterhead */}
                     <div className="wsp-letterhead">
                         <img
@@ -796,8 +813,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         <h1 className="wsp-company-name">{companyInfo.name}</h1>
                         <div className="wsp-report-title">{reportMode === 'thr' ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : 'SUMMARY REPORT DETAIL'}</div>
                         <div className="wsp-report-period">
-                            Division: <strong style={{ color: '#0f172a' }}>{division || 'ALL'}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                            Division: <strong style={{ color: '#0f172a' }}>{reportDivisionSummary}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
                         </div>
+                        <ReportPrintMetadata
+                            mode={reportMode === 'thr' ? 'THR' : 'Payroll'}
+                            source={reportMode === 'thr' ? 'THR Summary API' : 'Summary API'}
+                            scope={`${division || 'ALL'} / ${getDivisionTypeLabel(divisionType)}`}
+                            estate={division === 'IJL' ? 'IJL' : division ? 'Selected Division' : 'All Available'}
+                            items={[{ label: 'Deskripsi', value: reportDivisionSummary }]}
+                            note="Grand total mengikuti data backend; filter group hanya menyaring baris yang sedang dicetak."
+                        />
                     </div>
 
                     {/* KPI Cards */}

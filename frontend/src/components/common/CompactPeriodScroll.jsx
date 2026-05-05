@@ -31,7 +31,7 @@ export default function CompactPeriodScroll({
     const [isOpen, setIsOpen] = useState(false)
     const dropdownRef = useRef(null)
 
-    const currentMonthIndex = month - 1
+    const currentMonthIndex = (month != null ? month : new Date().getMonth() + 1) - 1
 
     // Generate available years
     const availableYears = useMemo(() => {

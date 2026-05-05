@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import { fetchDivisions, fetchGangs } from '../services/gangService';
+import { fetchReportRowsSimple } from '../services/payrollService';
+import {
+    buildHighEarnerRows,
+    normalizeDivisionOptions,
+    normalizeGangOptions,
+    REPORT_ROWS_FETCH_LIMIT,
+} from '../utils/payrollReportFilters';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css'; // Reuse existing styles
-import { generatePDF } from '../utils/pdfGenerator';
+import '../styles/report-print-foundation.css';
 
 const HighEarnerReportPage = () => {
     const { token } = useAuth();
@@ -16,6 +26,7 @@ const HighEarnerReportPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [meta, setMeta] = useState(null);
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
 
     // Filters
     const [divisions, setDivisions] = useState([]);
@@ -34,92 +45,101 @@ const HighEarnerReportPage = () => {
     ];
 
 
-    // Fetch Divisions on Mount
     useEffect(() => {
-        const fetchDivisions = async () => {
+        let cancelled = false;
+
+        const loadDivisions = async () => {
+            if (!token) return;
             try {
-                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/divisions`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const result = await response.json();
-                    setDivisions(result || []);
-                }
+                const result = await fetchDivisions(token);
+                if (!cancelled) setDivisions(normalizeDivisionOptions(result));
             } catch (err) {
                 console.error("Failed to fetch divisions", err);
             }
         };
-        fetchDivisions();
+
+        loadDivisions();
+        return () => {
+            cancelled = true;
+        };
     }, [token]);
 
-    // Fetch Gangs when Division changes
     useEffect(() => {
-        const fetchGangs = async () => {
+        let cancelled = false;
+
+        const loadGangs = async () => {
             if (selectedDivision === 'ALL') {
                 setGangs([]);
                 setSelectedGang('ALL');
                 return;
             }
 
+            if (!token) return;
+
             try {
-                // Fetch gangs for this division
-                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/gangs?division=${selectedDivision}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (response.ok) {
-                    const result = await response.json();
-                    setGangs(result || []);
-                    setSelectedGang('ALL'); // Reset gang selection on division change
+                const result = await fetchGangs(token, selectedDivision, null, true);
+                if (!cancelled) {
+                    setGangs(normalizeGangOptions(result));
+                    setSelectedGang('ALL');
                 }
             } catch (err) {
                 console.error("Failed to fetch gangs", err);
             }
         };
-        fetchGangs();
+
+        loadGangs();
+        return () => {
+            cancelled = true;
+        };
     }, [selectedDivision, token]);
 
-    // Fetch Data
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
+        if (!token) {
+            setError('Token autentikasi tidak tersedia');
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {
-            let url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/payroll/report/high-earners?month=${month}&year=${year}&limit=${limit}`;
+            const result = await fetchReportRowsSimple(token, {
+                month,
+                year,
+                gang_code: selectedGang !== 'ALL' ? selectedGang : null,
+                skip: 0,
+                limit: REPORT_ROWS_FETCH_LIMIT,
+                summary_only: 'true',
+            }, true);
 
-            if (selectedDivision !== 'ALL') {
-                url += `&division=${selectedDivision}`;
-            }
-            if (selectedGang !== 'ALL') {
-                url += `&gang_code=${selectedGang}`;
+            if (Array.isArray(result)) {
+                throw new Error('Gagal mengambil data payroll report');
             }
 
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            const report = buildHighEarnerRows(result?.data || [], {
+                limit,
+                division: selectedDivision,
+                gang: selectedGang,
             });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Failed to fetch data');
-            }
-
-            const result = await response.json();
-            setData(result.data || []);
-            setMeta(result.meta);
+            setData(report.data);
+            setMeta({
+                ...(result?.meta || {}),
+                ...report.meta,
+                source_count: result?.data?.length || 0,
+            });
         } catch (err) {
             console.error(err);
-            setError(err.message);
+            setError(err.response?.data?.error || err.message || 'Gagal mengambil data');
         } finally {
             setLoading(false);
         }
-    };
+    }, [token, month, year, limit, selectedDivision, selectedGang]);
 
-    // Initial Load
     useEffect(() => {
-        // Initial fetch
-        fetchData();
-        // eslint-disable-next-line
-    }, []);
+        if (!initialLoadDone && token) {
+            setInitialLoadDone(true);
+            fetchData();
+        }
+    }, [fetchData, initialLoadDone, token]);
 
     // Helper: Format Number
     const formatNumber = (num) => {
@@ -190,7 +210,7 @@ const HighEarnerReportPage = () => {
                         >
                             <option value="ALL">Semua Divisi</option>
                             {divisions.map(div => (
-                                <option key={div.code} value={div.code}>{div.code}</option>
+                                <option key={div.code} value={div.code}>{div.label}</option>
                             ))}
                         </select>
 
@@ -204,7 +224,7 @@ const HighEarnerReportPage = () => {
                             >
                                 <option value="ALL">Semua Gang</option>
                                 {gangs.map(g => (
-                                    <option key={g.gang_code} value={g.gang_code}>{g.gang_code}</option>
+                                    <option key={g.code} value={g.code}>{g.label}</option>
                                 ))}
                             </select>
                         )}
@@ -228,7 +248,7 @@ const HighEarnerReportPage = () => {
                 </div>
 
                 <div className="right-section">
-                    <button onClick={() => window.print()} className="wsp-btn">
+                    <button onClick={() => printReport({ orientation: 'landscape' })} className="wsp-btn">
                         Print / PDF
                     </button>
                 </div>
@@ -251,6 +271,16 @@ const HighEarnerReportPage = () => {
                         {selectedGang !== 'ALL' && ` | Gang: ${selectedGang}`}
                         {' '}| Limit: Rp {formatNumber(limit)}
                     </div>
+                    <ReportPrintMetadata
+                        mode="High Earners"
+                        source="Payroll Report API"
+                        scope={selectedDivision === 'ALL' ? 'Semua Divisi' : selectedDivision}
+                        items={[
+                            { label: 'Gang', value: selectedGang !== 'ALL' ? selectedGang : '' },
+                            { label: 'Limit', value: `Rp ${formatNumber(limit)}` }
+                        ]}
+                        note="Daftar menampilkan karyawan dengan upah bersih di atas limit yang dipilih."
+                    />
                     {meta && (
                         <div className="wsp-meta" style={{ fontSize: '0.8rem', color: '#666' }}>
                             Total Karyawan: {meta.count}

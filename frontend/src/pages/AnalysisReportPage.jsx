@@ -5,8 +5,11 @@ import { generatePDF } from '../utils/pdfGenerator';
 import { Printer, RefreshCw, FileText, Settings, X, Search, DollarSign, Clock, TrendingUp } from 'lucide-react';
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
 import { initPrintMode } from '../utils/printOptimizer';
 import { getSourceModeLabel } from '../utils/reportPresentationLabels';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 import '../styles/report-print-foundation.css';
 
@@ -133,7 +136,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         generatePDF(element, filename);
     };
 
-    const handlePrint = () => window.print();
+    const handlePrint = () => printReport({ orientation: 'landscape' });
 
     // Year Options
     const yearOptions = useMemo(() => {
@@ -248,6 +251,7 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
             {/* Main Document */}
             {!loading && !error && reportData && (
                 <div className="wsp-document" id="wsp-report-content">
+                    <ReportWatermark />
                     {/* Standardized Professional Header (3-Column Layout) */}
                     <div className="wsp-report-header">
                         {/* Left Section: Logo */}
@@ -284,14 +288,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                             </div>
                         </div>
                     </div>
-                    <div className="report-print-meta-grid">
-                        <span className="report-source-badge">Mode: Analysis</span>
-                        <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Analysis API' })}</span>
-                        <span className="report-source-badge">Scope: {filterType === 'all' ? 'All Divisions' : filterType === 'ijl' ? 'IJL' : 'Rebinmas'}</span>
-                    </div>
-                    <div className="report-print-note">
-                        KPI berasal dari summary periode; filter range hanya menyaring tabel detail yang sedang ditampilkan.
-                    </div>
+                    <ReportPrintMetadata
+                        mode="Analysis"
+                        source={getSourceModeLabel({ sourceMode: 'Analysis API' })}
+                        scope={filterType === 'all' ? 'All Divisions' : filterType === 'ijl' ? 'IJL' : 'Rebinmas'}
+                        note="KPI berasal dari summary periode; filter range hanya menyaring tabel detail yang sedang ditampilkan."
+                    />
 
                     {/* KPI Comparison Cards */}
                     <div className="wsp-kpi-grid comparison-grid">

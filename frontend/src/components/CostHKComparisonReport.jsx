@@ -7,7 +7,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchCostHKComparison, fetchAvailableGangs, exportToCSV } from '../services/costHKService';
+import ReportPrintMetadata from './common/ReportPrintMetadata';
+import ReportWatermark from './common/ReportWatermark';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/cost-hk-report.css';
+import '../styles/report-print-foundation.css';
 
 // Format currency
 const formatCurrency = (value) => {
@@ -132,7 +136,7 @@ export default function CostHKComparisonReport({ initialMonth, initialYear }) {
 
     // Handle print
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'landscape' });
     };
 
     // Handle export
@@ -322,6 +326,7 @@ export default function CostHKComparisonReport({ initialMonth, initialYear }) {
 
             {/* Report Content */}
             <div className="cost-hk-report">
+                <ReportWatermark />
                 {/* Letterhead */}
                 <div className="cost-hk-letterhead">
                     <img src="/assets/images/rebinmas.webp" alt="Logo" className="cost-hk-logo" />
@@ -334,6 +339,13 @@ export default function CostHKComparisonReport({ initialMonth, initialYear }) {
                         Filter Divisi: {divisionFilter === 'ALL' ? 'Semua Divisi' : divisionFilter === 'IJL' ? 'IJL Only' : 'Non-IJL'}
                         {selectedGangs.length > 0 && ` | Gangs: ${selectedGangs.length} terpilih`}
                     </p>
+                    <ReportPrintMetadata
+                        mode="Cost/HK Comparison"
+                        source="Cost HK API"
+                        scope={divisionFilter === 'ALL' ? 'Semua Divisi' : divisionFilter === 'IJL' ? 'IJL Only' : 'Non-IJL'}
+                        items={[{ label: 'Gang Terpilih', value: selectedGangs.length > 0 ? selectedGangs.length : '' }]}
+                        note="Cost/HK dihitung dari total cost dibagi total HK pada gang yang masuk filter."
+                    />
                 </div>
 
                 {/* Loading State */}

@@ -8,7 +8,9 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import ReportPrintMetadata from './common/ReportPrintMetadata';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 
 // Analysis type configurations
 const ANALYSIS_TYPES = {
@@ -237,6 +239,12 @@ export default function CostPerTonAnalysis({
                 <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.5rem' }}>
                     {ANALYSIS_TYPES[analysisType.toUpperCase()]?.description || 'Analisis biaya per ton'}
                 </p>
+                <ReportPrintMetadata
+                    mode="Cost Per Ton"
+                    source={tbsData ? 'Summary + TBS Data' : 'Summary Data'}
+                    scope={ANALYSIS_TYPES[analysisType.toUpperCase()]?.label || analysisType}
+                    note="Cost per ton memakai total upah bersih dan TBS yang tersedia atau input manual pada report."
+                />
             </div>
 
             {/* Analysis Type Selector */}

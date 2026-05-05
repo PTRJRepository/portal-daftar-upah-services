@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getGangAttendanceMatrix } from '../services/employeeDetailService'
 import { fetchGangs } from '../services/gangService'
+import { printReport } from '../utils/printPageSetup'
 
 const STATUS_CONFIG = {
     H: { label: 'Hadir', color: '#166534', bg: '#dcfce7', short: 'H' },
@@ -234,7 +235,7 @@ export default function GangAttendanceMatrix({
         if (data?.data) {
             setExpandedGangs(new Set(data.data.map(g => g.gang_code)))
             setTimeout(() => {
-                window.print()
+                printReport({ orientation: 'landscape', margin: '5mm' })
             }, 500)
         }
     }

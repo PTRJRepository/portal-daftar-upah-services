@@ -2,8 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAvailablePeriods } from '../services/summaryReportService';
 import { fetchGangComparison, fetchDivisionDetailData } from '../services/dashboardService';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
+import { printReport } from '../utils/printPageSetup';
 import { ArrowLeft, Filter, Download, Printer, Users, BarChart3, TrendingUp, DollarSign, Search } from 'lucide-react';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 
 export default function ProductivityReportPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
@@ -180,7 +184,7 @@ export default function ProductivityReportPage({ onBack, initialMonth, initialYe
             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][m] || '';
     };
 
-    const handlePrint = () => window.print();
+    const handlePrint = () => printReport({ orientation: 'landscape' });
 
     return (
         <div className="wsp-container">
@@ -220,6 +224,7 @@ export default function ProductivityReportPage({ onBack, initialMonth, initialYe
 
             {/* Document */}
             <div className={`wsp-document ${selectedDivision ? 'has-detail' : ''}`}>
+                <ReportWatermark />
                 {/* Header */}
                 <header className="wsp-letterhead text-center border-b-2 border-slate-800 pb-4 mb-8">
                     <h1 className="wsp-company-name text-2xl font-bold uppercase">
@@ -231,6 +236,14 @@ export default function ProductivityReportPage({ onBack, initialMonth, initialYe
                     <p className="wsp-report-period text-slate-600">
                         PERIODE: {getMonthName(month).toUpperCase()} {year}
                     </p>
+                    <ReportPrintMetadata
+                        mode="Productivity"
+                        source="Dashboard API"
+                        scope={estateType === 'all' ? 'Semua Estate' : estateType === 'ijl' ? 'IJL' : 'Rebinmas'}
+                        estate={estateType === 'ijl' ? 'IJL' : estateType === 'all' ? 'All Available' : 'Rebinmas'}
+                        items={[{ label: 'Detail', value: selectedDivision || '' }]}
+                        note="Ratio biaya dihitung dari produksi, HK, manpower, dan upah periode yang dipilih."
+                    />
                 </header>
 
                 {/* KPI Grid */}

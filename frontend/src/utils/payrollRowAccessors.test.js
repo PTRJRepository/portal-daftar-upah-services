@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEmployeeRowMap, buildSelectedEmployeeRowMap, getEmployeeRows, resolveJabatanRate } from './payrollRowAccessors';
+import { buildEmployeeRowMap, buildSelectedEmployeeRowMap, getEmployeeRows, resolveJabatanRate, resolvePayslipEmployeeCodes } from './payrollRowAccessors';
 
 const sampleRows = [
     { type: 'gang_header', gang_code: 'A1H' },
@@ -35,6 +35,25 @@ describe('buildSelectedEmployeeRowMap', () => {
             E002: { type: 'employee', emp_code: 'e002', nik: '1002', nama: 'Beta' },
             E003: { type: 'employee', emp_code: 'e003', nik: '1003', nama: 'Gamma' }
         });
+    });
+});
+
+describe('resolvePayslipEmployeeCodes', () => {
+    it('uses explicitly selected employees when present', () => {
+        expect(resolvePayslipEmployeeCodes(['e002', 'e003'], sampleRows)).toEqual(['e002', 'e003']);
+    });
+
+    it('falls back to all displayed employee rows when nothing is selected', () => {
+        expect(resolvePayslipEmployeeCodes([], sampleRows)).toEqual(['e001', 'e002', 'e003']);
+    });
+
+    it('deduplicates and prefers emp_code over nik for displayed rows', () => {
+        expect(resolvePayslipEmployeeCodes([], [
+            { type: 'employee', emp_code: 'e001', nik: '1001' },
+            { type: 'employee', emp_code: 'e001', nik: '1001-duplicate' },
+            { type: 'employee', emp_code: '', nik: '1002' },
+            { type: 'gang_total', emp_code: 'total' }
+        ])).toEqual(['e001', '1002']);
     });
 });
 

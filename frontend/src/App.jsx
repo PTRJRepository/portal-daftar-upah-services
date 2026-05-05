@@ -69,7 +69,7 @@ import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from '.
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
 import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGangPrefixState'
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
-import { getEmployeeRows } from './utils/payrollRowAccessors'
+import { getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
 import ProductivityReportPage from './pages/ProductivityReportPage'
@@ -77,6 +77,9 @@ import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
 import UpahBersihDetailPage from './pages/UpahBersihDetailPage'
 import DataVerificationPage from './pages/DataVerificationPage'
+import HighEarnerReportPage from './pages/HighEarnerReportPage'
+import SalaryRangeDetailPage from './pages/SalaryRangeDetailPage'
+import { parseSalaryRangeRouteParams } from './utils/reportRouteParams'
 
 // Development/Test Pages
 const ComponentMetadataTestPage = lazy(() => import('./pages/ComponentMetadataTestPage'))
@@ -97,6 +100,7 @@ const OperationalReportWrapper = () => {
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [taxExportLoading, setTaxExportLoading] = useState(false);
   const [taxDomExportLoading, setTaxDomExportLoading] = useState(false);
   const [payrollRowsGetter, setPayrollRowsGetter] = useState(null);
   const [dbPtrjCompareReport, setDbPtrjCompareReport] = useState(null);
@@ -130,6 +134,7 @@ const OperationalReportWrapper = () => {
 
   // Dropdown portal state
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [openActionSubmenu, setOpenActionSubmenu] = useState('downloads');
   const [portalTarget, setPortalTarget] = useState(null);
   const dropdownRef = useRef(null);
   const { isHistoricalPeriod } = useMemo(() => getPayrollPeriodMode({
@@ -169,6 +174,12 @@ const OperationalReportWrapper = () => {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isActionsOpen]);
+
+  useEffect(() => {
+    if (isActionsOpen) {
+      setOpenActionSubmenu('downloads');
+    }
   }, [isActionsOpen]);
 
   // Using location.pathname as key FORCES remount when navigating, solving 'stuck' UI
@@ -342,13 +353,16 @@ const OperationalReportWrapper = () => {
   };
 
   const handlePrintPayslips = () => {
-    if (selectedEmployees.length === 0) {
-      alert('Pilih minimal 1 karyawan untuk mencetak slip gaji');
+    const rows = payrollRowsGetter ? payrollRowsGetter() : [];
+    const employeeCodes = resolvePayslipEmployeeCodes(selectedEmployees, rows);
+
+    if (employeeCodes.length === 0) {
+      alert('Data karyawan belum siap atau kosong untuk cetak slip gaji.');
       return;
     }
 
     const params = new URLSearchParams({
-      emp_codes: selectedEmployees.join(','),
+      emp_codes: employeeCodes.join(','),
       month: month,
       year: year,
       division: division,
@@ -456,6 +470,84 @@ const OperationalReportWrapper = () => {
     return periods;
   }, [month, year]);
   const isDbPtrjCompareDisabled = viewMode !== 'table' || !payrollRowsGetter;
+  const displayedPayslipEmployeeCodes = useMemo(() => {
+    if (!payrollRowsGetter) return [];
+    try {
+      return resolvePayslipEmployeeCodes([], payrollRowsGetter());
+    } catch {
+      return [];
+    }
+  }, [payrollRowsGetter]);
+  const payslipEmployeeCount = selectedEmployees.length > 0
+    ? selectedEmployees.length
+    : displayedPayslipEmployeeCodes.length;
+  const payslipActionLabel = selectedEmployees.length > 0
+    ? `Slip Gaji (${selectedEmployees.length})`
+    : (displayedPayslipEmployeeCodes.length > 0 ? `Slip Gaji (Semua ${displayedPayslipEmployeeCodes.length})` : 'Slip Gaji');
+  const payslipActionTitle = selectedEmployees.length > 0
+    ? `Cetak slip gaji ${selectedEmployees.length} karyawan terpilih`
+    : (displayedPayslipEmployeeCodes.length > 0
+      ? `Cetak slip gaji semua ${displayedPayslipEmployeeCodes.length} karyawan yang tampil`
+      : 'Data karyawan belum siap untuk cetak slip gaji');
+  const actionMenuTone = (tone) => {
+    const tones = {
+      navy: { bg: '#f8fafc', text: '#1f3a5f', border: '#c8d2dc', badge: '#1f3a5f' },
+      green: { bg: '#f3faf8', text: '#285c4d', border: '#b9cdc8', badge: '#2f5d50' },
+      red: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', badge: '#b91c1c' },
+      purple: { bg: '#faf5ff', text: '#6b21a8', border: '#d8b4fe', badge: '#6b21a8' },
+      amber: { bg: '#fffbeb', text: '#92400e', border: '#fde68a', badge: '#92400e' },
+      slate: { bg: '#f8fafc', text: '#334155', border: '#e2e8f0', badge: '#475569' }
+    };
+    return tones[tone] || tones.slate;
+  };
+  const actionMenuItemStyle = (enabled, tone = 'slate') => {
+    const colors = actionMenuTone(tone);
+    return {
+      textAlign: 'left',
+      padding: '0.62rem 0.7rem',
+      borderRadius: '8px',
+      border: enabled ? `1px solid ${colors.border}` : '1px solid #d1d5db',
+      background: enabled ? colors.bg : '#f1f5f9',
+      color: enabled ? colors.text : '#94a3b8',
+      cursor: enabled ? 'pointer' : 'not-allowed',
+      display: 'flex',
+      gap: '10px',
+      alignItems: 'center',
+      fontWeight: 800,
+      boxShadow: enabled ? '0 6px 14px rgba(15, 23, 42, 0.08)' : 'none'
+    };
+  };
+  const actionMenuBadgeStyle = (enabled, tone = 'slate') => {
+    const colors = actionMenuTone(tone);
+    return {
+      minWidth: 30,
+      height: 24,
+      borderRadius: '6px',
+      background: enabled ? colors.badge : '#e5e7eb',
+      color: enabled ? '#ffffff' : '#9ca3af',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      fontSize: '0.68rem',
+      fontWeight: 900
+    };
+  };
+  const actionSubmenuToggleStyle = (active) => ({
+    width: '100%',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '0.58rem 0.65rem',
+    background: active ? '#e2e8f0' : '#f8fafc',
+    color: '#0f172a',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontWeight: 900,
+    fontSize: '0.78rem',
+    letterSpacing: '0.02em'
+  });
 
   if (!division) {
     return (
@@ -688,8 +780,74 @@ const OperationalReportWrapper = () => {
                 flexDirection: 'column',
                 gap: '4px',
                 zIndex: 240,
-                minWidth: '220px'
+                minWidth: '260px'
               }}>
+                <button
+                  onClick={() => setOpenActionSubmenu(openActionSubmenu === 'downloads' ? '' : 'downloads')}
+                  style={actionSubmenuToggleStyle(openActionSubmenu === 'downloads')}
+                  title="Tampilkan submenu unduh"
+                >
+                  <span>UNDUH</span>
+                  <span>{openActionSubmenu === 'downloads' ? 'v' : '>'}</span>
+                </button>
+
+                {openActionSubmenu === 'downloads' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0 6px 8px', borderLeft: '2px solid #e2e8f0' }}>
+                    <button
+                      onClick={handleExportTaxExcel}
+                      disabled={taxExportLoading}
+                      style={actionMenuItemStyle(!taxExportLoading, 'navy')}
+                      title="Unduh file pajak PPh21 dari endpoint pajak"
+                    >
+                      <span style={actionMenuBadgeStyle(!taxExportLoading, 'navy')}>P21</span>
+                      <span>{taxExportLoading ? 'Mengunduh Pajak...' : 'Unduh Pajak'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleExportTaxExcelDom}
+                      disabled={taxDomExportLoading}
+                      style={actionMenuItemStyle(!taxDomExportLoading, 'navy')}
+                      title="Unduh report pajak akunting dari data yang tampil di Daftar Upah"
+                    >
+                      <span style={actionMenuBadgeStyle(!taxDomExportLoading, 'navy')}>TAX</span>
+                      <span>{taxDomExportLoading ? 'Mengunduh Report...' : 'Unduh Report Pajak'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleExportExcel}
+                      disabled={!exportHandler || exportLoading}
+                      style={actionMenuItemStyle(Boolean(exportHandler) && !exportLoading, 'green')}
+                      title={daftarUpahDownloadAction.title}
+                    >
+                      <span style={actionMenuBadgeStyle(Boolean(exportHandler) && !exportLoading, 'green')}>{daftarUpahDownloadAction.icon}</span>
+                      <span>{daftarUpahDownloadAction.label}</span>
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={handlePrintPayslips}
+                  disabled={payslipEmployeeCount === 0}
+                  style={actionMenuItemStyle(payslipEmployeeCount > 0, 'navy')}
+                  title={payslipActionTitle}
+                >
+                  <span style={actionMenuBadgeStyle(payslipEmployeeCount > 0, 'navy')}>SLIP</span>
+                  <span>{payslipActionLabel}</span>
+                </button>
+
+                <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
+
+                <button
+                  onClick={() => setOpenActionSubmenu(openActionSubmenu === 'settings' ? '' : 'settings')}
+                  style={actionSubmenuToggleStyle(openActionSubmenu === 'settings')}
+                  title="Tampilkan submenu pengaturan"
+                >
+                  <span>PENGATURAN</span>
+                  <span>{openActionSubmenu === 'settings' ? 'v' : '>'}</span>
+                </button>
+
+                {openActionSubmenu === 'settings' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0 0 8px', borderLeft: '2px solid #e2e8f0' }}>
                 <button onClick={handleSeedData} disabled={isSeeding} style={{ textAlign: 'left', padding: '0.5rem', borderRadius: '4px', border: 'none', background: isSeeding ? '#fef3c7' : 'transparent', color: isSeeding ? '#92400e' : '#334155', cursor: isSeeding ? 'wait' : 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }} title="Memuat Ulang / Seed Data Sesuai Pilihan Layar">
                   {isSeeding ? '⏳ Seeding...' : '🌱 Seed Data UI'}
                 </button>
@@ -772,29 +930,8 @@ const OperationalReportWrapper = () => {
                   <button onClick={handleFontReset} style={{ flex: 1, padding: '0.4rem', background: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }} title="Reset Text">Reset</button>
                   <button onClick={handleFontIncrease} style={{ flex: 1, padding: '0.4rem', background: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }} title="Perbesar Text">A+</button>
                 </div>
-                
-                <div style={{ height: '1px', background: '#e2e8f0', margin: '4px 0' }}></div>
-
-                {/* Report Pajak Akunting */}
-                <button onClick={handleExportTaxExcelDom} disabled={taxDomExportLoading} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: taxDomExportLoading ? '1px solid #d1d5db' : '1px solid #c8d2dc', background: taxDomExportLoading ? '#f1f5f9' : '#f8fafc', color: taxDomExportLoading ? '#94a3b8' : '#1f3a5f', cursor: taxDomExportLoading ? 'not-allowed' : 'pointer', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: taxDomExportLoading ? 'none' : '0 6px 14px rgba(31, 58, 95, 0.10)' }} title="Unduh report pajak akunting dari data DOM yang tampil di Daftar Upah">
-                  <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: taxDomExportLoading ? '#e5e7eb' : '#1f3a5f', color: taxDomExportLoading ? '#9ca3af' : '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>TAX</span>
-                  <span>{taxDomExportLoading ? 'Mengunduh Report Pajak...' : 'Unduh Report Pajak Akunting'}</span>
-                </button>
-
-                {/* Unduh Daftar Upah */}
-                <div style={{ padding: '0.45rem', borderRadius: '10px', border: '1px solid #d8dee6', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.02em' }}>UNDUH DAFTAR UPAH</div>
-                  <button onClick={handleExportExcel} disabled={!exportHandler || exportLoading} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: exportHandler && !exportLoading ? '1px solid #b9cdc8' : '1px solid #d1d5db', background: exportHandler && !exportLoading ? '#f3faf8' : '#f1f5f9', color: exportHandler && !exportLoading ? '#285c4d' : '#94a3b8', cursor: exportHandler && !exportLoading ? 'pointer' : 'not-allowed', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: exportHandler && !exportLoading ? '0 6px 14px rgba(40, 92, 77, 0.10)' : 'none' }} title={daftarUpahDownloadAction.title}>
-                    <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: exportHandler && !exportLoading ? '#2f5d50' : '#e5e7eb', color: exportHandler && !exportLoading ? '#ffffff' : '#9ca3af', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>{daftarUpahDownloadAction.icon}</span>
-                    <span>{daftarUpahDownloadAction.label}</span>
-                  </button>
-                </div>
-
-                {/* Payslip Print */}
-                <button onClick={handlePrintPayslips} disabled={selectedEmployees.length === 0} style={{ textAlign: 'left', padding: '0.62rem 0.7rem', borderRadius: '8px', border: selectedEmployees.length > 0 ? '1px solid #c8d2dc' : '1px solid #d1d5db', background: selectedEmployees.length > 0 ? '#f8fafc' : '#f1f5f9', color: selectedEmployees.length > 0 ? '#1f3a5f' : '#94a3b8', cursor: selectedEmployees.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', gap: '10px', alignItems: 'center', fontWeight: 800, boxShadow: selectedEmployees.length > 0 ? '0 6px 14px rgba(31, 58, 95, 0.10)' : 'none' }} title={selectedEmployees.length > 0 ? `Cetak slip gaji ${selectedEmployees.length} karyawan` : 'Pilih karyawan terlebih dahulu dari checkbox tabel'}>
-                  <span style={{ minWidth: 30, height: 24, borderRadius: '6px', background: selectedEmployees.length > 0 ? '#1f3a5f' : '#e5e7eb', color: selectedEmployees.length > 0 ? '#ffffff' : '#9ca3af', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.68rem', fontWeight: 900 }}>SLIP</span>
-                  <span>Slip Gaji {selectedEmployees.length > 0 && `(${selectedEmployees.length})`}</span>
-                </button>
+                  </div>
+                )}
 
               </div>
             )}
@@ -1001,6 +1138,8 @@ function AppInner() {
             <Route path="mill-production" element={<SummaryReportWrapper component={MillProductionReport} />} />
             <Route path="detail-upah-bersih" element={<SummaryReportWrapper component={UpahBersihDetailPage} />} />
             <Route path="data-verification" element={<SummaryReportWrapper component={DataVerificationPage} />} />
+            <Route path="report/high-earners" element={<HighEarnerReportPage />} />
+            <Route path="report/salary-range-detail" element={<SalaryRangeReportWrapper />} />
 
             {/* Development/Test Pages */}
             <Route path="test/components" element={<SummaryReportWrapper component={ComponentMetadataTestPage} />} />
@@ -1031,6 +1170,26 @@ const SummaryReportWrapper = ({ component: Component }) => {
     initialMonth={month}
     initialYear={year}
     initialDivision={division}
+  />
+}
+
+const SalaryRangeReportWrapper = () => {
+  const { month, year } = useReport();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const routeParams = useMemo(() => parseSalaryRangeRouteParams(location.search, {
+    month,
+    year,
+    minSalary: 6000000
+  }), [location.search, month, year]);
+
+  return <SalaryRangeDetailPage
+    key={location.pathname + location.search}
+    onBack={() => navigate('/')}
+    initialMonth={routeParams.month}
+    initialYear={routeParams.year}
+    initialMinSalary={routeParams.minSalary}
+    initialMaxSalary={routeParams.maxSalary}
   />
 }
 

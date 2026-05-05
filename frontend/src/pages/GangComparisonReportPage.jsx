@@ -12,7 +12,10 @@ import {
     Cell
 } from 'recharts';
 import { Filter, BarChart3, TrendingUp, Info } from 'lucide-react';
+import ReportWatermark from '../components/common/ReportWatermark';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/gang-report-print.css';
+import '../styles/report-print-foundation.css';
 
 // Helper Functions
 const formatCurrency = (val) => {
@@ -209,7 +212,7 @@ export default function GangComparisonReportPage() {
                     </button>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                         <button
-                            onClick={() => window.print()}
+                                onClick={() => printReport({ orientation: 'landscape' })}
                             style={{ padding: '8px 16px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                         >
                             <span>🖨️</span> Print Report
@@ -308,6 +311,7 @@ export default function GangComparisonReportPage() {
 
             {/* Report Content */}
             <div className="gang-report-content">
+                <ReportWatermark />
                 {/* Letterhead */}
                 <div className="gang-report-letterhead">
                     <img src="/assets/images/rebinmas.webp" alt="Logo" className="gang-report-logo" />

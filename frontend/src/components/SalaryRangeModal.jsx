@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { buildAppPath } from '../utils/prodModeUtils';
 
 export default function SalaryRangeModal({ isOpen, onClose }) {
     // Use window.location instead of useNavigate to avoid Router context issues
@@ -32,7 +33,7 @@ export default function SalaryRangeModal({ isOpen, onClose }) {
             min_salary: String(minSalary)
         });
 
-        window.location.href = `/report/salary-range-detail?${params.toString()}`;
+        window.location.href = buildAppPath(`/report/salary-range-detail?${params.toString()}`);
     };
 
     if (!isOpen) return null;

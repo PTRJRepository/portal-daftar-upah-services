@@ -64,3 +64,34 @@ export function buildSelectedEmployeeRowMap(rows = [], selectedCodes = []) {
 
     return result;
 }
+
+function normalizeEmployeeCode(value) {
+    return String(value || '').trim();
+}
+
+function uniqueEmployeeCodes(codes = []) {
+    const seen = new Set();
+    const result = [];
+
+    (Array.isArray(codes) ? codes : []).forEach((code) => {
+        const normalized = normalizeEmployeeCode(code);
+        const key = normalized.toUpperCase();
+        if (key && !seen.has(key)) {
+            seen.add(key);
+            result.push(normalized);
+        }
+    });
+
+    return result;
+}
+
+export function resolvePayslipEmployeeCodes(selectedCodes = [], rows = []) {
+    const explicitSelection = uniqueEmployeeCodes(selectedCodes);
+    if (explicitSelection.length > 0) {
+        return explicitSelection;
+    }
+
+    return uniqueEmployeeCodes(
+        getEmployeeRows(rows).map((row) => row.emp_code || row.nik || row.NIK || row.new_nik)
+    );
+}

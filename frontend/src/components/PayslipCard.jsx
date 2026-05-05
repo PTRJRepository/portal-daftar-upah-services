@@ -59,7 +59,6 @@ export default function PayslipCard({ data, month, year }) {
 
     // --- CALCULATIONS ---
     const hk = getNum('jumlah_hk') || getNum('hari_kerja')
-    const hkKoreksi = getNum('koreksi_hk') || 0
     const rate = getNum('upah_dasar') || getNum('upah_harian')
     const gajiPokok = getNum('gaji_pokok') || getNum('upah_pokok') || (hk * rate)
 
@@ -114,22 +113,12 @@ export default function PayslipCard({ data, month, year }) {
     const lemburJam = getNum('lembur_jam') || getNum('total_jam_lembur')
     const lemburJumlah = getNum('lembur_jumlah') || getNum('total_upah_lembur') || getNum('upah_lembur')
 
-    // Potongan Upah Kotor
-    const potKotorList = []
-    if (getNum('pot_koreksi') > 0) potKotorList.push({ label: 'Koreksi', value: getNum('pot_koreksi') })
-
-    // Check for other koreksi variations (Restored for consistency)
-    Object.entries(payroll).forEach(([key, val]) => {
-        if (key.startsWith('koreksi_') && typeof val === 'number' && val > 0 && key !== 'koreksi_hk') {
-            const label = key.replace('koreksi_', '').replace(/_/g, ' ').toUpperCase()
-            // Avoid duplicates if pot_koreksi covers it (usually distinct keys in this system)
-            if (!potKotorList.some(p => p.label === `KOREKSI ${label}`)) {
-                potKotorList.push({ label: `Koreksi ${label}`, value: val })
-            }
-        }
-    })
-
-    const totalPotKotor = potKotorList.reduce((acc, curr) => acc + curr.value, 0)
+    // Potongan koreksi tetap dihitung di total, tetapi detailnya tidak dicetak agar tidak dobel.
+    const dynamicKoreksiTotal = Object.entries(payroll).reduce((sum, [key, val]) => {
+        if (!key.startsWith('koreksi_') || key === 'koreksi_hk') return sum
+        return sum + (typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : 0)
+    }, 0)
+    const totalPotKotor = getNum('potongan_upah_kotor_total') || getNum('pot_koreksi') || dynamicKoreksiTotal
 
     // Potongan Upah Bersih
     const potBersihList = [
@@ -223,8 +212,8 @@ export default function PayslipCard({ data, month, year }) {
         <div className="payslip-card">
             {/* Watermark */}
             <div className="payslip-watermark" aria-hidden="true">
-                {Array.from({ length: 18 }, (_, idx) => (
-                    <span key={idx} className="payslip-watermark__tile">REBINMAS</span>
+                {Array.from({ length: 12 }, (_, idx) => (
+                    <span key={idx} className="payslip-watermark__tile">REBINMAS JAYA</span>
                 ))}
             </div>
 
@@ -364,18 +353,6 @@ export default function PayslipCard({ data, month, year }) {
                 <div className="payslip-card-column">
                     <div className="payslip-column-header">POTONGAN (Deduction)</div>
 
-                    {potKotorList.length > 0 && (
-                        <>
-                            <div className="payslip-subheader">Pot. Upah Kotor (Sebelum Pajak):</div>
-                            {potKotorList.map((item, idx) => (
-                                <div key={`potk-${idx}`} className="payslip-item payslip-item-indent">
-                                    <span className="payslip-item-label">- {item.label}</span>
-                                    <span className="payslip-item-value payslip-negative">{formatCurrency(item.value)}</span>
-                                </div>
-                            ))}
-                        </>
-                    )}
-
                     {potBersihList.length > 0 && (
                         <>
                             <div className="payslip-subheader">Pot. Upah Bersih:</div>
@@ -431,7 +408,7 @@ export default function PayslipCard({ data, month, year }) {
                                 </div>
                             ))}
                             <div className="payslip-income-deduction-note">
-                                <strong>Sudah dibayarkan.</strong> Pendapatan lainnya ditambahkan ke bruto untuk perhitungan, lalu dikurangkan lagi dari THP karena sudah dibayarkan sebelumnya.
+                                <strong>Sudah dibayarkan.</strong> Pendapatan lainnya ditambahkan ke Upah Kotor sebagai dasar perhitungan, lalu dikurangkan dari Upah Bersih karena sudah dibayarkan sebelumnya.
                             </div>
                         </>
                     )}

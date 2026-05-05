@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getGangOvertimeMatrix } from '../services/employeeDetailService'
+import { printReport } from '../utils/printPageSetup'
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
@@ -83,7 +84,7 @@ export default function GangOvertimeMatrix({
         if (data?.data) {
             setExpandedGangs(new Set(data.data.map(g => g.gang_code)))
             setTimeout(() => {
-                window.print()
+                printReport({ orientation: 'landscape', margin: '5mm' })
             }, 500)
         }
     }

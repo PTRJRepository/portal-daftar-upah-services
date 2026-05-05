@@ -5,7 +5,10 @@ import {
     ResponsiveContainer, ComposedChart, Line
 } from 'recharts';
 import { Calendar, Scale, RefreshCw, Users, DollarSign, TrendingUp, Printer } from 'lucide-react';
+import ReportWatermark from '../components/common/ReportWatermark';
+import { printReport } from '../utils/printPageSetup';
 import './MillProductionReport.css';
+import '../styles/report-print-foundation.css';
 
 const MillProductionReport = () => {
     const [month, setMonth] = useState('2');
@@ -53,7 +56,7 @@ const MillProductionReport = () => {
         if (compareMode) fetchPrevData();
     }, [month, year, prevMonth, prevYear, compareMode]);
 
-    const handlePrint = () => window.print();
+    const handlePrint = () => printReport({ orientation: 'landscape' });
 
     // Month helpers
     const monthName = (m) => new Date(0, parseInt(m) - 1).toLocaleString('id-ID', { month: 'long' });
@@ -105,6 +108,7 @@ const MillProductionReport = () => {
 
     return (
         <div className="mill-report-container">
+            <ReportWatermark />
             {/* Header */}
             <div className="mill-report-header no-print">
                 <div>

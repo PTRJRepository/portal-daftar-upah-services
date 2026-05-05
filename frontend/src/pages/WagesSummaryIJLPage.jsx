@@ -11,7 +11,11 @@ import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary,
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintSignature from '../components/common/PrintSignature';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
 import { getDivisionTypeLabel, getReportModeLabel, getSourceModeLabel } from '../utils/reportPresentationLabels';
+import { getReportDivisionSummary } from '../utils/divisionPresentation';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
 import '../styles/report-print-foundation.css';
@@ -216,6 +220,11 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
         return groups;
     }, [ijlSummaryData, groupSubtotals]);
 
+    const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
+        divisionType,
+        rows: comparisonMode ? comparisonData?.divisions : ijlSummaryData
+    }), [comparisonData, comparisonMode, divisionType, ijlSummaryData]);
+
     const kpiTotals = useMemo(() => {
         return {
             divisions: Number(kpiTotalsData?.divisions || 0),
@@ -234,7 +243,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
     };
 
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: 'landscape' });
     };
 
     const handleExport = () => {
@@ -508,20 +517,20 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                         <div className="wsp-error"><div className="wsp-error-title">Gagal Memuat Data</div><div className="wsp-error-message">{error}</div><button onClick={fetchData} className="wsp-btn" style={{ marginTop: '1rem' }}>Coba Lagi</button></div>
                     ) : (
                         <div className="wsp-document" id="wsp-ijl-report-content">
+                            <ReportWatermark />
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT IMPIAN JAYA LESTARI" className="wsp-logo" />
                                 <h1 className="wsp-company-name">PT. IMPIAN JAYA LESTARI</h1>
                                 <div className="wsp-report-title">{comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report'}</div>
                                 <div className="wsp-report-period">Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong></div>
-                                <div className="report-print-meta-grid">
-                                    <span className="report-source-badge">Mode: {getReportModeLabel({ comparisonMode })}</span>
-                                    <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Summary API' })}</span>
-                                    <span className="report-source-badge">Scope: {getDivisionTypeLabel(divisionType)}</span>
-                                    <span className="report-source-badge">Estate: IJL</span>
-                                </div>
-                                <div className="report-print-note">
-                                    Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope IJL yang sedang dicetak.
-                                </div>
+                                <ReportPrintMetadata
+                                    mode={getReportModeLabel({ comparisonMode })}
+                                    source={getSourceModeLabel({ sourceMode: 'Summary API' })}
+                                    scope={getDivisionTypeLabel(divisionType)}
+                                    estate="IJL"
+                                    items={[{ label: 'Deskripsi', value: reportDivisionSummary }]}
+                                    note="Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope IJL yang sedang dicetak."
+                                />
                             </div>
 
                             {comparisonMode ? renderComparisonKPI() : (

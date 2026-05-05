@@ -16,8 +16,12 @@ import ImpactReportPage from './ImpactReportPage';
 import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
 import CompactPeriodScroll from '../components/common/CompactPeriodScroll';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
 import { initPrintMode } from '../utils/printOptimizer';
 import { getDivisionTypeLabel, getReportModeLabel, getSourceModeLabel } from '../utils/reportPresentationLabels';
+import { getReportDivisionSummary } from '../utils/divisionPresentation';
+import { printReport } from '../utils/printPageSetup';
 import '../styles/wages-summary-professional.css';
 import '../styles/wages-summary-print-simple.css';
 import '../styles/report-print-foundation.css';
@@ -166,6 +170,10 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
     // Handle Save Thumbprint
     const handleSaveThumbprint = async (divisionCode, value) => {
+        if (!month || !year) {
+            alert('Periode belum dimuat. Tunggu data selesai dimuat lalu coba lagi.');
+            return;
+        }
         try {
             await import('../services/summaryReportService').then(mod =>
                 mod.updateThumbprint(token, {
@@ -367,6 +375,11 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
         sortedKeys.forEach(k => orderedGroups[k] = groups[k]);
         return orderedGroups;
     }, [summaryData, groupSubtotals]);
+
+    const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
+        divisionType,
+        rows: comparisonMode ? comparisonData?.divisions : thrMode ? thrData?.divisions : summaryData
+    }), [comparisonData, comparisonMode, divisionType, summaryData, thrData, thrMode]);
 
     // KPI totals from backend
     const kpiTotals = useMemo(() => {
@@ -737,12 +750,14 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
     const handleSavePDF = () => {
         const element = document.getElementById('wsp-report-content');
         const filename = `Wages_Summary_Rebinmas_${month}_${year}.pdf`;
-        generatePDF(element, filename);
+        generatePDF(element, filename, {
+            jsPDF: { orientation: thrMode ? 'portrait' : 'landscape' }
+        });
     };
 
     // Handle print
     const handlePrint = () => {
-        window.print();
+        printReport({ orientation: thrMode ? 'portrait' : 'landscape' });
     };
 
     // Handle export CSV
@@ -1122,7 +1137,8 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                         </div>
                     ) : (
                         /* Paper Document */
-                        <div className="wsp-document" id="wsp-report-content">
+                        <div className={`wsp-document ${thrMode ? 'thr-print-document' : ''}`} id="wsp-report-content">
+                            <ReportWatermark />
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
                                 <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
@@ -1168,17 +1184,14 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                     {thrMode && <span style={{ marginRight: '1rem' }}>Division: <strong style={{ color: '#0f172a' }}>ALL</strong> | </span>}
                                     Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
                                 </div>
-                                <div className="report-print-meta-grid">
-                                    <span className="report-source-badge">Mode: {getReportModeLabel({ comparisonMode, thrMode })}</span>
-                                    <span className="report-source-badge">Sumber: {getSourceModeLabel({ useHistory, sourceMode: thrMode ? 'THR Recap' : '' })}</span>
-                                    {!thrMode && (
-                                        <span className="report-source-badge">Scope: {getDivisionTypeLabel(divisionType)}</span>
-                                    )}
-                                    <span className="report-source-badge">Estate: Rebinmas</span>
-                                </div>
-                                <div className="report-print-note">
-                                    Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope yang sedang dicetak.
-                                </div>
+                                <ReportPrintMetadata
+                                    mode={getReportModeLabel({ comparisonMode, thrMode })}
+                                    source={getSourceModeLabel({ useHistory, sourceMode: thrMode ? 'THR Recap' : '' })}
+                                    scope={!thrMode ? getDivisionTypeLabel(divisionType) : ''}
+                                    estate="Rebinmas"
+                                    items={[{ label: 'Deskripsi', value: reportDivisionSummary }]}
+                                    note="Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope yang sedang dicetak."
+                                />
                             </div>
 
                             {/* KPI Cards */}

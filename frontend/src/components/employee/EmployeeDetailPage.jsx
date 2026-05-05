@@ -10,6 +10,7 @@ import LoadingScreen from '../common/LoadingScreen'
 import SalaryHistoryTable from './SalaryHistoryTable'
 import ThumbprintVerification from './ThumbprintVerification'
 import { EmployeeTrendsCharts } from './EmployeeTrendsCharts'
+import { printReport } from '../../utils/printPageSetup'
 import './EmployeeDetailPage.css'
 
 // Helper to format currency
@@ -610,30 +611,8 @@ export default function EmployeeDetailPage({
                     </div>
                 </div>
 
-                {/* FOOTER */}
                 <div className="payslip-footer">
-                    <div className="signatures">
-                        <div className="sig-box">
-                            <p>Dibuat Oleh,</p>
-                            <br /><br /><br />
-                            <p>( Estate Clerk )</p>
-                        </div>
-                        <div className="sig-box">
-                            <p>Diperiksa Oleh,</p>
-                            <br /><br /><br />
-                            <p>( Assistant )</p>
-                        </div>
-                        <div className="sig-box">
-                            <p>Disetujui Oleh,</p>
-                            <br /><br /><br />
-                            <p>( Estate Manager )</p>
-                        </div>
-                        <div className="sig-box">
-                            <p>Diterima Oleh,</p>
-                            <br /><br /><br />
-                            <p>( {empInfo.nama || 'Karyawan'} )</p>
-                        </div>
-                    </div>
+                    <div className="payslip-footer-code">PAYROLL RECORD · {empCode} · {getMonthName(month).toUpperCase()} {year}</div>
                     <div className="timestamp">
                         Dicetak pada: {new Date().toLocaleString('id-ID')}
                     </div>
@@ -1260,7 +1239,7 @@ export default function EmployeeDetailPage({
             {/* ACTION BUTTONS (No Print) */}
             <div className="action-buttons no-print">
                 <button onClick={onBack} className="btn btn-secondary">Tutup / Kembali</button>
-                <button onClick={() => window.print()} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
+                <button onClick={() => printReport({ orientation: 'portrait', margin: '5mm' })} className="btn btn-primary">🖨️ Cetak Slip Gaji</button>
             </div>
 
             {/* History Modal for NIK */}

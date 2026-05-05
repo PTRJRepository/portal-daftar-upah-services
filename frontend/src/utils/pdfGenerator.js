@@ -30,13 +30,14 @@ export const generatePDF = async (element, filename = 'report.pdf', options = {}
         jsPDF: {
             unit: 'mm',
             format: 'a4',
-            orientation: 'portrait',
+            orientation: 'landscape',
             compress: true
         },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
     const config = { ...defaultOptions, ...options };
+    config.jsPDF = { ...defaultOptions.jsPDF, ...(options.jsPDF || {}) };
 
     // Clone the element to avoid modifying the live UI
     const clone = element.cloneNode(true);
@@ -46,7 +47,7 @@ export const generatePDF = async (element, filename = 'report.pdf', options = {}
     container.style.position = 'fixed';
     container.style.left = '0';
     container.style.top = '0';
-    container.style.width = '210mm';
+    container.style.width = config.jsPDF.orientation === 'portrait' ? '210mm' : '297mm';
     container.style.zIndex = '-9999';
     container.style.backgroundColor = 'white';
     container.style.opacity = '0'; // Hide from user but keep 'visible' for capture
