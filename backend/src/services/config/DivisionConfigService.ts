@@ -39,6 +39,8 @@ export interface DivisionDefinition {
     excludeFromSource?: boolean;
     /** Gang prefix for this division */
     gangPrefix?: string;
+    /** Gang codes explicitly excluded from this division */
+    excludedGangCodes?: string[];
     /** Description from database */
     description?: string;
 }
@@ -156,7 +158,8 @@ export class DivisionConfigService {
             name: 'Area',
             type: 'real',
             aliases: ['ARA', 'ara', 'Area'],
-            gangPrefix: 'F'
+            gangPrefix: 'F',
+            excludedGangCodes: ['F1BHL']
         });
 
         this.registerDivision({
@@ -442,6 +445,21 @@ export class DivisionConfigService {
     }
 
     /**
+     * Check whether a gang is explicitly excluded from a division.
+     */
+    public isGangExcludedFromDivision(divisionCode: string, gangCode: string): boolean {
+        if (!divisionCode || !gangCode) return false;
+
+        const division = this.getDivision(divisionCode);
+        if (!division?.excludedGangCodes?.length) return false;
+
+        const normalizedGang = gangCode.trim().toUpperCase();
+        return division.excludedGangCodes.some((excludedGangCode) =>
+            excludedGangCode.trim().toUpperCase() === normalizedGang
+        );
+    }
+
+    /**
      * Get all division codes
      */
     public getAllDivisionCodes(includeVirtual: boolean = true): string[] {
@@ -606,6 +624,7 @@ export class DivisionConfigService {
                  const filtered = results.filter(g => {
                     const code = g.gang_code.toUpperCase();
                     const desc = g.description.toUpperCase();
+                    if (this.isGangExcludedFromDivision(division.code, code)) return false;
                     return (division.gangPattern?.test(code)) || (division.descriptionPattern?.test(desc));
                 });
                 if (filtered.length > 0) {
@@ -623,6 +642,7 @@ export class DivisionConfigService {
                 return results.filter(g => {
                     const code = g.gang_code.toUpperCase();
                     const desc = g.description.toUpperCase();
+                    if (this.isGangExcludedFromDivision(division.code, code)) return false;
 
                     // 1. Check against virtual patterns (codes & descriptions)
                     const isMatchedByVirtualPattern = virtualDivs.some(v => 

@@ -20,6 +20,7 @@ import { duplicateNikMitigationService } from "./DuplicateNikMitigationService";
 import { resolveHistorySeederCleanupPolicy } from "../utils/historySeederCleanup";
 import { payrollSnapshotBatchService } from "./payrollSnapshotBatchService";
 import { payrollProfileSeedService } from "./payrollProfileSeedService";
+import { calculatePayrollTotals } from "./payrollTotalsCalculator";
 import { debug, error as logError } from "../utils/logger";
 import { processInBatches } from "../utils/batchProcessor";
 
@@ -344,45 +345,40 @@ export class HistorySeederService {
     }
 
     private calculateTotals(employees: any[]): any {
-        const totals: any = { 
-            total_hk: 0, total_hari_kerja: 0, total_cuti_tahunan: 0, total_cuti_sakit: 0,
-            total_cuti_minggu: 0, total_cuti_nasional: 0, total_upah_dasar: 0, total_upah_pokok: 0,
-            total_gaji_pokok: 0, total_beras: 0, total_jabatan: 0, total_masa_kerja: 0,
-            total_lembur: 0, total_tunjangan: 0, total_premi_brondol: 0, total_premi: 0,
-            total_premi_prunning: 0, total_premi_insentif: 0, total_premi_kinerja: 0,
-            total_koreksi: 0, total_potongan: 0, total_pph21: 0, total_bpjs_pekerja: 0,
-            total_bpjs_majikan: 0, total_spsi: 0, total_upah_kotor: 0, total_upah_bersih: 0
+        const daftarUpahTotals = calculatePayrollTotals(employees, "TOTAL");
+        const sum = (field: string): number => Math.round(
+            employees.reduce((total, emp) => total + (Number(emp?.[field]) || 0), 0)
+        );
+
+        return {
+            total_hk: daftarUpahTotals.jumlah_hk,
+            total_hari_kerja: daftarUpahTotals.hari_kerja,
+            total_cuti_tahunan: daftarUpahTotals.cuti_tahunan_hari,
+            total_cuti_sakit: daftarUpahTotals.cuti_sakit_haid_hari,
+            total_cuti_minggu: daftarUpahTotals.cuti_minggu_hari,
+            total_cuti_nasional: daftarUpahTotals.cuti_nasional_hari,
+            total_upah_dasar: sum("upah_dasar"),
+            total_upah_pokok: daftarUpahTotals.upah_pokok,
+            total_gaji_pokok: daftarUpahTotals.gaji_pokok,
+            total_beras: daftarUpahTotals.beras_jumlah,
+            total_jabatan: daftarUpahTotals.jabatan_jumlah,
+            total_masa_kerja: daftarUpahTotals.masa_kerja_jumlah,
+            total_lembur: daftarUpahTotals.lembur_jumlah,
+            total_tunjangan: daftarUpahTotals.total_tunjangan,
+            total_premi_brondol: daftarUpahTotals.premi_brondol,
+            total_premi: daftarUpahTotals.total_premi,
+            total_premi_prunning: daftarUpahTotals.premi_pruning || sum("premi_prunning"),
+            total_premi_insentif: sum("premi_insentif"),
+            total_premi_kinerja: sum("premi_kinerja"),
+            total_koreksi: daftarUpahTotals.pot_koreksi,
+            total_potongan: daftarUpahTotals.total_potongan,
+            total_pph21: sum("pph21_ter") || daftarUpahTotals.pot_pph21,
+            total_bpjs_pekerja: daftarUpahTotals.pot_bpjs_pekerja_total,
+            total_bpjs_majikan: daftarUpahTotals.pot_bpjs_kesehatan_majikan + daftarUpahTotals.pot_bpjs_pensiun_majikan,
+            total_spsi: daftarUpahTotals.pot_spsi,
+            total_upah_kotor: daftarUpahTotals.jumlah_upah_kotor,
+            total_upah_bersih: daftarUpahTotals.upah_bersih
         };
-        for (const emp of employees) {
-            totals.total_hk += emp.jumlah_hk || 0;
-            totals.total_hari_kerja += emp.hari_kerja || 0;
-            totals.total_cuti_tahunan += emp.cuti_tahunan_hari || 0;
-            totals.total_cuti_sakit += emp.cuti_sakit_haid_hari || 0;
-            totals.total_cuti_minggu += emp.cuti_minggu_hari || 0;
-            totals.total_cuti_nasional += emp.cuti_nasional_hari || 0;
-            totals.total_upah_dasar += emp.upah_dasar || 0;
-            totals.total_upah_pokok += emp.upah_pokok || 0;
-            totals.total_gaji_pokok += emp.gaji_pokok || 0;
-            totals.total_beras += emp.beras_jumlah || 0;
-            totals.total_jabatan += emp.jabatan_jumlah || 0;
-            totals.total_masa_kerja += emp.masa_kerja_jumlah || 0;
-            totals.total_lembur += emp.lembur_jumlah || 0;
-            totals.total_tunjangan += emp.total_tunjangan || 0;
-            totals.total_premi_brondol += emp.premi_brondol || 0;
-            totals.total_premi += emp.total_premi || 0;
-            totals.total_premi_prunning += emp.premi_prunning || emp.premi_pruning || 0;
-            totals.total_premi_insentif += emp.premi_insentif || 0;
-            totals.total_premi_kinerja += emp.premi_kinerja || 0;
-            totals.total_koreksi += emp.pot_koreksi || 0;
-            totals.total_potongan += emp.total_potongan || 0;
-            totals.total_pph21 += emp.pot_pph21 || 0;
-            totals.total_bpjs_pekerja += emp.pot_bpjs_pekerja_total || 0;
-            totals.total_bpjs_majikan += (emp.pot_bpjs_kesehatan_majikan || 0) + (emp.pot_bpjs_pensiun_majikan || 0) + (emp.pot_astek_majikan || 0);
-            totals.total_spsi += emp.pot_spsi || 0;
-            totals.total_upah_kotor += emp.jumlah_upah_kotor || 0;
-            totals.total_upah_bersih += emp.upah_bersih || 0;
-        }
-        return totals;
     }
 
     private normalizeDynamicHeader(prefix: 'PREMI' | 'POTONGAN', key: string): string {
@@ -612,7 +608,7 @@ export class HistorySeederService {
         const extDb = Database.getExtendedInstance();
         try {
             HistorySeederService.updateProgress({ current_step: 'Mengambil data HR Karyawan...', employees_processed: 0 });
-            let sql = `SELECT e.NewICNo as nik, e.EmpCode as emp_code, e.EmpName as emp_name, em.CompCode as company_code, g.LocCode as division_code, g.LocCode as loc_code, g.GangCode as gang_code, em.AppJoinGrpDate as join_date, em.TerminateDate as terminate_date, e.Status as status, e.HREmpType as employee_type, e.Gender as gender, e.Religion as religion, e.MaritalStatus as marital_status, e.PlaceOfBirth as birth_place, e.DOB as birth_date, p.PayRate as upah_dasar, CAST(p.RiceRation AS VARCHAR) as ptkp_beras, ISNULL(hk.total_hk, 0) as total_hk FROM HR_EMPLOYEE e JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode) LEFT JOIN (SELECT hk.emp_code, SUM(hk.hours) / 7.0 as total_hk FROM (SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear} UNION ALL SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN_ARC WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear}) hk GROUP BY hk.emp_code) hk ON hk.emp_code = RTRIM(e.EmpCode) WHERE 1=1`;
+            let sql = `SELECT e.NewICNo as nik, e.EmpCode as emp_code, e.EmpName as emp_name, em.CompCode as company_code, g.LocCode as division_code, g.LocCode as loc_code, g.GangCode as gang_code, em.AppJoinGrpDate as join_date, em.TerminateDate as terminate_date, e.Status as status, e.HREmpType as employee_type, e.Gender as gender, e.Religion as religion, e.MaritalStatus as marital_status, e.PlaceOfBirth as birth_place, e.DOB as birth_date, e.ResAddress as res_address, hs.TaxNo as pajak_npwp, p.PayRate as upah_dasar, CAST(p.RiceRation AS VARCHAR) as ptkp_beras, ISNULL(hk.total_hk, 0) as total_hk FROM HR_EMPLOYEE e JOIN HR_EMPLOYMENT em ON e.EmpCode = em.EmpCode LEFT JOIN HR_GANGLN gl ON e.EmpCode = gl.GangMember LEFT JOIN HR_GANG g ON gl.GangCode = g.GangCode LEFT JOIN HR_PAYROLL p ON RTRIM(p.EmpCode) = RTRIM(e.EmpCode) LEFT JOIN HR_STATUTORY hs ON RTRIM(hs.EmpCode) = RTRIM(e.EmpCode) LEFT JOIN (SELECT hk.emp_code, SUM(hk.hours) / 7.0 as total_hk FROM (SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear} UNION ALL SELECT RTRIM(EmpCode) as emp_code, ISNULL(Hours, 0) as hours FROM PR_TASKREGLN_ARC WHERE MONTH(TrxDate) = ${options.periodMonth} AND YEAR(TrxDate) = ${options.periodYear}) hk GROUP BY hk.emp_code) hk ON hk.emp_code = RTRIM(e.EmpCode) WHERE 1=1`;
             const params: any[] = [];
             if (options.divisionCode && options.divisionCode !== 'ALL') {
                 const codes = gangService.getAllDivisionAliases(options.divisionCode);
@@ -707,6 +703,7 @@ export class HistorySeederService {
                             history_id: historyId, period_month: options.periodMonth, period_year: options.periodYear, nik: r.nik?.trim(), emp_code: empCode,
                             emp_name: r.emp_name?.trim(), company_code: r.company_code?.trim(), division_code: r.division_code?.trim(), loc_code: r.loc_code?.trim(),
                             gang_code: r.gang_code?.trim(), position: jabatan || null, jabatan, is_spsi_member: payrollProfileSeedService.resolveSpsiMember(empCode, spsiMemberMap, spsiOverrides),
+                            pajak_npwp: r.pajak_npwp?.trim(), res_address: r.res_address?.trim(),
                             join_date: r.join_date, terminate_date: r.terminate_date, status: r.status?.trim(), employee_type: r.employee_type?.trim(),
                             gender: r.gender?.trim(), religion: r.religion?.trim(), birth_place: r.birth_place?.trim(), birth_date: r.birth_date, marital_status: r.marital_status?.trim(),
                             ptkp_beras: r.ptkp_beras?.trim(), upah_dasar: r.upah_dasar ?? 0, total_hk: r.total_hk || 0, source_table: 'HR_EMPLOYEE_JOIN'

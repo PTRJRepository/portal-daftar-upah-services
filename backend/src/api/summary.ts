@@ -10,6 +10,7 @@ import { thumbprintService } from "../services/thumbprintService";
 import { parseBooleanQueryParam } from "../utils/queryParsers";
 import { resolveUserFromHeaders } from "../utils/authBypass";
 import { chooseSummaryDefaultPeriod } from "../utils/summaryDefaultPeriod";
+import { filterRowsBySummaryDivisionType, normalizeSummaryDivisionType } from "../utils/summaryReportScope";
 
 const authService = AuthService.getInstance();
 type SummaryScope = "all" | "rebinmas" | "ijl";
@@ -263,7 +264,12 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
         const month = parseInt(query.month);
         const year = parseInt(query.year);
         const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
-        const includeVirtual = query.include_virtual === 'true'; // Optional parameter to include virtual divisions
+        const divisionType = normalizeSummaryDivisionType(query.division_type);
+        const includeVirtual = divisionType === "virtual"
+            ? true
+            : divisionType === "real"
+                ? false
+                : query.include_virtual === 'true'; // Optional parameter to include virtual divisions
         const scope = parseSummaryScope(query.scope);
 
         try {
@@ -272,7 +278,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             // includeVirtual controls whether virtual divisions (INF, NRS, WKS_PG, WKS_AR, ARC, MILL) are included
             const data = await summaryService.getAllDivisionsPremiTotals(month, year, includeVirtual);
             const leafRows = data.filter(row => !row.is_subtotal && !row.is_grand_total);
-            const scopedRows = leafRows.filter(row => isIncludedByScope(scope, row.division_code, row.description));
+            const scopedByCompanyRows = leafRows.filter(row => isIncludedByScope(scope, row.division_code, row.description));
+            const scopedRows = filterRowsBySummaryDivisionType(scopedByCompanyRows, divisionType);
             const grandTotal = buildSummaryTotals(scopedRows);
             const grandTotalLabel = scope === "ijl" ? "GRAND TOTAL (IJL)" : scope === "rebinmas" ? "GRAND TOTAL (REBINMAS)" : "GRAND TOTAL";
 
@@ -281,6 +288,7 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
                 month,
                 year,
                 scope,
+                division_type: divisionType,
                 use_history: useHistory,
                 count: scopedRows.length,
                 data: scopedRows,
@@ -316,7 +324,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             year: t.String(),
             use_history: t.Optional(t.String()),
             include_virtual: t.Optional(t.String()), // Set to 'true' to include virtual divisions
-            scope: t.Optional(t.String())
+            scope: t.Optional(t.String()),
+            division_type: t.Optional(t.String())
         })
     })
     // --- Division Detail Summary ---
@@ -359,17 +368,20 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
         const year = parseInt(query.year);
         const useHistory = parseBooleanQueryParam(query.use_history) ?? false;
         const scope = parseSummaryScope(query.scope);
+        const divisionType = normalizeSummaryDivisionType(query.division_type);
 
         try {
             summaryService.setUseHistoryDb(useHistory);
             const result = await summaryService.getAllDivisionsComparison(month, year);
-            const scopedDivisions = (result.divisions || []).filter((row: any) =>
+            const scopedByCompanyDivisions = (result.divisions || []).filter((row: any) =>
                 isIncludedByScope(scope, row.division_code, row.description)
             );
+            const scopedDivisions = filterRowsBySummaryDivisionType(scopedByCompanyDivisions, divisionType);
             return {
                 success: true,
                 ...result,
                 scope,
+                division_type: divisionType,
                 count: scopedDivisions.length,
                 divisions: scopedDivisions,
                 kpi_summary: buildComparisonKpiSummary(scopedDivisions),
@@ -398,7 +410,8 @@ export const summaryRoutes = new Elysia({ prefix: "/payroll/summary" })
             month: t.String(),
             year: t.String(),
             use_history: t.Optional(t.String()),
-            scope: t.Optional(t.String())
+            scope: t.Optional(t.String()),
+            division_type: t.Optional(t.String())
         })
     })
     // --- Impact Report ---

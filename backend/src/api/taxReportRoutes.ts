@@ -18,6 +18,8 @@ import { Database } from "../db/client";
 import { gangService } from "../services/gangService";
 import { resolveMonthlyTaxQuery } from "../utils/taxReportQuery";
 import { getApiKeyHeader, getAuthorizationHeader, resolveUserFromHeaders } from "../utils/authBypass";
+import { historyDatabaseService } from "../services/historyDatabaseService";
+import { applyReportIdentity, collectNikLookupKeys, resolveReportIdentity } from "../utils/taxReportIdentity";
 
 /**
  * Sanitize string for filename - remove/replace invalid filename characters
@@ -254,16 +256,18 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
-                    const nik = String(inc.nik || '').trim().toUpperCase();
+                    const nikKeys = collectNikLookupKeys(inc);
                     const type = String(inc.income_type || '').toUpperCase();
-                    const monthKey = `${inc.period_month}_${nik}`;
                     const amt = Number(inc.amount) || 0;
-                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
-                    const mData = dbIncomeByMonthNik.get(monthKey)!;
-                    if (type === 'THR') mData.thr += amt;
-                    else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
-                    else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
-                    else mData.custom += amt;
+                    for (const nik of nikKeys) {
+                        const monthKey = `${inc.period_month}_${nik}`;
+                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                        const mData = dbIncomeByMonthNik.get(monthKey)!;
+                        if (type === 'THR') mData.thr += amt;
+                        else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
+                        else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
+                        else mData.custom += amt;
+                    }
                 }
             }
 
@@ -380,13 +384,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
                 totalPph21 += pph21;
 
-                const rawEmpNikForBonus = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                const reportIdentity = resolveReportIdentity(row);
+                const rawEmpNikForBonus = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
 
                 // Build other incomes
                 let empOtherIncomes: { type: string; name: string; amount: number }[] = [];
                 for (const [key, mData] of dbIncomeByMonthNik) {
                     const [mStr, nikStr] = key.split('_');
-                    if (nikStr === rawEmpNikForBonus && parseInt(mStr) === month) {
+                    if (nikStr === rawEmpNikForBonus && parseInt(mStr) === resolved.month) {
                         if (mData.thr > 0) empOtherIncomes.push({ type: 'THR', name: 'THR', amount: mData.thr });
                         if (mData.exgratia > 0) empOtherIncomes.push({ type: 'KONTAN', name: 'KONTAN', amount: mData.exgratia });
                         if (mData.custom > 0) empOtherIncomes.push({ type: 'CUSTOM', name: 'Custom', amount: mData.custom });
@@ -459,9 +464,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     emp_code: row.emp_code,
                     emp_name: empName,
                     parent_name: parentName,
-                    nik: row.actual_nik || row.nik || '',
-                    npwp: row.pajak_npwp || '',
-                    alamat: row.res_address || '',
+                    nik: reportIdentity.nik,
+                    new_nik: reportIdentity.new_nik,
+                    npwp: reportIdentity.npwp,
+                    alamat: reportIdentity.alamat,
                     jabatan: resolvedJabatan,
                     gender: String(row.jenis_kelamin || row.gender || '1'),
                     status_ptkp: masterPtkp,
@@ -519,8 +525,8 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             // Generate Excel
             const excelBuffer = await generateMonthlyTaxExcel(
-                { employees, period: { month, year }, total_pph21: totalPph21 },
-                year, month, division || 'ALL', gangLabel
+                { employees, period: { month: resolved.month, year: resolved.year }, total_pph21: totalPph21 },
+                resolved.year, resolved.month, division || 'ALL', gangLabel
             );
 
             if (!excelBuffer || excelBuffer.length === 0) {
@@ -530,7 +536,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
             const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
-            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${resolved.month}_${resolved.year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -671,16 +677,18 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
-                    const nik = String(inc.nik || '').trim().toUpperCase();
+                    const nikKeys = collectNikLookupKeys(inc);
                     const type = String(inc.income_type || '').toUpperCase();
-                    const monthKey = `${inc.period_month}_${nik}`;
                     const amt = Number(inc.amount) || 0;
-                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
-                    const mData = dbIncomeByMonthNik.get(monthKey)!;
-                    if (type === 'THR') mData.thr += amt;
-                    else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
-                    else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
-                    else mData.custom += amt;
+                    for (const nik of nikKeys) {
+                        const monthKey = `${inc.period_month}_${nik}`;
+                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                        const mData = dbIncomeByMonthNik.get(monthKey)!;
+                        if (type === 'THR') mData.thr += amt;
+                        else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
+                        else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
+                        else mData.custom += amt;
+                    }
                 }
             }
             console.log(`[TaxReport Excel FAST] Other incomes by month/NIK: ${dbIncomeByMonthNik.size} entries`);
@@ -791,8 +799,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
                 totalPph21 += pph21;
 
+                const reportIdentity = resolveReportIdentity(row);
+
                 // Other incomes for this employee this month
-                const rawEmpNikForBonus = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                const rawEmpNikForBonus = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
                 const monthKey = `${month}_${rawEmpNikForBonus}`;
                 const empOtherIncome = dbIncomeByMonthNik.get(monthKey) || { thr: 0, exgratia: 0, custom: 0 };
                 const empThrAmount = empOtherIncome.thr;
@@ -900,10 +910,10 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     emp_code: empCodeTrimmed,
                     emp_name: empName,                          // Was: nama (Excel reads emp_name)
                     parent_name: parentName,                    // Was: missing
-                    nik: row.actual_nik || row.nik || '',
-                    new_nik: row.actual_nik || row.nik || '',   // Was: missing (Excel reads new_nik)
-                    npwp: row.pajak_npwp || '',                 // Was: missing
-                    alamat: row.res_address || row.alamat || '', // Was: missing
+                    nik: reportIdentity.nik,
+                    new_nik: reportIdentity.new_nik,
+                    npwp: reportIdentity.npwp,                  // Was: missing
+                    alamat: reportIdentity.alamat,              // Was: missing
                     jabatan: resolvedJabatan,
                     gender: String(row.jenis_kelamin || row.gender || '1'), // Was: missing
                     status_ptkp: masterPtkp,
@@ -1081,6 +1091,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.log(`[TaxReport DOM FAST] Request: ${division}/${gang || gangPrefix || 'ALL'} ${m}/${y}, ${employees.length} employees`);
 
             const empCodes = employees.map((emp: any) => (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase()).filter(Boolean);
+
+            if (empCodes.length > 0) {
+                const historyIdentityByEmpCode = await historyDatabaseService.getHistoryTaxIdentityByEmpCodes(m, y, empCodes);
+                employees.forEach((emp: any) => {
+                    const empCode = (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase();
+                    Object.assign(emp, applyReportIdentity(emp, historyIdentityByEmpCode.get(empCode)));
+                });
+                console.log(`[TaxReport DOM FAST] Applied tax identity overrides for ${historyIdentityByEmpCode.size}/${empCodes.length} employees`);
+            } else {
+                employees.forEach((emp: any) => Object.assign(emp, applyReportIdentity(emp)));
+            }
 
             // ─────────────────────────────────────────────────────────
             // FAST PREMI FETCH: PremiumExtractor only (2 lightweight queries)

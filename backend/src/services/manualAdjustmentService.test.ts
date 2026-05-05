@@ -304,6 +304,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "A0001",
                 null,
+                "G1H",
+                null,
                 123000,
                 "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
                 null,
@@ -359,6 +361,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "A0001",
                 null,
+                "G1H",
+                null,
                 123000,
                 "PREMI PRUNING | MANUAL EDIT | 123000 | sync:MANUAL | match:MANUAL",
                 metadata,
@@ -366,6 +370,57 @@ describe("manual adjustment ADCode rules", () => {
                 "system",
                 56
             ]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
+    it("updates existing manual adjustment scope when saving from the current gang", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            queryOne: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("payroll_manual_adjustments")) {
+                    return { id: 22448 };
+                }
+                return null;
+            },
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            const metadata = JSON.stringify({
+                input_type: "blok",
+                items: [{ subblok: "PM0808", gang_code: "F1BHL", jumlah: 165000 }],
+                total_amount: 165000
+            });
+
+            const id = await manualAdjustmentService.saveAdjustment({
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "F0524",
+                nik: "5202023112930014",
+                gang_code: "F1BHL",
+                division_code: "ARA",
+                adjustment_type: "PREMI",
+                adjustment_name: "PREMI PRUNING",
+                amount: 165000,
+                remarks: "PREMI PRUNING | MANUAL EDIT | 165000 | sync:MANUAL | match:MANUAL",
+                metadata_json: metadata
+            });
+
+            const updateCall = calls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(id).toBe(22448);
+            expect(updateCall?.sql).toContain("gang_code =");
+            expect(updateCall?.sql).toContain("division_code =");
+            expect(updateCall?.params).toContain("F1BHL");
+            expect(updateCall?.params).toContain("ARA");
         } finally {
             (Database as any).getInstance = originalGetInstance;
         }
@@ -482,6 +537,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "A0002",
                 null,
+                "G1H",
+                "P2A",
                 125000,
                 "PREMI RAKING | MANUAL EDIT | 0 | sync:MANUAL | match:MANUAL",
                 expectedMetadata,
@@ -547,6 +604,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "B0001",
                 "3171000000000001",
+                "B1H",
+                "P1A",
                 250000,
                 "PREMI PRUNING | MANUAL EDIT | 250000 | sync:MANUAL | match:MANUAL",
                 "ANANDA DIKI PALINTONI ( ELSI )",
@@ -601,6 +660,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "E0287",
                 "1902042507000003",
+                "E2H",
+                "DME",
                 695750,
                 "PREMI PRUNING | MANUAL EDIT | 695750 | sync:MANUAL | match:MANUAL",
                 "ANANDA DIKI PALINTONI ( ELSI )",
@@ -655,6 +716,8 @@ describe("manual adjustment ADCode rules", () => {
             expect(updateCall?.params).toEqual([
                 "J0872",
                 "1906032107840001",
+                "J3P",
+                "ARC",
                 0,
                 "AUTO SPSI | potongan spsi | 0 | sync:SYNC | match:MATCH",
                 "HARYANTO ( SINAWATI )",
@@ -1567,6 +1630,75 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("reconciles AUTO_BUFFER POTONGAN PPH against PPh21 ADTRANS by absolute TER amount", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const dbExtend = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                if (sql.includes("SELECT TOP") && sql.includes("FROM dbo.payroll_manual_adjustments")) {
+                    return [
+                        {
+                            id: 33,
+                            period_month: 4,
+                            period_year: 2026,
+                            emp_code: "A0006",
+                            gang_code: "G1H",
+                            division_code: "AB1",
+                            adjustment_type: "AUTO_BUFFER",
+                            adjustment_name: "POTONGAN PPH",
+                            amount: 93435,
+                            remarks: "POTONGAN PPH | MANUAL EDIT | 93435 | sync:MISS | match:MISMATCH"
+                        }
+                    ];
+                }
+                return [];
+            }
+        };
+        const dbPtrj = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [
+                    { emp_code: "A0006", doc_id: "AD007", doc_desc: "PPH21", amount: -93435 }
+                ];
+            }
+        };
+
+        (Database as any).getInstance = (database?: string) => database ? dbExtend : dbPtrj;
+
+        try {
+            const result = await manualAdjustmentService.updateManualAdjustmentSyncStatus({
+                periodMonth: 4,
+                periodYear: 2026,
+                divisionCode: "AB1",
+                adjustmentTypes: ["AUTO_BUFFER"],
+                syncStatus: "SYNC",
+                updatedBy: "agent_sync",
+                onlyIfAdtransExists: true
+            });
+
+            const updateCalls = calls.filter((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(updateCalls).toHaveLength(1);
+            expect(updateCalls[0].params).toEqual([
+                "POTONGAN PPH | MANUAL EDIT | 93435 | sync:SYNC | match:MATCH",
+                "agent_sync",
+                33
+            ]);
+            expect(result.rows[0]).toMatchObject({
+                id: 33,
+                adjustment_type: "AUTO_BUFFER",
+                adjustment_name: "POTONGAN PPH",
+                target_amount: 93435,
+                adtrans_amount: 93435,
+                diff: 0,
+                new_sync_status: "SYNC",
+                match_status: "MATCH"
+            });
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("keeps zero-value auto-buffer rows as SYNC when db_ptrj has no matching transaction", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];
@@ -1803,6 +1935,33 @@ describe("manual adjustment grouped response", () => {
             division_code: "G 1",
             ad_code: taskDesc,
             ad_code_desc: taskDesc
+        });
+    });
+
+    it("builds AUTO_BUFFER POTONGAN PPH response fields from PPh21 TaskDesc", () => {
+        const taskDesc = "(DE) POTONGAN PPH21";
+        const rows = buildManualAdjustmentApiResponseRows([
+            {
+                id: 26,
+                period_month: 4,
+                period_year: 2026,
+                emp_code: "A0006",
+                nik: "1902050504860006",
+                emp_name: "PPH TEST",
+                gang_code: "G1H",
+                division_code: "AB1",
+                adjustment_type: "AUTO_BUFFER",
+                adjustment_name: "POTONGAN PPH",
+                amount: 93435,
+                remarks: `POTONGAN PPH | ${taskDesc} | 93435 | sync:SYNC | match:MATCH`
+            }
+        ] as any);
+
+        expect(rows[0]).toMatchObject({
+            ad_code: taskDesc,
+            ad_code_desc: taskDesc,
+            ad_desc: taskDesc,
+            task_desc: taskDesc
         });
     });
 
@@ -2623,10 +2782,10 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 
-    it("includes premi, koreksi, and potongan missing details in compare defaults", async () => {
+    it("includes premi, koreksi, potongan, and pph missing details in compare defaults", async () => {
         const originalGetInstance = Database.getInstance;
         const dbPtrj = {
-            query: async () => [{ emp_code: "A0001", nik: "1902050504860001", spsi: 0, "masa kerja": 0, jabatan: 0, premi: 5000, koreksi: -2000, potongan: -1000 }]
+            query: async () => [{ emp_code: "A0001", nik: "1902050504860001", spsi: 0, "masa kerja": 0, jabatan: 0, pph: 3000, premi: 5000, koreksi: -2000, potongan: -1000 }]
         };
         const dbExtend = {
             query: async () => []
@@ -2637,8 +2796,9 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         try {
             const result = await manualAdjustmentService.compareAdtransWithAdjustments(4, 2026, "P1A");
 
-            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]);
+            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "pph", "premi", "koreksi", "potongan"]);
             expect(result.comparisons.map((item) => ({ emp_code: item.emp_code, category: item.category, status: item.status, source_amount: item.source_amount }))).toEqual([
+                { emp_code: "A0001", category: "pph", status: "MISSING", source_amount: 3000 },
                 { emp_code: "A0001", category: "premi", status: "MISSING", source_amount: 5000 },
                 { emp_code: "A0001", category: "koreksi", status: "MISSING", source_amount: -2000 },
                 { emp_code: "A0001", category: "potongan", status: "MISSING", source_amount: -1000 }
@@ -2784,7 +2944,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 
-    it("includes premi, koreksi, and potongan rows in reverse compare defaults with PTRJ EmpCode", async () => {
+    it("includes premi, koreksi, potongan, and pph rows in reverse compare defaults with PTRJ EmpCode", async () => {
         const originalGetInstance = Database.getInstance;
         const dbExtend = {
             query: async () => [
@@ -2798,7 +2958,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
             queryOne: async (_sql: string) => ({ nik: "1902050504860001", emp_code: "A0001", emp_name: "BUDI TEST", gang_code: "A2M" }),
             query: async () => {
                 dbPtrjCall++;
-                if (dbPtrjCall === 1) return [{ emp_code: "A0001", premi: 5000, koreksi: -2000, potongan: 0 }];
+                if (dbPtrjCall === 1) return [{ emp_code: "A0001", spsi: 0, "masa kerja": 0, jabatan: 0, pph: 0, premi: 5000, koreksi: -2000, potongan: 0 }];
                 return [];
             }
         };
@@ -2808,7 +2968,7 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         try {
             const result = await (manualAdjustmentService as any).reverseCompareAdtransWithAdjustments(4, 2026, "P1A");
 
-            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "premi", "koreksi", "potongan"]);
+            expect(result.compared_categories).toEqual(["spsi", "masa kerja", "jabatan", "pph", "premi", "koreksi", "potongan"]);
             expect(result.comparisons.map((item: any) => ({ emp_code: item.emp_code, category: item.category, status: item.status }))).toEqual([
                 { emp_code: "A0001", category: "premi", status: "MATCH" },
                 { emp_code: "A0001", category: "koreksi", status: "MATCH" },

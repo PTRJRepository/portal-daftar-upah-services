@@ -11,8 +11,10 @@ import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary,
 import { generatePDF } from '../utils/pdfGenerator';
 import ImpactReportPage from './ImpactReportPage';
 import PrintSignature from '../components/common/PrintSignature';
+import { getDivisionTypeLabel, getReportModeLabel, getSourceModeLabel } from '../utils/reportPresentationLabels';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
+import '../styles/report-print-foundation.css';
 
 export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
@@ -122,7 +124,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
 
         try {
             if (comparisonMode) {
-                const result = await fetchComparisonSummary(token, { month, year, scope: 'ijl' });
+                const result = await fetchComparisonSummary(token, { month, year, scope: 'ijl', divisionType });
                 if (result.success) {
                     setComparisonData(result);
                     setComparisonGrandTotal(result.grand_total || null);
@@ -134,6 +136,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                     month, 
                     year,
                     includeVirtual: divisionType !== 'real', // 'all' or 'virtual' -> true
+                    divisionType,
                     scope: 'ijl'
                 });
                 if (result.success) {
@@ -491,7 +494,12 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
 
             {/* Render Logic */}
             {impactReportMode ? (
-                <ImpactReportPage onBack={() => setImpactReportMode(false)} />
+                <ImpactReportPage
+                    onBack={() => setImpactReportMode(false)}
+                    initialMonth={month}
+                    initialYear={year}
+                    initialEstateType="ijl"
+                />
             ) : (
                 <>
                     {loading ? (
@@ -505,6 +513,15 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                                 <h1 className="wsp-company-name">PT. IMPIAN JAYA LESTARI</h1>
                                 <div className="wsp-report-title">{comparisonMode ? 'Monthly Wages Comparison Report' : 'Monthly Wages Summary Report'}</div>
                                 <div className="wsp-report-period">Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong></div>
+                                <div className="report-print-meta-grid">
+                                    <span className="report-source-badge">Mode: {getReportModeLabel({ comparisonMode })}</span>
+                                    <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Summary API' })}</span>
+                                    <span className="report-source-badge">Scope: {getDivisionTypeLabel(divisionType)}</span>
+                                    <span className="report-source-badge">Estate: IJL</span>
+                                </div>
+                                <div className="report-print-note">
+                                    Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope IJL yang sedang dicetak.
+                                </div>
                             </div>
 
                             {comparisonMode ? renderComparisonKPI() : (

@@ -37,6 +37,7 @@ import { employeeHrDataService } from "./employeeHrDataService";
 import { divisionDefinition } from "./divisionDefinition";
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { sortByEmpCode } from "../utils/employeeSort";
+import { resolveReportIdentity } from "../utils/taxReportIdentity";
 
 export interface Employee {
     nik: string;
@@ -278,6 +279,8 @@ export interface HistoryHrEmployee {
     period_year: number;
     nik?: string;
     new_nik?: string;  // Tracks when NIK changes in source (db_ptrj). Original nik is NEVER overwritten.
+    pajak_npwp?: string;
+    res_address?: string;
     emp_code: string;
     emp_name?: string;
     company_code?: string;
@@ -304,6 +307,15 @@ export interface HistoryHrEmployee {
     total_hk?: number;
     source_table: string;
     created_at?: Date;
+}
+
+export interface HistoryTaxIdentity {
+    emp_code: string;
+    nik?: string;
+    new_nik?: string;
+    pajak_npwp?: string;
+    res_address?: string;
+    religion?: string;
 }
 
 export interface HistoryHrGang {
@@ -809,6 +821,64 @@ export class HistoryDatabaseService {
         return await db.query<PayrollHistoryMaster>(sql, params);
     }
 
+    public async getHistoryTaxIdentityByEmpCodes(
+        periodMonth: number,
+        periodYear: number,
+        empCodes: string[]
+    ): Promise<Map<string, HistoryTaxIdentity>> {
+        const result = new Map<string, HistoryTaxIdentity>();
+        const normalizedEmpCodes = [...new Set(
+            (empCodes || [])
+                .map(code => String(code || "").trim().toUpperCase())
+                .filter(Boolean)
+        )];
+
+        if (normalizedEmpCodes.length === 0) return result;
+
+        const db = this.getPayrollDatabase();
+        const chunkSize = 500;
+
+        try {
+            for (let i = 0; i < normalizedEmpCodes.length; i += chunkSize) {
+                const chunk = normalizedEmpCodes.slice(i, i + chunkSize);
+                const placeholders = chunk.map(() => "?").join(",");
+                const rows = await db.query<HistoryTaxIdentity>(`
+                    SELECT emp_code, nik, new_nik, pajak_npwp, res_address, religion
+                    FROM (
+                        SELECT
+                            RTRIM(emp_code) AS emp_code,
+                            NULLIF(RTRIM(ISNULL(nik, '')), '') AS nik,
+                            NULLIF(RTRIM(ISNULL(new_nik, '')), '') AS new_nik,
+                            NULLIF(RTRIM(ISNULL(pajak_npwp, '')), '') AS pajak_npwp,
+                            NULLIF(RTRIM(ISNULL(res_address, '')), '') AS res_address,
+                            NULLIF(RTRIM(ISNULL(religion, '')), '') AS religion,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY RTRIM(emp_code)
+                                ORDER BY
+                                    CASE WHEN period_month = ? AND period_year = ? THEN 0 ELSE 1 END,
+                                    period_year DESC,
+                                    period_month DESC,
+                                    id DESC
+                            ) AS rn
+                        FROM dbo.history_hr_employee
+                        WHERE period_year = ?
+                          AND RTRIM(emp_code) IN (${placeholders})
+                    ) ranked
+                    WHERE rn = 1
+                `, [periodMonth, periodYear, periodYear, ...chunk]);
+
+                rows.forEach(row => {
+                    const empCode = String(row.emp_code || "").trim().toUpperCase();
+                    if (empCode) result.set(empCode, row);
+                });
+            }
+        } catch (e) {
+            logError(CATEGORY, "Error fetching tax identity from history_hr_employee", e);
+        }
+
+        return result;
+    }
+
     /**
      * Lock payroll history to prevent modification
      */
@@ -1227,6 +1297,8 @@ export class HistoryDatabaseService {
             }
         }
 
+        const historyTaxIdentityMap = await this.getHistoryTaxIdentityByEmpCodes(periodMonth, periodYear, empCodesForHr);
+
         // Fetch live HR_EMPLOYEE data for address, type, actual_nik
         const hrEmployeeMap = new Map<string, any>();
         if (empCodesForHr.length > 0) {
@@ -1271,12 +1343,16 @@ export class HistoryDatabaseService {
             const empCodeClean = d.emp_code?.trim().toUpperCase() || "";
             const hrOverride = hrDataMap.get(empCodeClean);
             const liveHr = hrEmployeeMap.get(empCodeClean);
+            const historyTaxIdentity = historyTaxIdentityMap.get(empCodeClean);
             const histReligion = religionHistoryMap.get(empCodeClean);
 
-            const actualNik = liveHr?.actual_nik?.trim() || d.nik?.trim() || "";
-            const finalNik = hrOverride?.nik_ktp?.trim() || actualNik;
-            const finalNpwp = hrOverride?.npwp?.trim() || "";
-            const finalReligion = histReligion || liveHr?.Religion || "01 Islam";
+            const reportIdentity = resolveReportIdentity({
+                nik: d.nik,
+                actual_nik: liveHr?.actual_nik,
+                pajak_npwp: hrOverride?.npwp,
+                res_address: liveHr?.res_address
+            }, historyTaxIdentity);
+            const finalReligion = historyTaxIdentity?.religion || histReligion || liveHr?.Religion || "01 Islam";
 
             const gCodeTrimmed = (d.gang_code || '').trim();
             const locCodeTrimmed = (d.loc_code || d.division_code || '').trim();
@@ -1285,11 +1361,13 @@ export class HistoryDatabaseService {
             const resolvedLocCode = divisionDefinition.getVirtualDivisionForGang(gCodeTrimmed, locCodeTrimmed, descTrimmed) || locCodeTrimmed;
 
             const row: any = {
-                nik: finalNik,
-                pajak_npwp: finalNpwp,
+                nik: reportIdentity.nik,
+                new_nik: reportIdentity.new_nik,
+                actual_nik: reportIdentity.actual_nik,
+                pajak_npwp: reportIdentity.npwp,
                 religion: finalReligion,
-                res_address: liveHr?.res_address?.trim() || "",
-                alamat: liveHr?.res_address?.trim() || "", // Map res_address to alamat for frontend
+                res_address: reportIdentity.alamat,
+                alamat: reportIdentity.alamat, // Map res_address to alamat for frontend
                 hr_emp_type: liveHr?.hr_emp_type?.trim() || "",
                 nama: d.emp_name,
                 emp_code: d.emp_code,
@@ -1768,6 +1846,7 @@ export class HistoryDatabaseService {
         const columns = [
             "history_id", "period_month", "period_year", "nik",
             ...(schemaHasNewNik ? ["new_nik"] : []),
+            "pajak_npwp", "res_address",
             "emp_code", "emp_name",
             "company_code", "division_code", "loc_code", "gang_code", "job_code", "position",
             "jabatan", "is_spsi_member",
@@ -1780,6 +1859,8 @@ export class HistoryDatabaseService {
             data.history_id, data.period_month, data.period_year,
             existing ? existing.nik : data.nik,  // JANGAN overwrite NIK lama
             ...(schemaHasNewNik ? [resolvedNewNik] : []),
+            data.pajak_npwp?.trim() || null,
+            data.res_address?.trim() || null,
             data.emp_code,
             data.emp_name, data.company_code, data.division_code, data.loc_code, data.gang_code,
             data.job_code, data.position,
@@ -2050,6 +2131,24 @@ export class HistoryDatabaseService {
                 END
             `);
             console.log("[HistoryDatabaseService] Migrated: history_hr_employee.is_spsi_member");
+
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_hr_employee' AND COLUMN_NAME='pajak_npwp')
+                BEGIN
+                    ALTER TABLE dbo.history_hr_employee ADD pajak_npwp VARCHAR(50) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_hr_employee.pajak_npwp");
+
+            await db.query(`
+                IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='history_hr_employee' AND COLUMN_NAME='res_address')
+                BEGIN
+                    ALTER TABLE dbo.history_hr_employee ADD res_address NVARCHAR(512) NULL;
+                END
+            `);
+            console.log("[HistoryDatabaseService] Migrated: history_hr_employee.res_address");
 
             const payrollDetailColumns: Array<{ name: string; definition: string }> = [
                 { name: "beras_rate", definition: "DECIMAL(18,4) NULL DEFAULT 0" },

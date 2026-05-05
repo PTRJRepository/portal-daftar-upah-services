@@ -12,7 +12,7 @@ type SqlCall = {
 };
 
 describe("autoBufferManualAdjustmentSeederService", () => {
-    it("builds 3 AUTO_BUFFER entries per employee", () => {
+    it("builds 4 AUTO_BUFFER entries per employee including POTONGAN PPH from pph21_ter", () => {
         const entries = buildAutoBufferSeedEntries([
             {
                 emp_code: "A0001",
@@ -23,17 +23,34 @@ describe("autoBufferManualAdjustmentSeederService", () => {
                 masa_kerja_tahun: 5,
                 is_spsi_member: true,
                 jabatan_jumlah: 0,
-                masa_kerja_jumlah: 0
+                masa_kerja_jumlah: 0,
+                pot_spsi: 0,
+                pot_pph21: 28655,
+                pph21_ter: 93435
             }
         ], 4, 2026, "AB1");
 
-        expect(entries.length).toBe(3);
+        expect(entries.length).toBe(4);
         expect(entries.every((entry) => entry.adjustment_type === "AUTO_BUFFER")).toBe(true);
         expect(entries.map((entry) => entry.adjustment_name).sort()).toEqual([
             "MASA KERJA",
+            "POTONGAN PPH",
             "SPSI",
             "TUNJANGAN JABATAN"
         ]);
+
+        const pphEntry = entries.find((entry) => entry.adjustment_name === "POTONGAN PPH");
+        expect(Number(pphEntry?.amount || 0)).toBe(93435);
+        expect(pphEntry?.remarks).toBe(
+            "POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:MISS | match:MISMATCH"
+        );
+        expect(JSON.parse(pphEntry?.metadata_json || "{}")).toMatchObject({
+            input_type: "auto_buffer",
+            adjustment_type: "AUTO_BUFFER",
+            adjustment_name: "POTONGAN PPH",
+            amount: 93435,
+            total_amount: 93435
+        });
 
         const spsiEntry = entries.find((entry) => entry.adjustment_name === "SPSI");
         expect(Number(spsiEntry?.amount || 0)).toBe(4000);
@@ -110,7 +127,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             }
         ], 4, 2026, "F1");
 
-        expect(entries.length).toBe(3);
+        expect(entries.length).toBe(4);
         expect(entries.every((entry) => entry.emp_code === "F0520")).toBe(true);
         expect(entries.every((entry) => entry.nik === "1902050504860001")).toBe(true);
         expect(entries.every((entry) => entry.emp_name === "BUDI TEST")).toBe(true);
@@ -162,7 +179,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             }
         ], 4, 2026, "PG1A");
 
-        expect(entries.length).toBe(3);
+        expect(entries.length).toBe(4);
         expect(entries.every((entry) => entry.division_code === "P1A")).toBe(true);
     });
 
@@ -240,7 +257,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
 
             expect(result.replace_existing).toBe(true);
             expect(result.deleted_existing).toBe(2);
-            expect(result.inserted).toBe(2);
+            expect(result.inserted).toBe(3);
             expect(result.updated).toBe(0);
             expect(result.preserved_manual).toBe(1);
             expect(result.skipped_manual_conflicts).toBe(1);
@@ -256,8 +273,9 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             expect(deleteCall?.sql).toContain("MATCH:MANUAL");
 
             const insertCalls = queryCalls.filter((call) => call.sql.includes("INSERT INTO dbo.payroll_manual_adjustments"));
-            expect(insertCalls.length).toBe(2);
+            expect(insertCalls.length).toBe(3);
             expect(insertCalls.some((call) => call.params?.[8] === "SPSI")).toBe(false);
+            expect(insertCalls.some((call) => call.params?.[8] === "POTONGAN PPH")).toBe(true);
         });
 
         it("uses profile override keyed by NIK before calculating SPSI amount", async () => {
@@ -472,7 +490,7 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             });
 
             expect(result.deleted_existing).toBe(5);
-            expect(result.inserted).toBe(3);
+            expect(result.inserted).toBe(4);
             expect(result.updated).toBe(0);
             expect(result.replace_existing).toBe(true);
             expect(queryOneCalls.length).toBe(1);
@@ -538,6 +556,116 @@ describe("autoBufferManualAdjustmentSeederService", () => {
             const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
             expect(updateCall).toBeDefined();
             expect(updateCall?.params[0]).toBe("MASA KERJA | masa kerja | 60000 | sync:SYNC | match:MATCH");
+        });
+
+        it("validates POTONGAN PPH against db_ptrj PPh21 ADTRANS and marks SYNC when it equals pph21_ter", async () => {
+            const extendedQueryCalls: SqlCall[] = [];
+            const mainQueryCalls: SqlCall[] = [];
+
+            const mockExtendedDb = {
+                query: async (sql: string, params?: any[]) => {
+                    extendedQueryCalls.push({ sql, params: params || [] });
+                    if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
+                        return [{
+                            id: 40,
+                            emp_code: "A0001",
+                            nik: "1902050504860001",
+                            adjustment_name: "POTONGAN PPH",
+                            amount: 93435,
+                            remarks: "POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:MISS | match:MISMATCH"
+                        }];
+                    }
+                    return [];
+                }
+            };
+
+            const mockMainDb = {
+                query: async (sql: string, params?: any[]) => {
+                    mainQueryCalls.push({ sql, params: params || [] });
+                    if (sql.includes("DEPH21") && sql.includes("POTONGAN PPH")) {
+                        return [{
+                            emp_code: "A0001",
+                            nik: "1902050504860001",
+                            adjustment_name: "POTONGAN PPH",
+                            total: -93435
+                        }];
+                    }
+                    return [];
+                }
+            };
+
+            (Database as any).getExtendedInstance = () => mockExtendedDb;
+            (Database as any).getInstance = () => mockMainDb;
+
+            const service = AutoBufferManualAdjustmentSeederService.getInstance();
+            const result = await service.validatePeriod({
+                period_month: 4,
+                period_year: 2026,
+                division_code: "AB1",
+                created_by: "tester"
+            });
+
+            expect(result.processed).toBe(1);
+            expect(result.matches).toBe(1);
+            expect(result.misses).toBe(0);
+            expect(mainQueryCalls[0]?.sql).toContain("DEPH21");
+            expect(mainQueryCalls[0]?.sql).toContain("POTONGAN PPH");
+
+            const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(updateCall?.params[0]).toBe("POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:SYNC | match:MATCH");
+        });
+
+        it("keeps POTONGAN PPH MISS when db_ptrj PPh21 differs from seeded pph21_ter", async () => {
+            const extendedQueryCalls: SqlCall[] = [];
+
+            const mockExtendedDb = {
+                query: async (sql: string, params?: any[]) => {
+                    extendedQueryCalls.push({ sql, params: params || [] });
+                    if (sql.includes("SELECT id, emp_code, adjustment_name, amount, remarks")) {
+                        return [{
+                            id: 41,
+                            emp_code: "A0002",
+                            nik: "1902050504860002",
+                            adjustment_name: "POTONGAN PPH",
+                            amount: 93435,
+                            remarks: "POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:SYNC | match:MATCH"
+                        }];
+                    }
+                    return [];
+                }
+            };
+
+            const mockMainDb = {
+                query: async (sql: string) => {
+                    if (sql.includes("DEPH21") && sql.includes("POTONGAN PPH")) {
+                        return [{
+                            emp_code: "A0002",
+                            nik: "1902050504860002",
+                            adjustment_name: "POTONGAN PPH",
+                            total: -28655
+                        }];
+                    }
+                    return [];
+                }
+            };
+
+            (Database as any).getExtendedInstance = () => mockExtendedDb;
+            (Database as any).getInstance = () => mockMainDb;
+
+            const service = AutoBufferManualAdjustmentSeederService.getInstance();
+            const result = await service.validatePeriod({
+                period_month: 4,
+                period_year: 2026,
+                division_code: "AB1",
+                created_by: "tester"
+            });
+
+            expect(result.processed).toBe(1);
+            expect(result.matches).toBe(0);
+            expect(result.misses).toBe(1);
+
+            const updateCall = extendedQueryCalls.find((call) => call.sql.includes("UPDATE dbo.payroll_manual_adjustments"));
+            expect(updateCall?.params[0]).toBe("POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:MISS | match:MISMATCH");
         });
 
         it("does not validate or rewrite user-edited AUTO_BUFFER remarks", async () => {

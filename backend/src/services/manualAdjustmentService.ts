@@ -186,7 +186,7 @@ function buildAdtransSqlCondition(columnName: string, filter: string): string {
     return buildAdtransDocDescSqlCondition(columnName, filter);
 }
 
-const DEFAULT_ADTRANS_COMPARE_FILTERS = ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan'];
+const DEFAULT_ADTRANS_COMPARE_FILTERS = ['spsi', 'masa kerja', 'jabatan', 'pph', 'premi', 'koreksi', 'potongan'];
 const KOREKSI_PREFIX = "KOREKSI";
 const KOREKSI_DEFAULT_AD_CODE = "DE0004";
 const KOREKSI_DEFAULT_TASK_DESC = "(DE) POTONGAN PREMI";
@@ -1313,6 +1313,7 @@ function resolveManualAdjustmentAdtransCategory(row: Pick<ManualAdjustment, "adj
         if (autoBufferName === "TUNJANGAN JABATAN") return "jabatan";
         if (autoBufferName === "MASA KERJA") return "masa kerja";
         if (autoBufferName === "SPSI") return "spsi";
+        if (autoBufferName === "POTONGAN PPH") return "pph";
     }
     return "";
 }
@@ -1345,7 +1346,15 @@ function adtransDetailMatchesManualAdjustment(row: ManualAdjustment, detail: Man
 
     const expectedTexts = buildManualAdjustmentExpectedAdtransTexts(row);
     if (expectedTexts.length > 0) {
-        return expectedTexts.some((expected) => docText.includes(expected) || expected.includes(docText));
+        if (expectedTexts.some((expected) => docText.includes(expected) || expected.includes(docText))) {
+            return true;
+        }
+
+        const adjustmentType = normalizeText(row.adjustment_type).toUpperCase();
+        const category = resolveManualAdjustmentAdtransCategory(row);
+        return adjustmentType === "AUTO_BUFFER" && category
+            ? matchesAdtransFilter(detail.doc_desc, category)
+            : false;
     }
 
     const category = resolveManualAdjustmentAdtransCategory(row);
@@ -2212,6 +2221,8 @@ export class ManualAdjustmentService {
                     UPDATE dbo.payroll_manual_adjustments
                     SET emp_code = ?,
                         nik = ?,
+                        gang_code = COALESCE(NULLIF(LTRIM(RTRIM(?)), ''), gang_code),
+                        division_code = COALESCE(?, division_code),
                         amount = ?,
                         remarks = ?,
                         metadata_json = ${hasMetadataJsonInput ? '?' : 'metadata_json'},
@@ -2220,8 +2231,8 @@ export class ManualAdjustmentService {
                         updated_by = ?
                     WHERE id = ?
                 `, hasMetadataJsonInput
-                    ? [identity.empCode, identity.nik, effectiveAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
-                    : [identity.empCode, identity.nik, effectiveAmount, remarks, empName, user || 'system', existing.id]);
+                    ? [identity.empCode, identity.nik, data.gang_code, normalizedDivisionCode, effectiveAmount, remarks, metadataJsonStr, empName, user || 'system', existing.id]
+                    : [identity.empCode, identity.nik, data.gang_code, normalizedDivisionCode, effectiveAmount, remarks, empName, user || 'system', existing.id]);
                 return existing.id;
             }
         } else {

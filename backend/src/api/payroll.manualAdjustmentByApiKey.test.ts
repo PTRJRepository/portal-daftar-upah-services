@@ -5,10 +5,14 @@ process.env.LOG_TO_FILE = "false";
 
 const actualManualAdjustmentServiceModule = await import("../services/manualAdjustmentService");
 const actualManualAdjustmentSyncStatusSeederModule = await import("../services/manualAdjustmentSyncStatusSeederService");
+const actualAutoBufferManualAdjustmentSeederModule = await import("../services/autoBufferManualAdjustmentSeederService");
 const actualTaskCodeOptionServiceModule = await import("../services/taskCodeOptionService");
+const actualCacheServiceModule = await import("../services/cacheService");
 const manualAdjustmentService = actualManualAdjustmentServiceModule.manualAdjustmentService as any;
 const manualAdjustmentSyncStatusSeederService = actualManualAdjustmentSyncStatusSeederModule.manualAdjustmentSyncStatusSeederService as any;
+const autoBufferManualAdjustmentSeederService = actualAutoBufferManualAdjustmentSeederModule.autoBufferManualAdjustmentSeederService as any;
 const taskCodeOptionService = actualTaskCodeOptionServiceModule.taskCodeOptionService as any;
+const cacheService = actualCacheServiceModule.cacheService as any;
 const originalManualAdjustmentMethods = {
     getAdjustments: manualAdjustmentService.getAdjustments,
     listAdjustmentNameOptions: manualAdjustmentService.listAdjustmentNameOptions,
@@ -19,8 +23,14 @@ const originalManualAdjustmentMethods = {
 const originalManualAdjustmentSyncStatusSeederMethods = {
     seedPeriod: manualAdjustmentSyncStatusSeederService.seedPeriod
 };
+const originalAutoBufferManualAdjustmentSeederMethods = {
+    seedPeriod: autoBufferManualAdjustmentSeederService.seedPeriod
+};
 const originalTaskCodeOptionMethods = {
     searchAutomationAdjustmentOptions: taskCodeOptionService.searchAutomationAdjustmentOptions
+};
+const originalCacheServiceMethods = {
+    clearByPattern: cacheService.clearByPattern
 };
 
 const defaultGetAdjustmentsRows = () => [
@@ -116,6 +126,28 @@ const seedSyncStatusPeriod = mock(async () => ({
     rows: []
 }));
 
+const seedAutoBufferPeriod = mock(async () => ({
+    period_month: 4,
+    period_year: 2026,
+    division_code: "AB1",
+    gang_code: "ALL",
+    source_rows: 25,
+    seeded_entries: 100,
+    inserted: 100,
+    updated: 0,
+    deleted_existing: 0,
+    preserved_manual: 0,
+    skipped_manual_conflicts: 0,
+    replace_existing: true,
+    value_priority_mode_source: "non_db_ptrj",
+    validation: {
+        total_rows: 100,
+        match_count: 100,
+        mismatch_count: 0,
+        miss_count: 0
+    }
+}));
+
 const searchAutomationAdjustmentOptions = mock(async () => [
     {
         category: "premi",
@@ -158,7 +190,9 @@ manualAdjustmentService.updateManualAdjustmentSyncStatus = updateManualAdjustmen
 manualAdjustmentService.checkAdtransDirectly = checkAdtransDirectly;
 manualAdjustmentService.listAdtransDocIds = listAdtransDocIds;
 manualAdjustmentSyncStatusSeederService.seedPeriod = seedSyncStatusPeriod;
+autoBufferManualAdjustmentSeederService.seedPeriod = seedAutoBufferPeriod;
 taskCodeOptionService.searchAutomationAdjustmentOptions = searchAutomationAdjustmentOptions;
+cacheService.clearByPattern = mock(() => {});
 
 describe("manual adjustment by-api-key route", () => {
     afterAll(() => {
@@ -168,7 +202,9 @@ describe("manual adjustment by-api-key route", () => {
         manualAdjustmentService.checkAdtransDirectly = originalManualAdjustmentMethods.checkAdtransDirectly;
         manualAdjustmentService.listAdtransDocIds = originalManualAdjustmentMethods.listAdtransDocIds;
         manualAdjustmentSyncStatusSeederService.seedPeriod = originalManualAdjustmentSyncStatusSeederMethods.seedPeriod;
+        autoBufferManualAdjustmentSeederService.seedPeriod = originalAutoBufferManualAdjustmentSeederMethods.seedPeriod;
         taskCodeOptionService.searchAutomationAdjustmentOptions = originalTaskCodeOptionMethods.searchAutomationAdjustmentOptions;
+        cacheService.clearByPattern = originalCacheServiceMethods.clearByPattern;
     });
 
     beforeEach(() => {
@@ -180,6 +216,59 @@ describe("manual adjustment by-api-key route", () => {
         checkAdtransDirectly.mockClear();
         listAdtransDocIds.mockClear();
         seedSyncStatusPeriod.mockClear();
+        seedAutoBufferPeriod.mockClear();
+        cacheService.clearByPattern.mockClear();
+    });
+
+    it("exposes POTONGAN PPH in auto-buffer seeder endpoint metadata", async () => {
+        const { payrollRoutes } = await import("./payroll");
+
+        const response = await payrollRoutes.handle(new Request(
+            "http://localhost/payroll/manual-adjustment/seed-auto-buffer",
+            {
+                method: "POST",
+                headers: {
+                    "X-API-Key": "test-manual-adjustment-api-key",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    period_month: 4,
+                    period_year: 2026,
+                    division_code: "AB1"
+                })
+            }
+        ));
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.message).toContain("POTONGAN PPH");
+        expect(body.auto_buffer_items_per_employee).toBe(4);
+        expect(body.auto_buffer_adjustments.map((item: any) => item.adjustment_name)).toEqual([
+            "TUNJANGAN JABATAN",
+            "MASA KERJA",
+            "SPSI",
+            "POTONGAN PPH"
+        ]);
+        expect(body.auto_buffer_adjustments.find((item: any) => item.adjustment_name === "POTONGAN PPH")).toMatchObject({
+            ad_code: "(DE) POTONGAN PPH21",
+            ad_desc: "(DE) POTONGAN PPH21",
+            task_desc: "(DE) POTONGAN PPH21",
+            amount_source: "pph21_ter",
+            comparison_source: "pot_pph21"
+        });
+        expect(seedAutoBufferPeriod).toHaveBeenCalledWith({
+            period_month: 4,
+            period_year: 2026,
+            division_code: "AB1",
+            gang_code: undefined,
+            use_history_db: undefined,
+            snapshot_version: undefined,
+            replace_existing: undefined,
+            value_priority_mode: undefined,
+            created_by: "api_key_admin"
+        });
+        expect(cacheService.clearByPattern).toHaveBeenCalledWith(":4:2026");
     });
 
     it("passes metadata_only to the service and returns grouped metadata flag", async () => {

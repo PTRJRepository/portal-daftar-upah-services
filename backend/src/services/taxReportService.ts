@@ -22,6 +22,7 @@ import { EmployeeEstateService } from './employeeEstateService';
 import { cacheService } from './cacheService';
 import { filterTaxReportRows, resolveTaxReportDivisionScope } from '../utils/taxReportDivisionScope';
 import { sortAndRenumberByEmpCode } from '../utils/employeeSort';
+import { collectNikLookupKeys, resolveReportIdentity } from '../utils/taxReportIdentity';
 
 /**
  * Auto-derive jabatan (job title) from the last character of gang code.
@@ -568,19 +569,21 @@ class TaxReportService {
 
         for (const inc of dbOtherIncomesYear) {
             if (inc.is_taxable) {
-                const nik = String(inc.nik || '').trim().toUpperCase();
+                const nikKeys = collectNikLookupKeys(inc);
                 const type = String(inc.income_type || '').toUpperCase();
-                const monthKey = `${inc.period_month}_${nik}`;
                 const amt = Number(inc.amount) || 0;
 
-                if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
-                const mData = dbIncomeByMonthNik.get(monthKey)!;
+                for (const nik of nikKeys) {
+                    const monthKey = `${inc.period_month}_${nik}`;
+                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                    const mData = dbIncomeByMonthNik.get(monthKey)!;
 
-                // Map income types correctly: THR, KONTAN/KONTANAN, BONUS/EXGRATIA, CUSTOM
-                if (type === 'THR') { mData.thr += amt; }
-                else if (type === 'KONTAN' || type === 'KONTANAN') { mData.exgratia += amt; } // KONTAN goes to KONTANAN column
-                else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; }
-                else { mData.custom += amt; }
+                    // Map income types correctly: THR, KONTAN/KONTANAN, BONUS/EXGRATIA, CUSTOM
+                    if (type === 'THR') { mData.thr += amt; }
+                    else if (type === 'KONTAN' || type === 'KONTANAN') { mData.exgratia += amt; } // KONTAN goes to KONTANAN column
+                    else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; }
+                    else { mData.custom += amt; }
+                }
             }
         }
 
@@ -645,7 +648,8 @@ class TaxReportService {
 
             totalPph21 += pph21;
 
-            const rawEmpNikForBonus = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+            const reportIdentity = resolveReportIdentity(row);
+            const rawEmpNikForBonus = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
 
             // [DEBUG] Always log every employee's pph21 for comparison
             if (idx < 5) {
@@ -659,8 +663,8 @@ class TaxReportService {
             if (empOtherIncomes.length === 0) {
                 // Fetch other incomes from the yearly map if not already in the row
                 for (const inc of dbOtherIncomesYear) {
-                    const incNik = String(inc.nik || '').trim().toUpperCase();
-                    if (incNik === rawEmpNikForBonus && inc.period_month === month) {
+                    const incNikKeys = collectNikLookupKeys(inc);
+                    if (incNikKeys.includes(rawEmpNikForBonus) && inc.period_month === month) {
                         empOtherIncomes.push({
                             type: inc.income_type || '',
                             name: inc.income_name || inc.income_type || '',
@@ -826,9 +830,10 @@ class TaxReportService {
                 emp_code: row.emp_code,
                 emp_name: empName,
                 parent_name: parentName,
-                nik: row.actual_nik || row.nik || '',
-                npwp: row.pajak_npwp || '',
-                alamat: row.res_address || '',
+                nik: reportIdentity.nik,
+                new_nik: reportIdentity.new_nik,
+                npwp: reportIdentity.npwp,
+                alamat: reportIdentity.alamat,
                 jabatan: resolvedJabatan,
                 gender: String(row.jenis_kelamin || row.gender || '1'),
                 status_ptkp: masterPtkp,
@@ -1019,19 +1024,21 @@ class TaxReportService {
 
         for (const inc of dbOtherIncomesYear) {
             if (inc.is_taxable) {
-                const nik = String(inc.nik || '').trim().toUpperCase();
+                const nikKeys = collectNikLookupKeys(inc);
                 const amt = Number(inc.amount) || 0;
                 const type = String(inc.income_type || '').toUpperCase();
-                const monthKey = `${inc.period_month}_${nik}`;
 
-                if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
-                const mData = dbIncomeByMonthNik.get(monthKey)!;
-                if (!dbIncomeByNik.has(nik)) dbIncomeByNik.set(nik, { thr: 0, exgratia: 0, custom: 0 });
-                const yData = dbIncomeByNik.get(nik)!;
+                for (const nik of nikKeys) {
+                    const monthKey = `${inc.period_month}_${nik}`;
+                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                    const mData = dbIncomeByMonthNik.get(monthKey)!;
+                    if (!dbIncomeByNik.has(nik)) dbIncomeByNik.set(nik, { thr: 0, exgratia: 0, custom: 0 });
+                    const yData = dbIncomeByNik.get(nik)!;
 
-                if (type === 'THR') { mData.thr += amt; yData.thr += amt; }
-                else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; yData.exgratia += amt; }
-                else { mData.custom += amt; yData.custom += amt; }
+                    if (type === 'THR') { mData.thr += amt; yData.thr += amt; }
+                    else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; yData.exgratia += amt; }
+                    else { mData.custom += amt; yData.custom += amt; }
+                }
             }
         }
 
@@ -1050,12 +1057,14 @@ class TaxReportService {
                 const empCode = row.emp_code;
                 const rawName = row.nama || row.emp_name || '';
                 const { empName, parentName } = extractParentName(rawName);
+                const reportIdentity = resolveReportIdentity(row);
                 
                 if (!employeeMap.has(empCode)) {
                     employeeMap.set(empCode, {
                         emp_name: empName,
                         parent_name: parentName,
-                        nik: row.nik || '',
+                        nik: reportIdentity.nik,
+                        new_nik: reportIdentity.new_nik,
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',
                         kategori_ter: row.kategori_ter || '',
@@ -1125,7 +1134,7 @@ class TaxReportService {
                 let exgratiaAmount = 0;
                 let otherIncomeAmount = 0;
 
-                const rawEmpNik = String(row.nik_ktp || row.nik || '').trim().toUpperCase();
+                const rawEmpNik = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
 
                 if (isThrMonth) {
                     const masaKerjaTahun = row.masa_kerja_tahun || 0;
@@ -1758,6 +1767,7 @@ class TaxReportService {
             const filteredRows = filterTaxReportRows(data.data_rows, divisionScope);
             for (const row of filteredRows) {
                 const empCode = row.emp_code;
+                const reportIdentity = resolveReportIdentity(row);
                 if (!employeeMap.has(empCode)) {
                     // Auto-fill jabatan for December report
                     const trimmedEmpCode = (empCode || '').trim();
@@ -1781,9 +1791,10 @@ class TaxReportService {
                         emp_code: empCode,
                         emp_name: empName,
                         parent_name: parentName,
-                        nik: row.nik_ktp || row.nik || '',
-                        npwp: row.pajak_npwp || '',
-                        alamat: row.alamat || '',
+                        nik: reportIdentity.nik,
+                        new_nik: reportIdentity.new_nik,
+                        npwp: reportIdentity.npwp,
+                        alamat: reportIdentity.alamat,
                         jabatan: resolvedJabatan,
                         gender: row.jenis_kelamin || '',
                         status_ptkp: row.status_ptkp || '',

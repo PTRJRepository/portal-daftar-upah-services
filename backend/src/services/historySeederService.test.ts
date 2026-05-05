@@ -133,6 +133,9 @@ describe("HistorySeederService HR seeding", () => {
         }, result);
 
         expect(capturedSql).toContain("LEFT JOIN (");
+        expect(capturedSql).toContain("e.ResAddress as res_address");
+        expect(capturedSql).toContain("hs.TaxNo as pajak_npwp");
+        expect(capturedSql).toContain("LEFT JOIN HR_STATUTORY hs");
         expect(capturedSql).toContain("GROUP BY hk.emp_code");
         expect(capturedSql).not.toContain("WHERE trl.EmpCode = e.EmpCode");
     });
@@ -173,7 +176,7 @@ describe("HistorySeederService HR seeding", () => {
         expect(HistorySeederService.getProgress().employees_processed).toBe(2);
     });
 
-    it("passes jabatan, position, and SPSI membership into HR employee history rows", async () => {
+    it("passes tax identity, jabatan, position, and SPSI membership into HR employee history rows", async () => {
         const savedRows: any[] = [];
 
         (Database as any).getInstance = () => ({
@@ -186,6 +189,8 @@ describe("HistorySeederService HR seeding", () => {
                     division_code: "TSA",
                     loc_code: "TSA",
                     gang_code: "A01",
+                    pajak_npwp: "12.345.678.9-000.000",
+                    res_address: "JL KEBUN",
                     total_hk: 10
                 }
             ])
@@ -225,6 +230,8 @@ describe("HistorySeederService HR seeding", () => {
             emp_code: "B0001",
             position: "Mandor Panen",
             jabatan: "Mandor Panen",
+            pajak_npwp: "12.345.678.9-000.000",
+            res_address: "JL KEBUN",
             is_spsi_member: true
         });
     });
@@ -297,5 +304,51 @@ describe("HistorySeederService HR seeding", () => {
             division_code: "AB1",
             gang_code: "A3H"
         });
+    });
+
+    it("calculates snapshot header totals from the same payroll fields as Daftar Upah", () => {
+        const totals = (service as any).calculateTotals([
+            {
+                jumlah_hk: 20,
+                hari_kerja: 18,
+                upah_pokok: 900,
+                gaji_pokok: 1000,
+                total_premi: 70,
+                pph21_ter: 40,
+                pot_pph21: 10,
+                pot_bpjs_kesehatan_majikan: 13,
+                pot_bpjs_pensiun_majikan: 14,
+                pot_astek_majikan: 99,
+                total_potongan: 30,
+                jumlah_upah_kotor: 2000,
+                upah_bersih: 1900
+            },
+            {
+                jumlah_hk: 21,
+                hari_kerja: 19,
+                upah_pokok: 800,
+                gaji_pokok: 1100,
+                total_premi: 80,
+                pph21_ter: 60,
+                pot_pph21: 12,
+                pot_bpjs_kesehatan_majikan: 15,
+                pot_bpjs_pensiun_majikan: 16,
+                pot_astek_majikan: 88,
+                total_potongan: 31,
+                jumlah_upah_kotor: 3000,
+                upah_bersih: 2900
+            }
+        ]);
+
+        expect(totals.total_hk).toBe(41);
+        expect(totals.total_hari_kerja).toBe(37);
+        expect(totals.total_upah_pokok).toBe(1700);
+        expect(totals.total_gaji_pokok).toBe(2100);
+        expect(totals.total_premi).toBe(150);
+        expect(totals.total_pph21).toBe(100);
+        expect(totals.total_bpjs_majikan).toBe(58);
+        expect(totals.total_potongan).toBe(61);
+        expect(totals.total_upah_kotor).toBe(5000);
+        expect(totals.total_upah_bersih).toBe(4800);
     });
 });

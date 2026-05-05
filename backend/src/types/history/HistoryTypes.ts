@@ -229,6 +229,8 @@ export interface HistoryHrEmployee {
     period_year: number;
     nik: string;
     new_nik?: string;
+    pajak_npwp?: string;
+    res_address?: string;
     emp_code: string;
     emp_name: string;
     company_code?: string;

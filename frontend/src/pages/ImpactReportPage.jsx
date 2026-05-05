@@ -8,15 +8,17 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchImpactReport, fetchAvailablePeriods, updateLuasArea } from '../services/summaryReportService';
 import PrintSignature from '../components/common/PrintSignature';
+import { getSourceModeLabel } from '../utils/reportPresentationLabels';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 
-export default function ImpactReportPage({ onBack }) {
+export default function ImpactReportPage({ onBack, initialMonth, initialYear, initialEstateType = 'non-ijl' }) {
     const { token, user } = useAuth();
 
     // Filters
-    const [month, setMonth] = useState(new Date().getMonth() + 1);
-    const [year, setYear] = useState(new Date().getFullYear());
-    const [estateType, setEstateType] = useState('non-ijl'); // 'all', 'non-ijl', 'ijl'
+    const [month, setMonth] = useState(initialMonth || new Date().getMonth() + 1);
+    const [year, setYear] = useState(initialYear || new Date().getFullYear());
+    const [estateType, setEstateType] = useState(initialEstateType); // 'all', 'non-ijl', 'ijl'
 
     // Data
     const [reportData, setReportData] = useState(null);
@@ -29,6 +31,12 @@ export default function ImpactReportPage({ onBack }) {
     // State
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+        if (initialEstateType) setEstateType(initialEstateType);
+    }, [initialMonth, initialYear, initialEstateType]);
 
     // Helper function to check if division is IJL
     const isIJLDivision = (divisionCode, estate) => {
@@ -717,6 +725,16 @@ export default function ImpactReportPage({ onBack }) {
                             {estateType === 'non-ijl' && ' - ESTATE REBINMAS'}
                         </div>
                         <div className="wsp-report-period">{periodLabel}</div>
+                        <div className="report-print-meta-grid">
+                            <span className="report-source-badge">Mode: Impact</span>
+                            <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Impact API' })}</span>
+                            <span className="report-source-badge">
+                                Scope: {estateType === 'all' ? 'Semua Estate' : estateType === 'ijl' ? 'IJL' : 'Rebinmas'}
+                            </span>
+                        </div>
+                        <div className="report-print-note">
+                            Grand total mengikuti data yang terlihat setelah filter estate pada report ini.
+                        </div>
                     </div>
 
                     {/* Main Table (Top) */}

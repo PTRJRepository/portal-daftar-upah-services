@@ -17,8 +17,10 @@ import PrintModeSelector from '../components/common/PrintModeSelector';
 import PrintSignature from '../components/common/PrintSignature';
 import CompactPeriodScroll from '../components/common/CompactPeriodScroll';
 import { initPrintMode } from '../utils/printOptimizer';
+import { getDivisionTypeLabel, getReportModeLabel, getSourceModeLabel } from '../utils/reportPresentationLabels';
 import '../styles/wages-summary-professional.css';
 import '../styles/wages-summary-print-simple.css';
+import '../styles/report-print-foundation.css';
 
 export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
@@ -107,7 +109,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
         try {
             if (comparisonMode) {
-                const result = await fetchComparisonSummary(token, { month, year, useHistory, scope: 'rebinmas' });
+                const result = await fetchComparisonSummary(token, { month, year, useHistory, scope: 'rebinmas', divisionType });
                 if (result.success) {
                     console.log('[WagesComparison] Comparison data received:', result);
                     console.log('[WagesComparison] Sample division data:', result.divisions?.[0]);
@@ -134,6 +136,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                     year, 
                     useHistory,
                     includeVirtual: divisionType !== 'real', // 'all' or 'virtual' -> true
+                    divisionType,
                     scope: 'rebinmas'
                 });
                 if (result.success) {
@@ -1094,7 +1097,12 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
             {/* Impact Report Mode - Render Full Page */}
             {impactReportMode ? (
-                <ImpactReportPage onBack={() => setImpactReportMode(false)} />
+                <ImpactReportPage
+                    onBack={() => setImpactReportMode(false)}
+                    initialMonth={month}
+                    initialYear={year}
+                    initialEstateType="non-ijl"
+                />
             ) : (
                 <>
                     {/* Loading State */}
@@ -1159,6 +1167,17 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                 }}>
                                     {thrMode && <span style={{ marginRight: '1rem' }}>Division: <strong style={{ color: '#0f172a' }}>ALL</strong> | </span>}
                                     Periode: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                                </div>
+                                <div className="report-print-meta-grid">
+                                    <span className="report-source-badge">Mode: {getReportModeLabel({ comparisonMode, thrMode })}</span>
+                                    <span className="report-source-badge">Sumber: {getSourceModeLabel({ useHistory, sourceMode: thrMode ? 'THR Recap' : '' })}</span>
+                                    {!thrMode && (
+                                        <span className="report-source-badge">Scope: {getDivisionTypeLabel(divisionType)}</span>
+                                    )}
+                                    <span className="report-source-badge">Estate: Rebinmas</span>
+                                </div>
+                                <div className="report-print-note">
+                                    Total, subtotal, dan selisih mengikuti agregasi backend untuk periode dan scope yang sedang dicetak.
                                 </div>
                             </div>
 

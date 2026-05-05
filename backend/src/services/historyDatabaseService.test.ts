@@ -64,6 +64,43 @@ describe("HistoryDatabaseService.saveHrEmployeeHistory", () => {
         expect(executedSql.some(sql => sql.includes("TABLE_NAME='history_hr_employee'") && sql.includes("COLUMN_NAME='is_spsi_member'"))).toBe(true);
         expect(executedSql.some(sql => sql.includes("ALTER TABLE dbo.history_hr_employee ADD is_spsi_member"))).toBe(true);
     });
+
+    it("loads latest tax identity from history_hr_employee by emp_code", async () => {
+        const executedSql: string[] = [];
+        const executedParams: any[][] = [];
+        const fakeDb = {
+            async query(sql: string, params: any[]) {
+                executedSql.push(sql);
+                executedParams.push(params);
+                return [
+                    {
+                        emp_code: "B0001",
+                        nik: "OLD-NIK",
+                        new_nik: "UPDATED-NIK",
+                        pajak_npwp: "UPDATED-NPWP",
+                        res_address: "UPDATED ADDRESS",
+                        religion: "01 Islam"
+                    }
+                ];
+            }
+        };
+
+        (service as any).getPayrollDatabase = () => fakeDb;
+
+        const result = await service.getHistoryTaxIdentityByEmpCodes(4, 2026, ["B0001"]);
+        const identity = result.get("B0001");
+
+        expect(identity?.new_nik).toBe("UPDATED-NIK");
+        expect(identity?.pajak_npwp).toBe("UPDATED-NPWP");
+        expect(identity?.res_address).toBe("UPDATED ADDRESS");
+        expect(executedSql[0]).toContain("history_hr_employee");
+        expect(executedSql[0]).toContain("new_nik");
+        expect(executedSql[0]).toContain("pajak_npwp");
+        expect(executedSql[0]).toContain("res_address");
+        expect(executedParams[0]).toContain(4);
+        expect(executedParams[0]).toContain(2026);
+        expect(executedParams[0]).toContain("B0001");
+    });
 });
 
 describe("HistoryDatabaseService payroll snapshot persistence", () => {

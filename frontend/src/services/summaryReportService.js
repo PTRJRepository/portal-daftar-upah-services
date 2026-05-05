@@ -145,11 +145,12 @@ export async function fetchGangsByLocCode(token, locCode) {
  * @param {number} params.year - Year
  * @returns {Promise<Object>} All divisions summary data
  */
-export async function fetchAllDivisionsTotals(token, { month, year, useHistory = false, includeVirtual = false, scope = 'all' }) {
+export async function fetchAllDivisionsTotals(token, { month, year, useHistory = false, includeVirtual = false, scope = 'all', divisionType = 'all' }) {
     let url = `${BACKEND_BASE}/payroll/summary/all-divisions?month=${month}&year=${year}`;
     if (useHistory) url += '&use_history=true';
     if (includeVirtual) url += '&include_virtual=true';
     if (scope && scope !== 'all') url += `&scope=${encodeURIComponent(scope)}`;
+    if (divisionType && divisionType !== 'all') url += `&division_type=${encodeURIComponent(divisionType)}`;
 
     const response = await axios.get(url, {
         headers: {
@@ -169,10 +170,11 @@ export async function fetchAllDivisionsTotals(token, { month, year, useHistory =
  * @param {number} params.year - Year
  * @returns {Promise<Object>} Comparison data
  */
-export async function fetchComparisonSummary(token, { month, year, useHistory = false, scope = 'all' }) {
+export async function fetchComparisonSummary(token, { month, year, useHistory = false, scope = 'all', divisionType = 'all' }) {
     let url = `${BACKEND_BASE}/payroll/summary/comparison?month=${month}&year=${year}`;
     if (useHistory) url += '&use_history=true';
     if (scope && scope !== 'all') url += `&scope=${encodeURIComponent(scope)}`;
+    if (divisionType && divisionType !== 'all') url += `&division_type=${encodeURIComponent(divisionType)}`;
 
     const response = await axios.get(url, {
         headers: {

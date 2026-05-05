@@ -24,7 +24,8 @@ const AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION = `
 const AUTO_BUFFER_ADJUSTMENT_NAME = {
     jabatan: "TUNJANGAN JABATAN",
     masaKerja: "MASA KERJA",
-    spsi: "SPSI"
+    spsi: "SPSI",
+    potonganPph: "POTONGAN PPH"
 } as const;
 
 function toNumber(value: unknown): number {
@@ -140,6 +141,8 @@ type ExtractedPayrollLike = {
     jabatan_jumlah?: number;
     masa_kerja_jumlah?: number;
     pot_spsi?: number;
+    pot_pph21?: number;
+    pph21_ter?: number;
     is_spsi_member?: boolean;
 };
 
@@ -171,6 +174,8 @@ export function buildAutoBufferSeedEntries(
         );
 
         const dbPotSpsi = Math.abs(toNumber(row.pot_spsi));
+        const pph21TerAmount = Math.abs(toNumber(row.pph21_ter));
+        const dbPotPph21 = Math.abs(toNumber(row.pot_pph21));
         const dbJabatanJumlah = toNumber(row.jabatan_jumlah);
         const dbMasaKerjaJumlah = toNumber(row.masa_kerja_jumlah);
         const isSpsiMember = typeof row.is_spsi_member === "boolean"
@@ -239,8 +244,25 @@ export function buildAutoBufferSeedEntries(
                     dbPotSpsi
                 )
         };
+        const potonganPphEntry = {
+                period_month: periodMonth,
+                period_year: periodYear,
+                emp_code: empCode,
+                nik,
+                emp_name: empName,
+                gang_code: gangCode,
+                division_code: normalizedDivision,
+                adjustment_type: AUTO_BUFFER_ADJUSTMENT_TYPE,
+                adjustment_name: AUTO_BUFFER_ADJUSTMENT_NAME.potonganPph,
+                amount: pph21TerAmount,
+                remarks: buildAutoBufferSeedRemark(
+                    AUTO_BUFFER_ADJUSTMENT_NAME.potonganPph,
+                    pph21TerAmount,
+                    dbPotPph21
+                )
+        };
 
-        entries.push(...[jabatanEntry, masaKerjaEntry, spsiEntry].map((entry) => ({
+        entries.push(...[jabatanEntry, masaKerjaEntry, spsiEntry, potonganPphEntry].map((entry) => ({
             ...entry,
             metadata_json: serializeAutoBufferMetadata(entry)
         })));
@@ -500,6 +522,12 @@ export class AutoBufferManualAdjustmentSeederService {
             SELECT RTRIM(t.EmpCode) as emp_code,
                    MAX(RTRIM(ISNULL(e.NewICNo, ''))) as nik,
                    CASE
+                       WHEN UPPER(ISNULL(ln.TaskCode, '')) LIKE '%DEPH21%'
+                         OR UPPER(ISNULL(mt.TaskDesc, '')) LIKE '%POTONGAN PPH21%'
+                         OR (
+                            (UPPER(t.DocDesc) LIKE '%PPH%' OR UPPER(t.DocDesc) LIKE '%PAJAK%')
+                            AND UPPER(t.DocDesc) NOT LIKE '%PREMI%'
+                         ) THEN 'POTONGAN PPH'
                        WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'TUNJANGAN JABATAN'
                        WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'MASA KERJA'
                        WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'SPSI'
@@ -520,15 +548,28 @@ export class AutoBufferManualAdjustmentSeederService {
             ) t
             LEFT JOIN HR_EMPLOYEE e ON RTRIM(e.EmpCode) = RTRIM(t.EmpCode)
             JOIN (
-                SELECT MasterID, Amount FROM PR_ADTRANSLN
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN
                 UNION ALL
-                SELECT MasterID, Amount FROM PR_ADTRANSLN_ARC
+                SELECT MasterID, TaskCode, Amount FROM PR_ADTRANSLN_ARC
             ) ln ON t.ID = ln.MasterID
+            LEFT JOIN PR_TASKCODE mt ON RTRIM(mt.TaskCode) = RTRIM(ln.TaskCode)
             WHERE UPPER(t.DocDesc) LIKE '%JABATAN%' 
                OR UPPER(t.DocDesc) LIKE '%MASA%KERJA%' 
                OR UPPER(t.DocDesc) LIKE '%SPSI%'
+               OR UPPER(ISNULL(ln.TaskCode, '')) LIKE '%DEPH21%'
+               OR UPPER(ISNULL(mt.TaskDesc, '')) LIKE '%POTONGAN PPH21%'
+               OR (
+                    (UPPER(t.DocDesc) LIKE '%PPH%' OR UPPER(t.DocDesc) LIKE '%PAJAK%')
+                    AND UPPER(t.DocDesc) NOT LIKE '%PREMI%'
+               )
             GROUP BY RTRIM(t.EmpCode),
                    CASE 
+                       WHEN UPPER(ISNULL(ln.TaskCode, '')) LIKE '%DEPH21%'
+                         OR UPPER(ISNULL(mt.TaskDesc, '')) LIKE '%POTONGAN PPH21%'
+                         OR (
+                            (UPPER(t.DocDesc) LIKE '%PPH%' OR UPPER(t.DocDesc) LIKE '%PAJAK%')
+                            AND UPPER(t.DocDesc) NOT LIKE '%PREMI%'
+                         ) THEN 'POTONGAN PPH'
                        WHEN UPPER(t.DocDesc) LIKE '%JABATAN%' THEN 'TUNJANGAN JABATAN'
                        WHEN UPPER(t.DocDesc) LIKE '%MASA%KERJA%' THEN 'MASA KERJA'
                        WHEN UPPER(t.DocDesc) LIKE '%SPSI%' THEN 'SPSI'

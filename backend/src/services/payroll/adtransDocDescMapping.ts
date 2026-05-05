@@ -46,6 +46,7 @@ export function normalizeAdtransFilter(filter: string): string {
     const filterKey = String(filter || "").toLowerCase().trim();
 
     if (filterKey.includes("spsi")) return "spsi";
+    if (filterKey.includes("pph") || filterKey.includes("pajak")) return "pph";
     if (filterKey.includes("masa")) return "masa kerja";
     if (filterKey.includes("jabatan")) return "jabatan";
     if (filterKey.includes("brondol")) return "brondol";
@@ -99,6 +100,7 @@ export function buildAdtransDocDescSqlPatterns(filter: string): string[] {
     const category = normalizeAdtransFilter(filter);
 
     if (category === "spsi") return ["%SPSI%"];
+    if (category === "pph") return ["%PPH%", "%PAJAK%"];
     if (category === "masa kerja") return ["%MASA%KERJA%"];
     if (category === "jabatan") return ["%JABATAN%"];
     if (category === "brondol") return ["%BRONDOL%"];
@@ -110,6 +112,11 @@ export function buildAdtransDocDescSqlPatterns(filter: string): string[] {
 }
 
 export function buildAdtransDocDescSqlCondition(columnName: string, filter: string): string {
+    const category = normalizeAdtransFilter(filter);
+    if (category === "pph") {
+        return `((UPPER(${columnName}) LIKE '%PPH%' OR UPPER(${columnName}) LIKE '%PAJAK%') AND UPPER(${columnName}) NOT LIKE '%PREMI%')`;
+    }
+
     return buildAdtransDocDescSqlPatterns(filter)
         .map((pattern) => `UPPER(${columnName}) LIKE '${pattern.replace(/'/g, "''")}'`)
         .join(" OR ");
@@ -120,6 +127,7 @@ export function matchesAdtransDocDescFilter(docDesc: string, filter: string): bo
     const upper = normalizeUpper(docDesc);
 
     if (category === "spsi") return upper.includes("SPSI");
+    if (category === "pph") return (upper.includes("PPH") || upper.includes("PAJAK")) && !upper.includes("PREMI");
     if (category === "masa kerja") return upper.includes("MASA") && upper.includes("KERJA");
     if (category === "jabatan") return upper.includes("JABATAN");
     if (category === "brondol") return isBrondolDocDesc(upper);

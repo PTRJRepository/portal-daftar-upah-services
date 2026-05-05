@@ -10,6 +10,7 @@ describe("autoBufferAdcodeMap", () => {
         expect(AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME["SPSI"]).toBe("potongan spsi");
         expect(AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME["MASA KERJA"]).toBe("masa kerja");
         expect(AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME["TUNJANGAN JABATAN"]).toBe("tunjangan jabatan");
+        expect(AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME["POTONGAN PPH"]).toBe("(DE) POTONGAN PPH21");
     });
 
     it("builds remark with sync + match status when seeded value matches source", () => {
@@ -30,9 +31,24 @@ describe("autoBufferAdcodeMap", () => {
         );
     });
 
+    it("builds remark for POTONGAN PPH from calculated TER value", () => {
+        expect(buildAutoBufferSeedRemark("POTONGAN PPH", 93435, 93435)).toBe(
+            "POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:SYNC | match:MATCH"
+        );
+        expect(buildAutoBufferSeedRemark("POTONGAN PPH", 93435, 28655)).toBe(
+            "POTONGAN PPH | (DE) POTONGAN PPH21 | 93435 | sync:MISS | match:MISMATCH"
+        );
+    });
+
     it("accepts legacy AUTO-prefixed names but emits canonical names", () => {
         expect(buildAutoBufferSeedRemark("AUTO MASA KERJA", 25000, 25000)).toBe(
             "MASA KERJA | masa kerja | 25000 | sync:SYNC | match:MATCH"
+        );
+        expect(buildAutoBufferSeedRemark("AUTO POTONGAN PPH", 5000, 5000)).toBe(
+            "POTONGAN PPH | (DE) POTONGAN PPH21 | 5000 | sync:SYNC | match:MATCH"
+        );
+        expect(buildAutoBufferSeedRemark("AUTO PPH", 5000, 4000)).toBe(
+            "POTONGAN PPH | (DE) POTONGAN PPH21 | 5000 | sync:MISS | match:MISMATCH"
         );
     });
 

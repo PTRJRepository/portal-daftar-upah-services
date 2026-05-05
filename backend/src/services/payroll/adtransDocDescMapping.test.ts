@@ -5,6 +5,8 @@ import {
     isDynamicPotonganDocDesc,
     isDynamicPremiDocDesc,
     mapAdtransPremiField,
+    matchesAdtransDocDescFilter,
+    normalizeAdtransFilter,
     normalizeAdtransPotonganField
 } from "./adtransDocDescMapping";
 
@@ -59,5 +61,14 @@ describe("ADTRANS DocDesc mapping rules", () => {
 
         expect(matchesAdtransDocDescFilter("KOREKSI PANEN", "koreksi")).toBe(true);
         expect(matchesAdtransDocDescFilter("KOREKSI PANEN", "potongan")).toBe(false);
+    });
+
+    it("maps PPh filters to employee tax deductions and excludes premi PPh", () => {
+        expect(normalizeAdtransFilter("POTONGAN PPH21")).toBe("pph");
+        expect(buildAdtransDocDescSqlPatterns("pph")).toEqual(["%PPH%", "%PAJAK%"]);
+        expect(buildAdtransDocDescSqlCondition("t.DocDesc", "pph")).toContain("NOT LIKE '%PREMI%'");
+        expect(matchesAdtransDocDescFilter("POTONGAN PPH21", "pph")).toBe(true);
+        expect(matchesAdtransDocDescFilter("PAJAK PPH21", "pph")).toBe(true);
+        expect(matchesAdtransDocDescFilter("PREMI PPH", "pph")).toBe(false);
     });
 });

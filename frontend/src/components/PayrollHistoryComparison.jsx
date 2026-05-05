@@ -11,6 +11,7 @@ import {
 import { fetchDivisions } from '../services/gangService';
 import PrintSignature from './common/PrintSignature';
 import './PayrollHistoryComparison.css';
+import '../styles/report-print-foundation.css';
 
 /**
  * PayrollHistoryComparison - Detailed comparison between Daftar Upah and Wages
@@ -90,6 +91,15 @@ export default function PayrollHistoryComparison({
         }
     };
     
+    // Helper to extract Asistensi/Group
+    const getAsistensi = useCallback((gc, div) => {
+        if (!gc) return null;
+        const g = gc.trim().toUpperCase();
+        if (g.startsWith('K2')) return "1";
+        const match = g.match(/\d+/);
+        return match ? match[0] : null;
+    }, []);
+
     // Filter data based on status and search
     const filteredData = useMemo(() => {
         if (!comparisonData?.data) return [];
@@ -118,7 +128,7 @@ export default function PayrollHistoryComparison({
         }
         
         return data;
-    }, [comparisonData, filterStatus, searchTerm]);
+    }, [comparisonData, filterStatus, group, searchTerm, division, getAsistensi]);
     
     // Summary statistics
     const summaryStats = useMemo(() => {
@@ -132,16 +142,6 @@ export default function PayrollHistoryComparison({
             [empCode]: !prev[empCode]
         }));
     };
-
-    // Helper to extract Asistensi/Group
-    const getAsistensi = useCallback((gc, div) => {
-        if (!gc) return null;
-        const g = gc.trim().toUpperCase();
-        const d = div?.trim().toUpperCase();
-        if (g.startsWith('K2')) return "1";
-        const match = g.match(/\d+/);
-        return match ? match[0] : null;
-    }, []);
 
     // Calculate available groups based on data
     const availableGroups = useMemo(() => {
@@ -238,6 +238,14 @@ export default function PayrollHistoryComparison({
                     <div className="phc-print-meta-item">
                         <strong>Dicetak pada:</strong> {new Date().toLocaleString('id-ID')}
                     </div>
+                </div>
+                <div className="report-print-meta-grid">
+                    <span className="report-source-badge">Mode: Wages Verification</span>
+                    <span className="report-source-badge">Sumber: PR_EMPWAGES</span>
+                    <span className="report-source-badge">Pembanding: Upah Bersih</span>
+                </div>
+                <div className="report-print-note">
+                    Detail Wages hanya tersedia untuk nilai net wages yang bisa dibandingkan dengan daftar upah.
                 </div>
             </div>
 

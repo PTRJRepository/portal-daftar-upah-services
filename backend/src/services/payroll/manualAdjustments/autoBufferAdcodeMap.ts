@@ -1,7 +1,8 @@
 export const AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME = {
     "TUNJANGAN JABATAN": "tunjangan jabatan",
     "MASA KERJA": "masa kerja",
-    "SPSI": "potongan spsi"
+    "SPSI": "potongan spsi",
+    "POTONGAN PPH": "(DE) POTONGAN PPH21"
 } as const;
 
 export type AutoBufferAdjustmentName = keyof typeof AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME;
@@ -11,7 +12,9 @@ export type AutoBufferMatchStatus = "MATCH" | "MISMATCH";
 const LEGACY_AUTO_BUFFER_ADJUSTMENT_NAME_ALIASES: Record<string, AutoBufferAdjustmentName> = {
     "AUTO TUNJANGAN JABATAN": "TUNJANGAN JABATAN",
     "AUTO MASA KERJA": "MASA KERJA",
-    "AUTO SPSI": "SPSI"
+    "AUTO SPSI": "SPSI",
+    "AUTO POTONGAN PPH": "POTONGAN PPH",
+    "AUTO PPH": "POTONGAN PPH"
 };
 
 function normalizeAdjustmentName(value: unknown): string {

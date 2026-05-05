@@ -1,0 +1,93 @@
+<h2>Desain NIK di Daftar Upah</h2>
+<p class="subtitle">Pilih cara tampil yang paling cocok untuk kerja harian. Semua opsi tetap menyimpan NIK lama dan newNIK untuk audit.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family: ui-sans-serif, system-ui; border: 1px solid #d6dde8; border-radius: 8px; overflow: hidden; background: white;">
+        <div style="display: grid; grid-template-columns: 72px 156px 170px 86px; background: #334155; color: white; font-size: 10px; font-weight: 800; letter-spacing: .02em;">
+          <div style="padding: 8px;">EMP CODE</div>
+          <div style="padding: 8px;">NAMA</div>
+          <div style="padding: 8px; background: #1f2937;">NIK</div>
+          <div style="padding: 8px;">UPAH</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 72px 156px 170px 86px; align-items: center; font-size: 11px; border-top: 1px solid #e5e7eb;">
+          <div style="padding: 8px; font-weight: 800;">B0745</div>
+          <div style="padding: 8px;">SITI AMINAH</div>
+          <div style="padding: 6px 8px; display: flex; align-items: center; gap: 6px;">
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 102px;">19020512...</span>
+            <button style="border: 1px solid #94a3b8; background: #f8fafc; border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 800;">Full</button>
+          </div>
+          <div style="padding: 8px; text-align: right;">2.845.000</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 72px 156px 170px 86px; align-items: center; font-size: 11px; border-top: 1px solid #e5e7eb; background: #f8fafc;">
+          <div style="padding: 8px; font-weight: 800;">C0533</div>
+          <div style="padding: 8px;">BUDI</div>
+          <div style="padding: 6px 8px; display: flex; align-items: center; gap: 6px;">
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">1902051212790002</span>
+            <button style="border: 1px solid #64748b; background: #e2e8f0; border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 800;">Hide</button>
+          </div>
+          <div style="padding: 8px; text-align: right;">3.120.000</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Satu Kolom Efektif</h3>
+      <p>Default menampilkan NIK efektif: newNIK jika ada, kalau tidak NIK lama. Nilai panjang dipotong ellipsis, tombol Full membuka lengkap per-cell.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family: ui-sans-serif, system-ui; border: 1px solid #d6dde8; border-radius: 8px; overflow: hidden; background: white;">
+        <div style="display: grid; grid-template-columns: 72px 156px 188px 68px; background: #334155; color: white; font-size: 10px; font-weight: 800;">
+          <div style="padding: 8px;">EMP CODE</div>
+          <div style="padding: 8px;">NAMA</div>
+          <div style="padding: 8px; background: #1f2937;">NIK</div>
+          <div style="padding: 8px;">STATUS</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 72px 156px 188px 68px; align-items: center; font-size: 11px; border-top: 1px solid #e5e7eb;">
+          <div style="padding: 8px; font-weight: 800;">B0745</div>
+          <div style="padding: 8px;">SITI AMINAH</div>
+          <div style="padding: 6px 8px;">
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">19020512...</div>
+            <div style="font-size: 9px; color: #64748b;">lama: 1902050504860001</div>
+          </div>
+          <div style="padding: 8px;"><span style="background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 999px; padding: 2px 6px; font-size: 9px; font-weight: 800;">BARU</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. NIK Efektif + Badge</h3>
+      <p>Tetap satu kolom, tapi row yang punya newNIK diberi status dan ringkasan NIK lama. Lebih informatif, namun tabel lebih padat.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family: ui-sans-serif, system-ui; border: 1px solid #d6dde8; border-radius: 8px; overflow: hidden; background: white;">
+        <div style="display: grid; grid-template-columns: 72px 120px 130px 130px; background: #334155; color: white; font-size: 10px; font-weight: 800;">
+          <div style="padding: 8px;">EMP CODE</div>
+          <div style="padding: 8px;">NAMA</div>
+          <div style="padding: 8px; background: #1f2937;">NIK LAMA</div>
+          <div style="padding: 8px; background: #1f2937;">NEW NIK</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 72px 120px 130px 130px; align-items: center; font-size: 11px; border-top: 1px solid #e5e7eb;">
+          <div style="padding: 8px; font-weight: 800;">B0745</div>
+          <div style="padding: 8px;">SITI AMINAH</div>
+          <div style="padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">19020505...</div>
+          <div style="padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">19020512...</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Dua Kolom Lama/Baru</h3>
+      <p>Paling jelas untuk audit, tapi menambah lebar Daftar Upah dan mengganggu scanning kolom payroll utama.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Rekomendasi awal</h3>
+  <p>Gunakan A sebagai default operasional. Backend tetap mengirim <code>old_nik</code>, <code>new_nik</code>, <code>nik_display</code>, dan <code>nik_source</code>, sehingga export/detail bisa tetap transparan tanpa membuat tabel harian terlalu lebar.</p>
+</div>

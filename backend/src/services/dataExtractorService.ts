@@ -62,6 +62,18 @@ export function resolveManualAdjustmentSourcePolicy(value?: string | null): Manu
     };
 }
 
+export function filterRowsExcludedFromDivision<T extends { gang_code?: any }>(
+    rows: T[],
+    divisionCode?: string | null
+): T[] {
+    const resolvedDivisionCode = resolvePayrollDivisionCodeForScope(divisionCode);
+    if (!resolvedDivisionCode) return rows;
+
+    return rows.filter((row) =>
+        !divisionConfigService.isGangExcludedFromDivision(resolvedDivisionCode, row.gang_code || "")
+    );
+}
+
 function pickStaticPotonganForManualBuffer(source: Record<string, number>): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [key, rawValue] of Object.entries(source || {})) {
@@ -801,6 +813,7 @@ export class DataExtractorService {
 
                 if (historyData && historyData.data_rows.length > 0) {
                     console.log(`[DataExtractor] Found seeded history: ${historyData.data_rows.length} rows`);
+                    historyData.data_rows = filterRowsExcludedFromDivision(historyData.data_rows, divisionCode);
                     // Apply gangPrefix filter if present
                     if (effectiveGangPrefix) {
                         const isNumeric = /^\d+$/.test(effectiveGangPrefix);
@@ -903,6 +916,7 @@ export class DataExtractorService {
 
         const startTotal = performance.now();
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+        employees = filterRowsExcludedFromDivision(employees, divisionCode);
         debug(CATEGORY, `Phase 0 - getEmployees: ${(performance.now() - startTotal).toFixed(0)}ms, found ${employees.length} employees`);
 
         // Apply gangPrefix (Group/Asistensi) filter for LIVE path
@@ -3937,6 +3951,7 @@ export class DataExtractorService {
         const currentYear = currentPeriod.year;
         
         let employees = await this.getEmployees(gangCondition, month, year, serverProfile, isHistorical, gangCodeInput);
+        employees = filterRowsExcludedFromDivision(employees, divisionCode);
         const phase0Time = Date.now() - t0;
         debug(CATEGORY, `🚀 Phase 0 (identity): ${phase0Time}ms, ${employees.length} employees`);
 

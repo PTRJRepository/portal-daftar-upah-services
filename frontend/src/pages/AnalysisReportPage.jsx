@@ -6,7 +6,9 @@ import { Printer, RefreshCw, FileText, Settings, X, Search, DollarSign, Clock, T
 import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
 import { initPrintMode } from '../utils/printOptimizer';
+import { getSourceModeLabel } from '../utils/reportPresentationLabels';
 import '../styles/wages-summary-professional.css';
+import '../styles/report-print-foundation.css';
 
 // Company information for consistent header branding
 const COMPANY_INFO = {
@@ -281,6 +283,14 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                                 <span className="wsp-meta-value">{filterType === 'all' ? 'ALL DIVISIONS' : filterType === 'ijl' ? 'IJL ONLY' : 'REBINMAS'}</span>
                             </div>
                         </div>
+                    </div>
+                    <div className="report-print-meta-grid">
+                        <span className="report-source-badge">Mode: Analysis</span>
+                        <span className="report-source-badge">Sumber: {getSourceModeLabel({ sourceMode: 'Analysis API' })}</span>
+                        <span className="report-source-badge">Scope: {filterType === 'all' ? 'All Divisions' : filterType === 'ijl' ? 'IJL' : 'Rebinmas'}</span>
+                    </div>
+                    <div className="report-print-note">
+                        KPI berasal dari summary periode; filter range hanya menyaring tabel detail yang sedang ditampilkan.
                     </div>
 
                     {/* KPI Comparison Cards */}

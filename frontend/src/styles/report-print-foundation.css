@@ -1,0 +1,130 @@
+/* Shared report print foundation. Keep screen impact limited to metadata badges. */
+
+.report-print-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0.75rem auto 0;
+}
+
+.report-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.report-print-note {
+  max-width: 920px;
+  margin: 0.5rem auto 0;
+  color: #475569;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+@media print {
+  .report-print-meta-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 3pt !important;
+    margin: 5pt auto 7pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .report-source-badge {
+    min-height: auto !important;
+    padding: 2pt 4pt !important;
+    border: 0.75pt solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 7pt !important;
+    font-weight: 700 !important;
+    line-height: 1.15 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-print-note {
+    max-width: 100% !important;
+    margin: 3pt auto 7pt !important;
+    color: #000 !important;
+    font-size: 7pt !important;
+    line-height: 1.25 !important;
+    text-align: center !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .wsp-table-wrapper,
+  .phc-table-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  .wsp-table,
+  .phc-table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .wsp-table thead,
+  .phc-table thead {
+    display: table-header-group !important;
+  }
+
+  .wsp-table tfoot,
+  .phc-table tfoot {
+    display: table-footer-group !important;
+  }
+
+  .wsp-table tr,
+  .phc-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .wsp-table th,
+  .wsp-table td,
+  .phc-table th,
+  .phc-table td {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  .sticky-col,
+  .th-sticky-col,
+  .phc-th-sticky,
+  .phc-td-sticky {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+    box-shadow: none !important;
+  }
+
+  .wsp-bottom-section {
+    display: block !important;
+  }
+
+  .wsp-bottom-section > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    margin-bottom: 8pt !important;
+  }
+}

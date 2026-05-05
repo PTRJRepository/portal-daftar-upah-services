@@ -13,6 +13,7 @@ import { User, UserRole } from "../types/user";
 import { parseBooleanQueryParam, parsePositiveIntegerQueryParam } from "../utils/queryParsers";
 import { hasValidApiKeyBypass, resolveUserFromHeaders } from "../utils/authBypass";
 import { sortByEmpCode } from "../utils/employeeSort";
+import { AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME } from "../services/payroll/manualAdjustments/autoBufferAdcodeMap";
 
 
 const authService = AuthService.getInstance();
@@ -46,6 +47,24 @@ async function getUserFromHeader(headers: Record<string, string | undefined>): P
 
 const ADJUSTMENT_NAME_OPTION_TYPES = ["PREMI", "POTONGAN_KOTOR", "POTONGAN_BERSIH"] as const;
 type AdjustmentNameOptionType = typeof ADJUSTMENT_NAME_OPTION_TYPES[number];
+const AUTO_BUFFER_SEED_ENDPOINT_ADJUSTMENTS = Object.entries(AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME).map(([adjustmentName, adDesc]) => ({
+    adjustment_name: adjustmentName,
+    ad_code: adDesc,
+    ad_desc: adDesc,
+    task_desc: adDesc,
+    amount_source: adjustmentName === "POTONGAN PPH" ? "pph21_ter" : undefined,
+    comparison_source: adjustmentName === "POTONGAN PPH" ? "pot_pph21" : undefined
+}));
+
+function buildAutoBufferSeedEndpointResponse(result: any) {
+    return {
+        success: true,
+        message: "Auto buffer berhasil disimpan ke payroll_manual_adjustments (AUTO_BUFFER): TUNJANGAN JABATAN, MASA KERJA, SPSI, POTONGAN PPH",
+        auto_buffer_items_per_employee: AUTO_BUFFER_SEED_ENDPOINT_ADJUSTMENTS.length,
+        auto_buffer_adjustments: AUTO_BUFFER_SEED_ENDPOINT_ADJUSTMENTS,
+        data: result
+    };
+}
 
 function parseAdjustmentNameOptionTypes(value?: string): { types: AdjustmentNameOptionType[]; invalid: string[] } {
     const aliases: Record<string, AdjustmentNameOptionType> = {
@@ -1696,11 +1715,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const pattern = `:${payload.period_month}:${payload.period_year}`;
             cacheService.clearByPattern(pattern);
 
-            return {
-                success: true,
-                message: "Auto buffer berhasil disimpan ke payroll_manual_adjustments (AUTO_BUFFER)",
-                data: result
-            };
+            return buildAutoBufferSeedEndpointResponse(result);
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment/seed-auto-buffer error:", e);
             set.status = 500;
@@ -2938,11 +2953,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const pattern = `:${payload.period_month}:${payload.period_year}`;
             cacheService.clearByPattern(pattern);
 
-            return {
-                success: true,
-                message: "Auto buffer berhasil disimpan ke payroll_manual_adjustments (AUTO_BUFFER)",
-                data: result
-            };
+            return buildAutoBufferSeedEndpointResponse(result);
         } catch (e: any) {
             console.error("[PayrollRoutes] locked/manual-adjustment/seed-auto-buffer error:", e);
             set.status = 500;

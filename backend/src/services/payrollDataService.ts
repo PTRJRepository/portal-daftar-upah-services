@@ -1,6 +1,7 @@
 import { Config } from "../config";
 import { divisionDefinition } from "./divisionDefinition";
 import { DataExtractorService } from "./dataExtractorService";
+import { calculatePayrollTotals } from "./payrollTotalsCalculator";
 
 export interface AggregationRecord {
     gang_code: string;
@@ -169,9 +170,6 @@ export class PayrollDataService {
             }
 
             const calculateTotals = (employees: any[]) => {
-                // [FIX] Use EXACT SAME filtering as dataExtractorService (which feeds Daftar Upah)
-                // dataExtractorService uses: effective_hk = hk - (minggu + nasional)
-                // Include employee if effective_hk > 0
                 const activeEmployees = employees.filter((emp: any) => {
                     const minggu = emp.cuti_minggu_hari || 0;
                     const nasional = emp.cuti_nasional_hari || 0;
@@ -180,27 +178,58 @@ export class PayrollDataService {
                     return effective_hk > 0;
                 });
 
-                const totals: Record<string, number> = {};
+                const daftarUpahTotals = calculatePayrollTotals(activeEmployees, "TOTAL");
+                const sum = (field: string): number => Math.round(
+                    activeEmployees.reduce((total: number, emp: any) => total + (Number(emp[field]) || 0), 0)
+                );
+
+                const totals: Record<string, number> = {
+                    jumlah_hk: daftarUpahTotals.jumlah_hk,
+                    hari_kerja: daftarUpahTotals.hari_kerja,
+                    cuti_tahunan_hari: daftarUpahTotals.cuti_tahunan_hari,
+                    cuti_sakit_haid_hari: daftarUpahTotals.cuti_sakit_haid_hari,
+                    cuti_minggu_hari: daftarUpahTotals.cuti_minggu_hari,
+                    cuti_nasional_hari: daftarUpahTotals.cuti_nasional_hari,
+                    upah_dasar: sum("upah_dasar"),
+                    upah_pokok: daftarUpahTotals.upah_pokok,
+                    gaji_pokok: daftarUpahTotals.gaji_pokok,
+                    gaji_pokok_ideal: sum("gaji_pokok_ideal"),
+                    gaji_pokok_aktual: sum("gaji_pokok_aktual"),
+                    beras_jumlah: daftarUpahTotals.beras_jumlah,
+                    jabatan_jumlah: daftarUpahTotals.jabatan_jumlah,
+                    masa_kerja_tahun: sum("masa_kerja_tahun"),
+                    masa_kerja_jumlah: daftarUpahTotals.masa_kerja_jumlah,
+                    lembur_jumlah: daftarUpahTotals.lembur_jumlah,
+                    total_tunjangan: daftarUpahTotals.total_tunjangan,
+                    premi_brondol: daftarUpahTotals.premi_brondol,
+                    total_premi: daftarUpahTotals.total_premi,
+                    pot_koreksi: daftarUpahTotals.pot_koreksi,
+                    potongan_upah_kotor_total: sum("potongan_upah_kotor_total"),
+                    jumlah_upah_kotor: daftarUpahTotals.jumlah_upah_kotor,
+                    pot_astek: daftarUpahTotals.pot_astek,
+                    pot_astek_maj: daftarUpahTotals.pot_astek_maj,
+                    pot_bpjs_kesehatan_pekerja: daftarUpahTotals.pot_bpjs_kesehatan_pekerja,
+                    pot_bpjs_kesehatan_majikan: daftarUpahTotals.pot_bpjs_kesehatan_majikan,
+                    pot_bpjs_pensiun_pekerja: daftarUpahTotals.pot_bpjs_pensiun_pekerja,
+                    pot_bpjs_pensiun_majikan: daftarUpahTotals.pot_bpjs_pensiun_majikan,
+                    pot_bpjs_pekerja_total: daftarUpahTotals.pot_bpjs_pekerja_total,
+                    pot_spsi: daftarUpahTotals.pot_spsi,
+                    pot_pph21: daftarUpahTotals.pot_pph21,
+                    pph21_ter: sum("pph21_ter"),
+                    tarif_pajak_ter: sum("tarif_pajak_ter"),
+                    premi_pph: sum("premi_pph"),
+                    total_potongan: daftarUpahTotals.total_potongan,
+                    total_potongan_bersih: sum("total_potongan_bersih"),
+                    upah_bersih: daftarUpahTotals.upah_bersih
+                };
                 const numericFields = [
-                    'jumlah_hk', 'hari_kerja', 'gaji_pokok', 'gaji_pokok_ideal', 'gaji_pokok_aktual',
-                    'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_tahun', 'masa_kerja_jumlah', 'lembur_jumlah',
-                    'total_tunjangan', 'premi_brondol', 'total_premi', 'pot_koreksi',
-                    'potongan_upah_kotor_total', 'jumlah_upah_kotor',
-                    'pot_astek', 'pot_astek_maj', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan',
-                    'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total',
-                    'pot_spsi', 'pot_pph21', 'premi_pph', 'total_potongan', 'total_potongan_bersih',
-                    'upah_bersih', 'pph21_ter', 'tarif_pajak_ter'
+                    'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'
                 ];
 
-                for (const field of numericFields) totals[field] = 0;
+                for (const field of numericFields) totals[field] = sum(field);
                 totals['employee_count'] = activeEmployees.length;
 
                 for (const emp of activeEmployees) {
-                    for (const field of numericFields) {
-                        const val = emp[field];
-                        if (val !== null && val !== undefined) totals[field] += parseFloat(val) || 0;
-                    }
-
                     // Sum dynamic premi and potongan separately
                     for (const key of Object.keys(emp)) {
                         if ((key.startsWith('premi_') && !['premi_brondol', 'premi_pph', 'premi_koreksi', 'total_premi'].includes(key)) ||
@@ -210,10 +239,6 @@ export class PayrollDataService {
                                 if (!totals[key]) totals[key] = 0;
                                 totals[key] += val;
                                 
-                                // [FIX] ALSO add dynamic premi to total_premi (matches Daftar Upah)
-                                if (key.startsWith('premi_')) {
-                                    totals.total_premi += val;
-                                }
                             }
                         }
                     }
@@ -306,12 +331,12 @@ export class PayrollDataService {
             total_employees: totals.employee_count || 0,
             total_hk: totals.jumlah_hk || 0,
             total_hari_kerja: totals.hari_kerja || 0,
-            total_cuti_tahunan: 0, // Not available in raw totals currently
-            total_cuti_sakit: 0,
-            total_cuti_minggu: 0,
-            total_cuti_nasional: 0,
-            total_upah_dasar: 0,
-            total_upah_pokok: totals.gaji_pokok || 0,
+            total_cuti_tahunan: totals.cuti_tahunan_hari || 0,
+            total_cuti_sakit: totals.cuti_sakit_haid_hari || 0,
+            total_cuti_minggu: totals.cuti_minggu_hari || 0,
+            total_cuti_nasional: totals.cuti_nasional_hari || 0,
+            total_upah_dasar: totals.upah_dasar || 0,
+            total_upah_pokok: totals.upah_pokok || totals.gaji_pokok || 0,
             total_gaji_pokok: totals.gaji_pokok || 0,
             total_beras: totals.beras_jumlah || 0,
             total_jabatan: totals.jabatan_jumlah || 0,
@@ -329,8 +354,8 @@ export class PayrollDataService {
             // [FIX] Use pph21_ter (calculated TER tax) not pot_pph21 (from PR_ADTRANS deduction)
             // pph21_ter is the correct tax amount calculated using TER method in Phase 4b
             total_pph21: totals.pph21_ter || 0,
-            total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || 0,
-            total_bpjs_majikan: totals.pot_astek_maj || 0,
+            total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || ((totals.pot_bpjs_kesehatan_pekerja || 0) + (totals.pot_bpjs_pensiun_pekerja || 0)),
+            total_bpjs_majikan: (totals.pot_bpjs_kesehatan_majikan || 0) + (totals.pot_bpjs_pensiun_majikan || 0),
             total_spsi: totals.pot_spsi || 0,
             total_upah_kotor: totals.jumlah_upah_kotor || 0,
             total_upah_bersih: totals.upah_bersih || 0,
