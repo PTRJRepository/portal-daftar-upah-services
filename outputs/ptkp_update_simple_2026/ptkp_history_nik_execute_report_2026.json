@@ -1,0 +1,27 @@
+{
+  "mode": "EXECUTE",
+  "period_year": 2026,
+  "source": "EXCEL_PTKP_2026_HISTORY_NIK",
+  "updated_by": "ptkp_excel_2026_history_nik_once",
+  "executed": 2,
+  "results": [
+    {
+      "issue_id": 75,
+      "nik": "5203133112790131",
+      "emp_code": "C0655",
+      "old_ptkp_status": "K/2",
+      "new_ptkp_status": "K/3",
+      "committed": false,
+      "verify_status": "MATCHED"
+    },
+    {
+      "issue_id": 210,
+      "nik": "1225023003880001",
+      "emp_code": "E0373",
+      "old_ptkp_status": "K/2",
+      "new_ptkp_status": "K/3",
+      "committed": false,
+      "verify_status": "MATCHED"
+    }
+  ]
+}

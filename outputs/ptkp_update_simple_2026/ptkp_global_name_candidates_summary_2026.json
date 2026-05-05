@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-05-04T04:33:02.137Z",
+  "total_nik_not_found": 286,
+  "unique_same_division_name_matches": 200,
+  "unique_cross_division_name_matches": 9,
+  "ambiguous_global_name_matches": 11,
+  "no_global_name_matches": 66,
+  "by_division": {
+    "ARC": {
+      "total": 45,
+      "unique_same_division": 40,
+      "unique_cross_division": 0,
+      "ambiguous_global": 1,
+      "none": 4
+    },
+    "DME": {
+      "total": 38,
+      "unique_same_division": 28,
+      "unique_cross_division": 0,
+      "ambiguous_global": 0,
+      "none": 10
+    },
+    "ARA": {
+      "total": 37,
+      "unique_same_division": 31,
+      "unique_cross_division": 0,
+      "ambiguous_global": 1,
+      "none": 5
+    },
+    "PG2A": {
+      "total": 37,
+      "unique_same_division": 19,
+      "unique_cross_division": 2,
+      "ambiguous_global": 2,
+      "none": 14
+    },
+    "PG2B": {
+      "total": 30,
+      "unique_same_division": 19,
+      "unique_cross_division": 1,
+      "ambiguous_global": 2,
+      "none": 8
+    },
+    "AB1": {
+      "total": 27,
+      "unique_same_division": 20,
+      "unique_cross_division": 0,
+      "ambiguous_global": 1,
+      "none": 6
+    },
+    "AB2": {
+      "total": 25,
+      "unique_same_division": 13,
+      "unique_cross_division": 3,
+      "ambiguous_global": 2,
+      "none": 7
+    },
+    "PG1B": {
+      "total": 22,
+      "unique_same_division": 17,
+      "unique_cross_division": 0,
+      "ambiguous_global": 2,
+      "none": 3
+    },
+    "PG1A": {
+      "total": 20,
+      "unique_same_division": 13,
+      "unique_cross_division": 1,
+      "ambiguous_global": 0,
+      "none": 6
+    },
+    "INF": {
+      "total": 2,
+      "unique_same_division": 0,
+      "unique_cross_division": 1,
+      "ambiguous_global": 0,
+      "none": 1
+    },
+    "NRS": {
+      "total": 2,
+      "unique_same_division": 0,
+      "unique_cross_division": 1,
+      "ambiguous_global": 0,
+      "none": 1
+    },
+    "WORKSHOP": {
+      "total": 1,
+      "unique_same_division": 0,
+      "unique_cross_division": 0,
+      "ambiguous_global": 0,
+      "none": 1
+    }
+  }
+}

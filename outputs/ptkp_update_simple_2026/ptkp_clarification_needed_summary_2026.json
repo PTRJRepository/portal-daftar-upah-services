@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-05-04T03:50:58.176Z",
+  "total": 297,
+  "by_action": {
+    "SKIP_AMBIGUOUS_NIK": 9,
+    "SKIP_NIK_NOT_FOUND": 286,
+    "SKIP_NAME_NOT_FOUND": 2
+  },
+  "by_division": {
+    "ARC": {
+      "total": 47,
+      "by_action": {
+        "SKIP_NAME_NOT_FOUND": 2,
+        "SKIP_NIK_NOT_FOUND": 45
+      }
+    },
+    "DME": {
+      "total": 39,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 38
+      }
+    },
+    "PG2A": {
+      "total": 38,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 37
+      }
+    },
+    "ARA": {
+      "total": 37,
+      "by_action": {
+        "SKIP_NIK_NOT_FOUND": 37
+      }
+    },
+    "PG2B": {
+      "total": 30,
+      "by_action": {
+        "SKIP_NIK_NOT_FOUND": 30
+      }
+    },
+    "AB1": {
+      "total": 28,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 27
+      }
+    },
+    "AB2": {
+      "total": 26,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 25
+      }
+    },
+    "PG1B": {
+      "total": 25,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 3,
+        "SKIP_NIK_NOT_FOUND": 22
+      }
+    },
+    "PG1A": {
+      "total": 21,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 20
+      }
+    },
+    "INF": {
+      "total": 3,
+      "by_action": {
+        "SKIP_AMBIGUOUS_NIK": 1,
+        "SKIP_NIK_NOT_FOUND": 2
+      }
+    },
+    "NRS": {
+      "total": 2,
+      "by_action": {
+        "SKIP_NIK_NOT_FOUND": 2
+      }
+    },
+    "WORKSHOP": {
+      "total": 1,
+      "by_action": {
+        "SKIP_NIK_NOT_FOUND": 1
+      }
+    }
+  }
+}

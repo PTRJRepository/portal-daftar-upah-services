@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-05-04T08:50:12.053Z",
+  "total": 25,
+  "by_match_method": {
+    "SKIP_NAME_TARGET_DIVISION_MISMATCH": 3,
+    "NO_TARGET": 12,
+    "DUPLICATE_TARGET": 4,
+    "AMBIGUOUS_NAME_HISTORY_2026_SOURCE_DIVISION": 4,
+    "AMBIGUOUS_NAME_HISTORY_2026": 1,
+    "NIK_HR_FOUND_NO_UNIQUE_ACTIVE_TARGET": 1
+  },
+  "by_source_division": {
+    "AB2": {
+      "total": 5,
+      "by_method": {
+        "SKIP_NAME_TARGET_DIVISION_MISMATCH": 2,
+        "NO_TARGET": 1,
+        "AMBIGUOUS_NAME_HISTORY_2026_SOURCE_DIVISION": 1,
+        "DUPLICATE_TARGET": 1
+      }
+    },
+    "PG2B": {
+      "total": 4,
+      "by_method": {
+        "NO_TARGET": 3,
+        "AMBIGUOUS_NAME_HISTORY_2026_SOURCE_DIVISION": 1
+      }
+    },
+    "ARA": {
+      "total": 3,
+      "by_method": {
+        "NO_TARGET": 2,
+        "AMBIGUOUS_NAME_HISTORY_2026": 1
+      }
+    },
+    "ARC": {
+      "total": 3,
+      "by_method": {
+        "NO_TARGET": 1,
+        "DUPLICATE_TARGET": 1,
+        "NIK_HR_FOUND_NO_UNIQUE_ACTIVE_TARGET": 1
+      }
+    },
+    "AB1": {
+      "total": 2,
+      "by_method": {
+        "DUPLICATE_TARGET": 1,
+        "AMBIGUOUS_NAME_HISTORY_2026_SOURCE_DIVISION": 1
+      }
+    },
+    "DME": {
+      "total": 2,
+      "by_method": {
+        "NO_TARGET": 2
+      }
+    },
+    "PG1B": {
+      "total": 2,
+      "by_method": {
+        "NO_TARGET": 1,
+        "AMBIGUOUS_NAME_HISTORY_2026_SOURCE_DIVISION": 1
+      }
+    },
+    "PG2A": {
+      "total": 2,
+      "by_method": {
+        "DUPLICATE_TARGET": 1,
+        "NO_TARGET": 1
+      }
+    },
+    "NRS": {
+      "total": 1,
+      "by_method": {
+        "SKIP_NAME_TARGET_DIVISION_MISMATCH": 1
+      }
+    },
+    "WORKSHOP": {
+      "total": 1,
+      "by_method": {
+        "NO_TARGET": 1
+      }
+    }
+  }
+}

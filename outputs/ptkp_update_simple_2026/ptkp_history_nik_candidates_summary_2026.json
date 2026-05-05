@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-05-04T04:44:46.916Z",
+  "total": 297,
+  "by_status": {
+    "UNIQUE_2026_HISTORY_NIK": 54,
+    "NO_HISTORY_NIK": 229,
+    "AMBIGUOUS_2026_HISTORY_NIK": 8,
+    "ONLY_OTHER_YEAR_HISTORY_NIK": 6
+  },
+  "by_source_division": {
+    "ARC": {
+      "total": 47,
+      "by_status": {
+        "NO_HISTORY_NIK": 42,
+        "ONLY_OTHER_YEAR_HISTORY_NIK": 2,
+        "UNIQUE_2026_HISTORY_NIK": 3
+      }
+    },
+    "DME": {
+      "total": 39,
+      "by_status": {
+        "NO_HISTORY_NIK": 29,
+        "UNIQUE_2026_HISTORY_NIK": 9,
+        "AMBIGUOUS_2026_HISTORY_NIK": 1
+      }
+    },
+    "PG2A": {
+      "total": 38,
+      "by_status": {
+        "UNIQUE_2026_HISTORY_NIK": 16,
+        "NO_HISTORY_NIK": 20,
+        "AMBIGUOUS_2026_HISTORY_NIK": 1,
+        "ONLY_OTHER_YEAR_HISTORY_NIK": 1
+      }
+    },
+    "ARA": {
+      "total": 37,
+      "by_status": {
+        "NO_HISTORY_NIK": 35,
+        "UNIQUE_2026_HISTORY_NIK": 2
+      }
+    },
+    "PG2B": {
+      "total": 30,
+      "by_status": {
+        "NO_HISTORY_NIK": 26,
+        "UNIQUE_2026_HISTORY_NIK": 3,
+        "ONLY_OTHER_YEAR_HISTORY_NIK": 1
+      }
+    },
+    "AB1": {
+      "total": 28,
+      "by_status": {
+        "UNIQUE_2026_HISTORY_NIK": 4,
+        "NO_HISTORY_NIK": 23,
+        "AMBIGUOUS_2026_HISTORY_NIK": 1
+      }
+    },
+    "AB2": {
+      "total": 26,
+      "by_status": {
+        "NO_HISTORY_NIK": 16,
+        "UNIQUE_2026_HISTORY_NIK": 9,
+        "ONLY_OTHER_YEAR_HISTORY_NIK": 1
+      }
+    },
+    "PG1B": {
+      "total": 25,
+      "by_status": {
+        "NO_HISTORY_NIK": 20,
+        "AMBIGUOUS_2026_HISTORY_NIK": 3,
+        "ONLY_OTHER_YEAR_HISTORY_NIK": 1,
+        "UNIQUE_2026_HISTORY_NIK": 1
+      }
+    },
+    "PG1A": {
+      "total": 21,
+      "by_status": {
+        "UNIQUE_2026_HISTORY_NIK": 6,
+        "NO_HISTORY_NIK": 14,
+        "AMBIGUOUS_2026_HISTORY_NIK": 1
+      }
+    },
+    "INF": {
+      "total": 3,
+      "by_status": {
+        "NO_HISTORY_NIK": 2,
+        "AMBIGUOUS_2026_HISTORY_NIK": 1
+      }
+    },
+    "NRS": {
+      "total": 2,
+      "by_status": {
+        "UNIQUE_2026_HISTORY_NIK": 1,
+        "NO_HISTORY_NIK": 1
+      }
+    },
+    "WORKSHOP": {
+      "total": 1,
+      "by_status": {
+        "NO_HISTORY_NIK": 1
+      }
+    }
+  }
+}

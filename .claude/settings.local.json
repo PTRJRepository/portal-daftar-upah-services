@@ -161,7 +161,9 @@
       "Bash(python3 *)",
       "mcp__plugin_playwright_playwright__browser_navigate",
       "PowerShell(git reset *)",
-      "PowerShell(codex *)"
+      "PowerShell(codex *)",
+      "Bash(claude mcp *)",
+      "PowerShell(npm run *)"
     ],
     "deny": [],
     "ask": [],

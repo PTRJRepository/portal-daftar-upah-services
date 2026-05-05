@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-05-04T05:00:26.277Z",
+  "period_year": 2026,
+  "final_status": "NO_EXECUTABLE_UPDATES_REMAINING",
+  "final_dry_run_summary": {
+    "total_rows": 1598,
+    "executable": 0,
+    "updates": 0,
+    "inserts": 0,
+    "already_same": 1509,
+    "skipped": 89,
+    "by_action": {
+      "ALREADY_SAME": 1509,
+      "SKIP": 89
+    },
+    "by_match_method": {
+      "NIK_HISTORY_2026": 1339,
+      "NAME_HISTORY_2026_UNIQUE": 159,
+      "NIK_HR_NEWICNO_TO_HISTORY_EMPCODE": 11,
+      "DUPLICATE_TARGET": 3,
+      "AMBIGUOUS_NIK_HISTORY_2026": 14,
+      "NO_TARGET": 20,
+      "AMBIGUOUS_NAME_HISTORY_2026": 42,
+      "NIK_HR_FOUND_NO_UNIQUE_ACTIVE_TARGET": 10
+    }
+  },
+  "changelog": [
+    {
+      "source": "EXCEL_PTKP_2026",
+      "changed_by": "ptkp_excel_2026_once",
+      "count": 16
+    },
+    {
+      "source": "EXCEL_PTKP_2026_FULL",
+      "changed_by": "ptkp_excel_2026_full_once",
+      "count": 7
+    },
+    {
+      "source": "EXCEL_PTKP_2026_HISTORY_NIK",
+      "changed_by": "ptkp_excel_2026_history_nik_once",
+      "count": 2
+    }
+  ],
+  "total_changelog_count": 25,
+  "reports": {
+    "initial_verification": "outputs/ptkp_update_simple_2026/ptkp_execute_verification_2026.json",
+    "history_nik_execute": "outputs/ptkp_update_simple_2026/ptkp_history_nik_execute_report_2026.json",
+    "final_full_dry_run": "outputs/ptkp_update_simple_2026/ptkp_full_execute_report_2026.json"
+  }
+}
