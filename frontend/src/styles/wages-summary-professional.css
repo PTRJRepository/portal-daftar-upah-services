@@ -1242,7 +1242,7 @@
         width: 100% !important;
         table-layout: auto !important;
         border-collapse: collapse !important;
-        font-size: 8pt !important;
+        font-size: 9.5pt !important;
         page-break-inside: auto !important;
     }
 
@@ -1268,7 +1268,7 @@
 
     .wsp-table thead th {
         padding: 0.25rem 0.2rem !important;
-        font-size: 0.68rem !important;
+        font-size: 0.8rem !important;
         font-weight: 800 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
@@ -1282,7 +1282,7 @@
     }
 
     .wsp-table thead tr.wsp-header-master th {
-        font-size: 0.72rem !important;
+        font-size: 0.85rem !important;
         font-weight: 900 !important;
         border: 1.5pt solid #000 !important;
         padding: 0.3rem 0.25rem !important;
@@ -1299,7 +1299,7 @@
     /* Table cells */
     .wsp-table td {
         padding: 0.18rem 0.15rem !important;
-        font-size: 0.65rem !important;
+        font-size: 0.8rem !important;
         font-weight: 600 !important;
         border: 1px solid #000 !important;
         text-align: center !important;
@@ -1322,7 +1322,7 @@
     }
 
     .div-code {
-        font-size: 0.6rem !important;
+        font-size: 0.85rem !important;
         font-weight: 700 !important;
         line-height: 1.15 !important;
         display: block !important;
@@ -1330,7 +1330,7 @@
     }
 
     .div-desc {
-        font-size: 0.55rem !important;
+        font-size: 0.75rem !important;
         line-height: 1.15 !important;
         margin-top: 0.05rem !important;
         color: #333 !important;

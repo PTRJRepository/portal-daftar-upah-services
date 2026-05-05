@@ -36,6 +36,10 @@
   display: none;
 }
 
+.report-print-header {
+  display: none !important;
+}
+
 @page {
   size: A4 landscape;
   margin: 8mm;
@@ -105,8 +109,8 @@
     align-items: center !important;
     justify-content: center !important;
     transform: rotate(-28deg) !important;
-    opacity: 0.07 !important;
-    filter: grayscale(1) !important;
+    opacity: 0.12 !important;
+    filter: grayscale(0.5) !important;
   }
 
   .report-watermark__image {
@@ -183,6 +187,42 @@
     display: table-header-group !important;
   }
 
+  .wsp-table thead tr.report-screen-header,
+  .wsp-table thead tr.wsp-header-master.report-screen-header,
+  .wsp-table thead tr.wsp-header-sub.report-screen-header {
+    display: none !important;
+    visibility: collapse !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .wsp-table thead tr.report-screen-header > th,
+  .wsp-table thead tr.report-screen-header > td {
+    display: none !important;
+    visibility: collapse !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .wsp-table thead tr.report-print-header,
+  .wsp-table thead tr.wsp-header-master.report-print-header,
+  .wsp-table thead tr.wsp-header-sub.report-print-header {
+    display: table-row !important;
+    visibility: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .wsp-table thead tr.report-print-header > th,
+  .wsp-table thead tr.report-print-header > td {
+    display: table-cell !important;
+    visibility: visible !important;
+  }
+
   .wsp-table tfoot,
   .phc-table tfoot,
   .cost-hk-table tfoot {
@@ -194,6 +234,26 @@
   .cost-hk-table tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  .wsp-table thead tr.no-print,
+  .wsp-table thead tr.wsp-header-master.no-print,
+  .wsp-table thead tr.wsp-header-sub.no-print {
+    display: none !important;
+    visibility: collapse !important;
+  }
+
+  .wsp-table thead tr.print-only,
+  .wsp-table thead tr.wsp-header-master.print-only,
+  .wsp-table thead tr.wsp-header-sub.print-only {
+    display: table-row !important;
+    visibility: visible !important;
+  }
+
+  .wsp-table thead th.no-print,
+  .wsp-table thead td.no-print {
+    display: none !important;
+    visibility: collapse !important;
   }
 
   .wsp-table th,

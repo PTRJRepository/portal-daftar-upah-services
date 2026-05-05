@@ -873,7 +873,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 {reportMode === 'payroll' ? (
                                     <>
                                         {/* SCREEN VERSION of Master Headers */}
-                                        <tr className="wsp-header-master no-print">
+                                        <tr className="wsp-header-master no-print report-screen-header">
                                             <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
                                             <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                                             <th colSpan={showDetail ? dynamicPremiHeaders.length + 1 : 1} className="th-group-income">PREMI INCOME</th>
@@ -881,7 +881,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
                                             <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
                                         </tr>
-                                        <tr className="wsp-header-sub no-print">
+                                        <tr className="wsp-header-sub no-print report-screen-header">
                                             <th className="th-group-manpower">WORKERS</th>
                                             <th className="th-group-manpower">HK</th>
                                             {showDetail && dynamicPremiHeaders.map((h, i) => (
@@ -893,7 +893,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                         </tr>
 
                                         {/* PRINT VERSION of Master Headers (Consolidated View) */}
-                                        <tr className="wsp-header-master print-only">
+                                        <tr className="wsp-header-master print-only report-print-header">
                                             <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
                                             <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                                             <th colSpan="1" className="th-group-income">PREMI INCOME</th>
@@ -901,7 +901,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
                                             <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
                                         </tr>
-                                        <tr className="wsp-header-sub print-only">
+                                        <tr className="wsp-header-sub print-only report-print-header">
                                             <th className="th-group-manpower">WORKERS</th>
                                             <th className="th-group-manpower">HK</th>
                                             <th className="th-group-premi">TOTAL PREMI</th>
@@ -928,7 +928,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     filteredSummaryData.map((row, idx) => (
                                         reportMode === 'payroll' ? (
                                             <tr key={idx}>
-                                                <td className="text-left">{row.gang_description || row.gang_code}</td>
+                                                <td className="text-left division-name sticky-col">
+                                                    <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
+                                                    {row.gang_description && row.gang_description !== row.gang_code && (
+                                                        <div className="div-desc" style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                            {row.gang_description}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
                                                 <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
 
@@ -955,7 +962,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             </tr>
                                         ) : (
                                             <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                                                <td className="text-left" style={{ border: '0.5pt solid #000', fontWeight: 600 }}>{row.gang_description || row.gang_code}</td>
+                                                <td className="text-left division-name sticky-col" style={{ border: '0.5pt solid #000' }}>
+                                                    <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
+                                                    {row.gang_description && row.gang_description !== row.gang_code && (
+                                                        <div className="div-desc" style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                            {row.gang_description}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_employees)}</td>
                                                 <td className={`text-right ${!Number(row.full_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.full_workers)}</td>
                                                 <td className={`text-right ${!Number(row.prop_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.prop_workers)}</td>
