@@ -82,6 +82,65 @@ describe('PayslipCard', () => {
         expect(html).not.toContain('2.150.000');
     });
 
+    it('excludes other income from displayed total deductions on the payslip', () => {
+        const html = renderToString(
+            <PayslipCard
+                data={{
+                    ...basePayslipData,
+                    payroll_data: {
+                        ...basePayslipData.payroll_data,
+                        jumlah_upah_kotor: 2150000,
+                        penghasilan_bruto: 2150000,
+                        total_pendapatan_lainnya: 150000,
+                        total_potongan: 400000,
+                        potongan_pendapatan_lainnya: 150000,
+                        pot_spsi: 250000,
+                        upah_bersih: 1750000,
+                    },
+                }}
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('TOTAL PENDAPATAN KOTOR');
+        expect(html).toContain('TOTAL POTONGAN');
+        expect(html).toContain('2.000.000');
+        expect(html).toContain('250.000');
+        expect(html).toContain('1.750.000');
+        expect(html).not.toContain('2.150.000');
+        expect(html).not.toContain('400.000');
+        expect(html).not.toContain('PENDAPATAN LAINNYA');
+    });
+
+    it('uses the visible deduction rows as the displayed total deduction source of truth', () => {
+        const html = renderToString(
+            <PayslipCard
+                data={{
+                    ...basePayslipData,
+                    payroll_data: {
+                        ...basePayslipData.payroll_data,
+                        jumlah_upah_kotor: 2150000,
+                        penghasilan_bruto: 2150000,
+                        total_pendapatan_lainnya: 150000,
+                        total_potongan: 500000,
+                        potongan_pendapatan_lainnya: 150000,
+                        pot_spsi: 250000,
+                    },
+                }}
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('TOTAL POTONGAN');
+        expect(html).toContain('250.000');
+        expect(html).toContain('Rp <!-- -->1.750.000');
+        expect(html).not.toContain('350.000');
+        expect(html).not.toContain('500.000');
+        expect(html).not.toContain('PENDAPATAN LAINNYA');
+    });
+
     it('does not show other income on the payslip even when PPh 21 is present while tax detail is hidden', () => {
         const html = renderToString(
             <PayslipCard

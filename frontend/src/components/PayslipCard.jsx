@@ -213,9 +213,11 @@ export default function PayslipCard({ data, month, year }) {
 
   // Dynamic deductions from 'potongan_' fields in payroll record
   Object.entries(payroll).forEach(([key, val]) => {
+    const normalizedKey = key.toLowerCase();
     if (
       key === "potongan_upah_kotor_total" ||
-      key.startsWith("potongan_upah_kotor")
+      key.startsWith("potongan_upah_kotor") ||
+      normalizedKey.includes("pendapatan_lain")
     )
       return;
     if (key.startsWith("potongan_") && typeof val === "number" && val > 0) {
@@ -328,15 +330,23 @@ export default function PayslipCard({ data, month, year }) {
   const payslipGrossIncome = Math.max(0, jumlahUpahKotor - totalOtherIncome);
 
   // Payslip deductions exclude other income; other income is tax-detail-only.
-  const totalPotongan =
-    getNum("total_potongan_bersih") ||
-    getNum("total_potongan") ||
+  const rawTotalPotongan =
+    getNum("total_potongan_bersih") || getNum("total_potongan");
+  const otherIncomeDeduction = sumPositiveFields(
+    payroll,
+    (key) => key.startsWith("potongan_") && key.includes("pendapatan_lain"),
+  );
+  const itemizedTotalPotongan =
     potBersihList.reduce(
       (acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value),
       0,
     ) + premiPph;
+  const totalPotongan =
+    itemizedTotalPotongan > 0
+      ? itemizedTotalPotongan
+      : Math.max(0, rawTotalPotongan - otherIncomeDeduction);
   // upahBersih should be Gross - Total Potongan Bersih
-  const upahBersih = getNum("upah_bersih") || jumlahUpahKotor - totalPotongan;
+  const upahBersih = payslipGrossIncome - totalPotongan;
 
   return (
     <div className="payslip-card">
