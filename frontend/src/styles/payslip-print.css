@@ -31,8 +31,9 @@
     font-family: Georgia, 'Times New Roman', serif;
     box-sizing: border-box;
     color: var(--payslip-ink);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    align-content: stretch;
     align-items: center;
     gap: 20px;
     width: 100%;
@@ -366,6 +367,7 @@
     padding: 0.32mm 0;
     min-height: 0;
     overflow: hidden;
+    height: 100%;
 }
 
 .payslip-card-column {
@@ -472,6 +474,7 @@
     border-top: 1px dashed var(--payslip-rule);
     overflow: hidden;
     flex: 0 1 auto;
+    max-height: 32mm;
 }
 
 .payslip-overflow-divider {
@@ -620,7 +623,7 @@
     print-color-adjust: exact;
     flex: 0 0 auto;
     flex-shrink: 0;
-    min-height: 6.8mm;
+    min-height: 7mm;
 }
 
 .payslip-thp-label {
@@ -802,8 +805,9 @@
         gap: 0 !important;
         width: 100% !important;
         min-height: auto !important;
-        display: flex !important;
-        flex-direction: column !important;
+        display: grid !important;
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+        align-content: stretch !important;
         align-items: center !important;
         page: payslip-portrait;
     }
@@ -862,6 +866,7 @@
     .payslip-card-content {
         overflow: hidden !important;
         flex: 1 1 auto !important;
+        height: 100% !important;
     }
 
     .payslip-card-column {
@@ -896,8 +901,9 @@
     gap: 0 !important;
     width: 210mm !important;
     min-height: auto !important;
-    display: flex !important;
-    flex-direction: column !important;
+    display: grid !important;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+    align-content: stretch !important;
     align-items: center !important;
 }
 
@@ -967,6 +973,7 @@
 .pdf-export-active.payslip-print-container .payslip-card-content {
     overflow: hidden !important;
     flex: 1 1 auto !important;
+    height: 100% !important;
 }
 
 .pdf-export-active.payslip-print-container .payslip-card-column {
