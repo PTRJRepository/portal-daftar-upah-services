@@ -103,19 +103,125 @@ describe("PayrollDataService aggregation totals", () => {
         const recordsByDivision = await PayrollDataService.fetchPayrollData("PG1A", 4, 2026, "Bearer test");
         const record = recordsByDivision.PG1A[0];
 
-        expect(record.total_employees).toBe(2);
-        expect(record.total_hk).toBe(41);
+        expect(record.total_employees).toBe(3);
+        expect(record.total_hk).toBe(43);
         expect(record.total_hari_kerja).toBe(37);
         expect(record.total_upah_dasar).toBe(300);
-        expect(record.total_upah_pokok).toBe(1700);
-        expect(record.total_gaji_pokok).toBe(2100);
+        expect(record.total_upah_pokok).toBe(10001699);
+        expect(record.total_gaji_pokok).toBe(10002099);
         expect(record.total_premi_prunning).toBe(31);
-        expect(record.total_premi).toBe(150);
-        expect(record.total_pph21).toBe(100);
+        expect(record.total_premi).toBe(10000149);
+        expect(record.total_pph21).toBe(22);
         expect(record.total_bpjs_pekerja).toBe(50);
         expect(record.total_bpjs_majikan).toBe(58);
         expect(record.total_spsi).toBe(15);
         expect(record.total_upah_kotor).toBe(5000);
         expect(record.total_upah_bersih).toBe(4800);
+    });
+
+    it("uses progressive complete rows as the aggregation source when available", async () => {
+        (DataExtractorService as any).getInstance = () => ({
+            extractPayrollData: async () => ({
+                data_rows: [
+                    {
+                        emp_code: "E001",
+                        gang_code: "E2H",
+                        jumlah_hk: 21,
+                        hari_kerja: 21,
+                        jabatan_jumlah: 73500,
+                        jumlah_upah_kotor: 1000000,
+                        upah_bersih: 1000000
+                    }
+                ],
+                dynamic_premi_headers: [],
+                dynamic_potongan_headers: [],
+                premi_title_map: {},
+                potongan_title_map: {}
+            }),
+            extractPayrollDataProgressive: async function* () {
+                yield {
+                    phase: "complete",
+                    gangs: new Map([
+                        ["E2H", [
+                            {
+                                emp_code: "E001",
+                                gang_code: "E2H",
+                                jumlah_hk: 21,
+                                hari_kerja: 21,
+                                jabatan_jumlah: 0,
+                                jumlah_upah_kotor: 926500,
+                                upah_bersih: 926500
+                            }
+                        ]]
+                    ]),
+                    meta: {
+                        total_gangs: 1,
+                        total_employees: 1,
+                        processed_employees: 1,
+                        progress_pct: 100,
+                        message: "complete"
+                    },
+                    dynamic_premi_headers: [],
+                    dynamic_potongan_headers: [],
+                    dynamic_premi_titles: {},
+                    dynamic_potongan_titles: {}
+                };
+            }
+        });
+
+        const recordsByDivision = await PayrollDataService.fetchPayrollData("DME", 4, 2026, "Bearer test");
+        const record = recordsByDivision.DME[0];
+
+        expect(record.total_upah_bersih).toBe(926500);
+        expect(record.total_jabatan).toBe(0);
+    });
+
+    it("reconciles per-gang rounding so division totals match Daftar Upah grand total", async () => {
+        (DataExtractorService as any).getInstance = () => ({
+            extractPayrollDataProgressive: async function* () {
+                yield {
+                    phase: "complete",
+                    gangs: new Map([
+                        ["E1", [
+                            {
+                                emp_code: "E001",
+                                gang_code: "E1",
+                                jumlah_hk: 1,
+                                hari_kerja: 1,
+                                upah_bersih: 10.4
+                            }
+                        ]],
+                        ["E2", [
+                            {
+                                emp_code: "E002",
+                                gang_code: "E2",
+                                jumlah_hk: 1,
+                                hari_kerja: 1,
+                                upah_bersih: 10.4
+                            }
+                        ]]
+                    ]),
+                    meta: {
+                        total_gangs: 2,
+                        total_employees: 2,
+                        processed_employees: 2,
+                        progress_pct: 100,
+                        message: "complete"
+                    },
+                    dynamic_premi_headers: [],
+                    dynamic_potongan_headers: [],
+                    dynamic_premi_titles: {},
+                    dynamic_potongan_titles: {}
+                };
+            }
+        });
+
+        const recordsByDivision = await PayrollDataService.fetchPayrollData("DME", 4, 2026, "Bearer test");
+        const storedDivisionTotal = recordsByDivision.DME.reduce(
+            (sum, record) => sum + record.total_upah_bersih,
+            0
+        );
+
+        expect(storedDivisionTotal).toBe(21);
     });
 });

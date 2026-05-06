@@ -5,6 +5,7 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Cell, PieChart, Pie, Legend, LineChart, Line
 } from 'recharts';
+import { Printer } from 'lucide-react';
 import LoadingScreen from '../components/common/LoadingScreen';
 import PremiCompositionChart from '../components/dashboard/PremiCompositionChart';
 import DivisionDetailCard from './DivisionDetailCard';
@@ -15,6 +16,14 @@ import GangCostBreakdownChart from '../components/dashboard/GangCostBreakdownCha
 import GangTrendChart from '../components/dashboard/GangTrendChart';
 import GangDetailModal from '../components/dashboard/GangDetailModal';
 import CostHKComparisonReport from '../components/CostHKComparisonReport';
+import { printReport } from '../utils/printPageSetup';
+import {
+    buildExecutiveAlertRows,
+    buildExecutiveDivisionRows,
+    buildExecutivePrintSummary,
+    buildExecutiveTrendRows
+} from '../utils/executivePayrollPrintReport';
+import '../styles/executive-payroll-print.css';
 
 // Helper to format currency
 const formatCurrency = (val) => {
@@ -486,6 +495,52 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
     const wageChange = kpi ? calcChange(kpi.curr_wage, kpi.prev_wage) : 0;
     const otChange = kpi ? calcChange(kpi.curr_ot, kpi.prev_ot) : 0;
     const headChange = kpi ? calcChange(kpi.curr_headcount, kpi.prev_headcount) : 0;
+    const reportPeriodLabel = new Date(year, month - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    const printGeneratedAt = new Date().toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const activePrintFilters = [
+        selectedFilterDivision === 'ALL' ? 'Semua Divisi' : `Divisi ${selectedFilterDivision}`,
+        selectedGangType === 'ALL' ? 'Semua Tipe Gang' : selectedGangType,
+        selectedFilterGang === 'ALL' ? 'Semua Gang' : `Gang ${selectedFilterGang}`
+    ].join(' / ');
+    const printSummary = useMemo(() => buildExecutivePrintSummary({
+        kpi,
+        breakdown: data?.breakdown,
+        efficiency: data?.efficiency,
+        productivityTrend: data?.productivityTrend,
+        wageSpikes
+    }), [kpi, data?.breakdown, data?.efficiency, data?.productivityTrend, wageSpikes]);
+    const printDivisionRows = useMemo(() => buildExecutiveDivisionRows({
+        breakdown: data?.breakdown,
+        efficiency: data?.efficiency
+    }), [data?.breakdown, data?.efficiency]);
+    const printTrendRows = useMemo(() => buildExecutiveTrendRows({
+        trends,
+        productivityTrend: productivityData
+    }), [trends, productivityData]);
+    const printAlertRows = useMemo(() => buildExecutiveAlertRows(wageSpikes), [wageSpikes]);
+    const printGangRows = useMemo(() => (Array.isArray(data?.gangBreakdown) ? data.gangBreakdown : [])
+        .map((gang) => {
+            const totalWage = Number(gang.total_wage) || 0;
+            const overtime = Number(gang.total_ot) || 0;
+            return {
+                gangCode: gang.gang_code || '-',
+                totalWage,
+                overtime,
+                headcount: Number(gang.headcount) || 0,
+                overtimeShare: totalWage > 0 ? (overtime / totalWage) * 100 : 0
+            };
+        })
+        .sort((a, b) => b.totalWage - a.totalWage), [data?.gangBreakdown]);
+
+    const handlePrintExecutiveReport = () => {
+        printReport({ orientation: 'landscape', margin: '7mm' });
+    };
 
     if (loading) return <LoadingScreen isLoading={true} message="Loading Executive Dashboard..." />;
     if (error) return <div className="p-8 text-center text-red-600">Error: {error}</div>;
@@ -501,9 +556,9 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                     onBack={() => setSelectedFilterDivision('ALL')}
                 />
             ) : (
-                <div style={{ padding: '2rem', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
+                <div className="executive-payroll-page" style={{ padding: '2rem', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
                     {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                    <div className="executive-page-header no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                         <div>
                             <h1 style={{ fontSize: '1.8rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Daftar Upah Analysis Keseluruhan</h1>
                             <p style={{ color: '#64748b', marginTop: '0.25rem' }}>Overview of financial and operational metrics</p>
@@ -530,6 +585,47 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
 
                             {!showCostHKReport && (
                                 <>
+                                    <button
+                                        type="button"
+                                        className="executive-print-button"
+                                        aria-label="Cetak executive payroll report"
+                                        onClick={handlePrintExecutiveReport}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.45rem',
+                                            padding: '0.5rem 1rem',
+                                            background: '#111827',
+                                            color: 'white',
+                                            borderRadius: '8px',
+                                            border: '1px solid #111827',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            outline: 'none',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                                            minWidth: '132px',
+                                            justifyContent: 'center'
+                                        }}
+                                    >
+                                        <span
+                                            className="executive-print-button-icon"
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                width: '1.35rem',
+                                                height: '1.35rem',
+                                                borderRadius: '6px',
+                                                background: 'white',
+                                                color: '#111827',
+                                                flex: '0 0 auto'
+                                            }}
+                                        >
+                                            <Printer size={17} strokeWidth={2.4} aria-hidden="true" />
+                                        </span>
+                                        <span>Cetak Report</span>
+                                    </button>
+
                                     {/* Division Filter */}
                                     <select
                                         value={selectedFilterDivision}
@@ -638,6 +734,230 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                         </div>
                     </div>
 
+                    {!showCostHKReport && (
+                        <section id="executive-print-report" className="executive-print-report print-only">
+                            <header className="executive-print-header">
+                                <div>
+                                    <div className="executive-print-eyebrow">EXECUTIVE PAYROLL REPORT</div>
+                                    <h2>Daftar Upah Analysis Keseluruhan</h2>
+                                    <p>Periode {reportPeriodLabel} | {activePrintFilters}</p>
+                                </div>
+                                <div className="executive-print-meta-box">
+                                    <span>Dicetak</span>
+                                    <strong>{printGeneratedAt}</strong>
+                                    <span>Sumber</span>
+                                    <strong>Payroll Dashboard</strong>
+                                </div>
+                            </header>
+
+                            <div className="executive-print-kpi-grid">
+                                <article className="executive-print-kpi-card">
+                                    <span>Total Payroll</span>
+                                    <strong>{formatCurrency(printSummary.totalWage)}</strong>
+                                    <small>{printSummary.wageChange >= 0 ? '+' : ''}{printSummary.wageChange.toFixed(1)}% vs bulan lalu</small>
+                                </article>
+                                <article className="executive-print-kpi-card">
+                                    <span>Total Lembur</span>
+                                    <strong>{formatCurrency(printSummary.totalOvertime)}</strong>
+                                    <small>{printSummary.overtimeShare.toFixed(1)}% dari payroll</small>
+                                </article>
+                                <article className="executive-print-kpi-card">
+                                    <span>Headcount</span>
+                                    <strong>{formatNumber(printSummary.headcount)}</strong>
+                                    <small>{printSummary.headcountChange >= 0 ? '+' : ''}{printSummary.headcountChange.toFixed(1)}% vs bulan lalu</small>
+                                </article>
+                                <article className="executive-print-kpi-card">
+                                    <span>Cost/HK Terakhir</span>
+                                    <strong>{formatCurrency(printSummary.latestCostPerHk)}</strong>
+                                    <small>berdasarkan tren produktivitas</small>
+                                </article>
+                                <article className="executive-print-kpi-card">
+                                    <span>Alert Gang</span>
+                                    <strong>{formatNumber(printSummary.alertCount)}</strong>
+                                    <small>lonjakan Cost/HK terdeteksi</small>
+                                </article>
+                            </div>
+
+                            <div className="executive-print-insight-grid">
+                                <article>
+                                    <span>Fokus payroll terbesar</span>
+                                    <strong>{printSummary.largestPayrollDivision?.divisionCode || '-'}</strong>
+                                    <small>{formatCurrency(printSummary.largestPayrollDivision?.totalWage || 0)} - {printSummary.largestPayrollDivision?.payrollShare.toFixed(1) || '0.0'}% dari total</small>
+                                </article>
+                                <article>
+                                    <span>Lembur terbesar</span>
+                                    <strong>{printSummary.largestOvertimeDivision?.divisionCode || '-'}</strong>
+                                    <small>{formatCurrency(printSummary.largestOvertimeDivision?.overtime || 0)} - {printSummary.largestOvertimeDivision?.overtimeShare.toFixed(1) || '0.0'}% dari payroll divisi</small>
+                                </article>
+                                <article>
+                                    <span>Cost/HK tertinggi</span>
+                                    <strong>{printSummary.highestCostPerHkDivision?.divisionCode || '-'}</strong>
+                                    <small>{formatCurrency(printSummary.highestCostPerHkDivision?.costPerHk || 0)} per HK</small>
+                                </article>
+                                <article>
+                                    <span>Arah biaya</span>
+                                    <strong>{printSummary.wageChange >= 0 ? 'Naik' : 'Turun'}</strong>
+                                    <small>Payroll {printSummary.wageChange >= 0 ? '+' : ''}{printSummary.wageChange.toFixed(1)}%, lembur {printSummary.overtimeChange >= 0 ? '+' : ''}{printSummary.overtimeChange.toFixed(1)}%</small>
+                                </article>
+                            </div>
+
+                            <section className="executive-print-section">
+                                <div className="executive-print-section-title">
+                                    <h3>Ringkasan Divisi</h3>
+                                    <span>diurutkan dari payroll terbesar</span>
+                                </div>
+                                <table className="executive-print-table executive-print-division-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Divisi</th>
+                                            <th>Total Upah</th>
+                                            <th>% Total</th>
+                                            <th>Lembur</th>
+                                            <th>% OT</th>
+                                            <th>Premi</th>
+                                            <th>HK</th>
+                                            <th>Cost/HK</th>
+                                            <th>Headcount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {printDivisionRows.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="9">Tidak ada data divisi.</td>
+                                            </tr>
+                                        ) : printDivisionRows.map((row) => (
+                                            <tr key={row.divisionCode}>
+                                                <td className="text-center strong">{row.divisionCode}</td>
+                                                <td className="text-right">{formatCurrency(row.totalWage)}</td>
+                                                <td className="text-right">{row.payrollShare.toFixed(1)}%</td>
+                                                <td className="text-right">{formatCurrency(row.overtime)}</td>
+                                                <td className="text-right">{row.overtimeShare.toFixed(1)}%</td>
+                                                <td className="text-right">{formatCurrency(row.premi)}</td>
+                                                <td className="text-right">{formatNumber(row.totalHk)}</td>
+                                                <td className="text-right">{formatCurrency(row.costPerHk)}</td>
+                                                <td className="text-right">{formatNumber(row.headcount)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <td>Total</td>
+                                            <td className="text-right">{formatCurrency(printSummary.totalWage)}</td>
+                                            <td className="text-right">100.0%</td>
+                                            <td className="text-right">{formatCurrency(printSummary.totalOvertime)}</td>
+                                            <td className="text-right">{printSummary.overtimeShare.toFixed(1)}%</td>
+                                            <td colSpan="4"></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </section>
+
+                            <div className="executive-print-two-column">
+                                <section className="executive-print-section">
+                                    <div className="executive-print-section-title">
+                                        <h3>Tren 12 Periode</h3>
+                                        <span>payroll, lembur, dan produktivitas</span>
+                                    </div>
+                                    <table className="executive-print-table executive-print-trend-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Periode</th>
+                                                <th>Total Upah</th>
+                                                <th>Lembur</th>
+                                                <th>% OT</th>
+                                                <th>HK</th>
+                                                <th>Cost/HK</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {printTrendRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="6">Tidak ada data tren.</td>
+                                                </tr>
+                                            ) : printTrendRows.map((row) => (
+                                                <tr key={row.period}>
+                                                    <td className="strong">{row.period}</td>
+                                                    <td className="text-right">{formatCurrency(row.totalWage)}</td>
+                                                    <td className="text-right">{formatCurrency(row.overtime)}</td>
+                                                    <td className="text-right">{row.overtimeShare.toFixed(1)}%</td>
+                                                    <td className="text-right">{formatNumber(row.totalHk)}</td>
+                                                    <td className="text-right">{formatCurrency(row.costPerHk)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </section>
+
+                                <section className="executive-print-section">
+                                    <div className="executive-print-section-title">
+                                        <h3>Top Gang by Cost</h3>
+                                        <span>15 gang biaya tertinggi</span>
+                                    </div>
+                                    <table className="executive-print-table executive-print-gang-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Gang</th>
+                                                <th>Total Upah</th>
+                                                <th>Lembur</th>
+                                                <th>% OT</th>
+                                                <th>Headcount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {printGangRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="5">Tidak ada data gang.</td>
+                                                </tr>
+                                            ) : printGangRows.map((row) => (
+                                                <tr key={row.gangCode}>
+                                                    <td className="strong">{row.gangCode}</td>
+                                                    <td className="text-right">{formatCurrency(row.totalWage)}</td>
+                                                    <td className="text-right">{formatCurrency(row.overtime)}</td>
+                                                    <td className="text-right">{row.overtimeShare.toFixed(1)}%</td>
+                                                    <td className="text-right">{formatNumber(row.headcount)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </section>
+                            </div>
+
+                            <section className="executive-print-section executive-print-alert-section">
+                                <div className="executive-print-section-title">
+                                    <h3>Gang Cost/HK Alert</h3>
+                                    <span>prioritas review operasional</span>
+                                </div>
+                                <table className="executive-print-table executive-print-alert-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Gang</th>
+                                            <th>Keterangan</th>
+                                            <th>Kenaikan</th>
+                                            <th>Cost/HK Kini</th>
+                                            <th>Selisih</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {printAlertRows.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="5">Tidak ada lonjakan Cost/HK di periode ini.</td>
+                                            </tr>
+                                        ) : printAlertRows.map((row) => (
+                                            <tr key={row.gangCode}>
+                                                <td className="strong">{row.gangCode}</td>
+                                                <td>{row.label}</td>
+                                                <td className="text-right">{row.increasePercent.toFixed(1)}%</td>
+                                                <td className="text-right">{formatCurrency(row.currentCostPerHk)}</td>
+                                                <td className="text-right">{formatCurrency(row.difference)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </section>
+                        </section>
+                    )}
+
+                    <div className="executive-dashboard-screen">
                     {/* Cost/HK Report */}
                     {showCostHKReport ? (
                         <CostHKComparisonReport
@@ -1147,10 +1467,9 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
                             />
                         </>
                     )}
+                    </div>
                 </div>
             )}
         </>
     );
 }
-
-

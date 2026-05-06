@@ -372,7 +372,9 @@ export class HistorySeederService {
             total_premi_kinerja: sum("premi_kinerja"),
             total_koreksi: daftarUpahTotals.pot_koreksi,
             total_potongan: daftarUpahTotals.total_potongan,
-            total_pph21: sum("pph21_ter") || daftarUpahTotals.pot_pph21,
+            // Must match Daftar Upah and aggregation seeder: display/report PPH uses
+            // the actual deduction field, not the calculated TER comparison value.
+            total_pph21: daftarUpahTotals.pot_pph21,
             total_bpjs_pekerja: daftarUpahTotals.pot_bpjs_pekerja_total,
             total_bpjs_majikan: daftarUpahTotals.pot_bpjs_kesehatan_majikan + daftarUpahTotals.pot_bpjs_pensiun_majikan,
             total_spsi: daftarUpahTotals.pot_spsi,

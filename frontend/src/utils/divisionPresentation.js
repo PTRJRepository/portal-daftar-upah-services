@@ -27,7 +27,7 @@ const DIVISION_SHORT_DESCRIPTIONS = Object.freeze({
   AB2: 'Air Ruak 2',
   ARA: 'Area',
   ARC: 'Air Ruak Central',
-  DME: 'Dempo',
+  DME: 'Darrur Makmur Estate',
   IJL: 'Impian Jaya Lestari',
   INF: 'Infrastruktur',
   NRS: 'Nursery',

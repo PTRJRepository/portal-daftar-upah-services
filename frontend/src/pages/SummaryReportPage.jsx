@@ -17,6 +17,7 @@ import { otherIncomesService } from '../services/otherIncomesService';
 import { getDivisionTypeLabel } from '../utils/reportPresentationLabels';
 import { getReportDivisionSummary } from '../utils/divisionPresentation';
 import { printReport } from '../utils/printPageSetup';
+import { buildGangDescriptionGroupLabel } from '../utils/gangDescriptionGroupLabel';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
 import '../styles/report-print-foundation.css';
@@ -49,6 +50,15 @@ const formatNumber = (value) => {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
     }).format(Math.round(num));
+};
+
+const getSummaryGroupFallbackLabel = (group) => {
+    return group && group !== 'LAINNYA' ? `Group ${group}` : 'Lainnya';
+};
+
+const formatSummaryGroupLabel = (label) => {
+    const summaryGroupLabel = String(label || '');
+    return summaryGroupLabel.toUpperCase();
 };
 
 // Editable cell component for inline editing
@@ -209,7 +219,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const mergedSummaryData = useMemo(() => {
         return summaryData.map(row => {
             // Apply edited values if any
-            const editableFields = ['total_upah_bersih', 'total_premi', 'total_lembur', 'total_pph21', 'total_spsi', 'total_employees', 'total_hk'];
+            const editableFields = ['total_upah_bersih', 'total_premi', 'total_lembur', 'total_spsi', 'total_employees', 'total_hk'];
             const editedRow = { ...row };
             editableFields.forEach(field => {
                 const editKey = `${row.gang_code}_${field}`;
@@ -231,11 +241,45 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
     }, [mergedSummaryData, groupFilter, division, getAsistensi]);
 
+    const buildDivisionRowGroups = useCallback((rows) => {
+        const groupsByKey = new Map();
+        const groups = [];
+
+        rows.forEach(row => {
+            const divisionKey = row.division_code || 'LAINNYA';
+            if (!groupsByKey.has(divisionKey)) {
+                const nextGroup = { divisionKey, rows: [] };
+                groupsByKey.set(divisionKey, nextGroup);
+                groups.push(nextGroup);
+            }
+            groupsByKey.get(divisionKey).rows.push(row);
+        });
+
+        return groups;
+    }, []);
+
+    const groupedSummaryScreenRows = useMemo(
+        () => buildDivisionRowGroups(filteredSummaryData),
+        [buildDivisionRowGroups, filteredSummaryData]
+    );
+
     const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
         division,
         divisionType,
         rows: filteredSummaryData
     }), [division, divisionType, filteredSummaryData]);
+
+    const activeSummaryGroupLabel = useMemo(() => {
+        if (!groupFilter) return '';
+        const rows = mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
+        return buildGangDescriptionGroupLabel(rows, {
+            fallbackLabel: getSummaryGroupFallbackLabel(groupFilter)
+        });
+    }, [groupFilter, mergedSummaryData, getAsistensi, division]);
+
+    const filteredGrandTotalLabel = groupFilter
+        ? `TOTAL ${formatSummaryGroupLabel(activeSummaryGroupLabel)}`
+        : 'GRAND TOTAL';
 
     // Recalculate Grand Total based on filtered data (always recalculate to include edited values)
     const filteredGrandTotal = useMemo(() => {
@@ -252,8 +296,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             total_premi_kinerja: 0,
             total_premi_prunning: 0,
             total_upah_bersih: 0,
+            thumb_print: 0,
+            selisih: 0,
             dynamic_premi_totals: {}
         };
+
+        const comparisonByDivision = new Map();
 
         filteredSummaryData.forEach(row => {
             totals.total_employees += Number(row.total_employees || 0);
@@ -267,6 +315,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             totals.total_premi_prunning += Number(row.total_premi_prunning || 0);
             totals.total_upah_bersih += Number(row.total_upah_bersih || 0);
 
+            const divisionKey = row.division_code || 'LAINNYA';
+            const currentComparison = comparisonByDivision.get(divisionKey) || { thumbPrint: Number(row.thumb_print || 0), totalUpahBersih: 0 };
+            currentComparison.totalUpahBersih += Number(row.total_upah_bersih || 0);
+            if (!currentComparison.thumbPrint) {
+                currentComparison.thumbPrint = Number(row.thumb_print || 0);
+            }
+            comparisonByDivision.set(divisionKey, currentComparison);
+
             // Handle dynamic premiums if present
             if (row._dynamic_premi_list) {
                 row._dynamic_premi_list.forEach(dp => {
@@ -276,8 +332,53 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             }
         });
 
+        comparisonByDivision.forEach(({ thumbPrint, totalUpahBersih }) => {
+            totals.thumb_print += thumbPrint;
+            totals.selisih += thumbPrint > 0 ? totalUpahBersih - thumbPrint : 0;
+        });
+
         return totals;
     }, [filteredSummaryData]);
+
+    const groupedSummaryPrintRows = useMemo(() => {
+        const groupsByKey = new Map();
+        const groups = [];
+
+        filteredSummaryData.forEach(row => {
+            const group = getAsistensi(row.gang_code, division) || 'LAINNYA';
+            if (!groupsByKey.has(group)) {
+                const nextGroup = { group, rows: [] };
+                groupsByKey.set(group, nextGroup);
+                groups.push(nextGroup);
+            }
+            groupsByKey.get(group).rows.push(row);
+        });
+
+        return groups.map(groupData => ({
+            ...groupData,
+            divisionGroups: buildDivisionRowGroups(groupData.rows),
+            summaryGroupLabel: buildGangDescriptionGroupLabel(groupData.rows, {
+                fallbackLabel: getSummaryGroupFallbackLabel(groupData.group)
+            })
+        })).sort((a, b) => {
+            const aNum = Number(a.group);
+            const bNum = Number(b.group);
+            const aIsNum = Number.isFinite(aNum);
+            const bIsNum = Number.isFinite(bNum);
+
+            if (aIsNum && bIsNum && aNum !== bNum) return aNum - bNum;
+            if (aIsNum !== bIsNum) return aIsNum ? -1 : 1;
+            return String(a.group).localeCompare(String(b.group));
+        });
+    }, [filteredSummaryData, getAsistensi, division, buildDivisionRowGroups]);
+
+    const reportComparison = useMemo(() => ({
+        thumbPrint: Number(filteredGrandTotal?.thumb_print || 0),
+        selisih: Number(filteredGrandTotal?.selisih || 0)
+    }), [filteredGrandTotal]);
+
+    const summaryComparisonRowSpan = filteredSummaryData.length;
+    const summaryPrintComparisonRowSpan = filteredSummaryData.length + groupedSummaryPrintRows.length;
 
     // Load gang descriptions (real-time from HR_GANG)
     useEffect(() => {
@@ -606,11 +707,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             return;
         }
 
-        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih\n`;
+        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih,Thumb Print,Selisih\n`;
         let csv = header;
+        const reportExportComparison = {
+            thumbPrint: Number(grandTotal?.thumb_print || 0),
+            selisih: Number(grandTotal?.selisih || 0)
+        };
 
-        mergedSummaryData.forEach(row => {
+        mergedSummaryData.forEach((row, idx) => {
             const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
+            const shouldRenderReportComparison = idx === 0;
 
             csv += `"${row.gang_description || row.gang_code}",` +
                 `${row.total_employees || 0},` +
@@ -620,7 +726,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${row.total_lembur || 0},` +
                 `${row.total_pph21 || 0},` +
                 `${row.total_spsi || 0},` +
-                `${row.total_upah_bersih || 0}\n`;
+                `${row.total_upah_bersih || 0},` +
+                `${shouldRenderReportComparison ? reportExportComparison.thumbPrint : ''},` +
+                `${shouldRenderReportComparison ? reportExportComparison.selisih : ''}\n`;
         });
 
         if (grandTotal) {
@@ -636,7 +744,9 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 `${grandTotal.total_lembur},` +
                 `${grandTotal.total_pph21},` +
                 `${grandTotal.total_spsi},` +
-                `${grandTotal.total_upah_bersih}\n`;
+                `${grandTotal.total_upah_bersih},` +
+                `${grandTotal.thumb_print || 0},` +
+                `${grandTotal.selisih || 0}\n`;
         }
 
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -867,8 +977,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     )}
 
                     {/* Table */}
-                    <div className="wsp-table-wrapper">
-                        <table className="wsp-table">
+                    <div className={`wsp-table-wrapper ${reportMode === 'payroll' ? 'summary-detail-screen-wrapper no-print' : ''}`}>
+                        <table className={`wsp-table ${reportMode === 'payroll' ? 'summary-detail-screen-table' : 'summary-thr-table'}`}>
                             <thead>
                                 {reportMode === 'payroll' ? (
                                     <>
@@ -880,6 +990,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th rowSpan="2" className="th-group-income">LEMBUR</th>
                                             <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
                                             <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
+                                            <th rowSpan="2" className="th-group-compare">THUMBPRINT</th>
                                         </tr>
                                         <tr className="wsp-header-sub no-print report-screen-header">
                                             <th className="th-group-manpower">WORKERS</th>
@@ -900,6 +1011,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <th rowSpan="2" className="th-group-income">LEMBUR</th>
                                             <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
                                             <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
+                                            <th rowSpan="2" className="th-group-compare">THUMBPRINT</th>
                                         </tr>
                                         <tr className="wsp-header-sub print-only report-print-header">
                                             <th className="th-group-manpower">WORKERS</th>
@@ -924,10 +1036,13 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             <tbody>
                                 {filteredSummaryData.length === 0 ? (
                                     <tr><td colSpan="15" className="text-center" style={{ padding: '3rem' }}>No Data Available</td></tr>
-                                ) : (
-                                    filteredSummaryData.map((row, idx) => (
-                                        reportMode === 'payroll' ? (
-                                            <tr key={idx}>
+                                ) : reportMode === 'payroll' ? (
+                                    groupedSummaryScreenRows.map(({ divisionKey, rows }, groupIdx) => {
+                                        return rows.map((row, idx) => {
+                                            const shouldRenderReportComparison = groupIdx === 0 && idx === 0 && summaryComparisonRowSpan > 0;
+
+                                            return (
+                                            <tr key={`${divisionKey}-${row.gang_code || idx}`}>
                                                 <td className="text-left division-name sticky-col">
                                                     <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
                                                     {row.gang_description && row.gang_description !== row.gang_code && (
@@ -955,12 +1070,26 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 </td>
 
                                                 <EditableCell editMode={editMode} value={row.total_lembur} onSave={(v) => handleCellEdit(row.gang_code, 'total_lembur', v)} />
-                                                <EditableCell editMode={editMode} value={row.total_pph21} onSave={(v) => handleCellEdit(row.gang_code, 'total_pph21', v)} />
+                                                <td className="text-right">{formatNumber(row.total_pph21)}</td>
                                                 <EditableCell editMode={editMode} value={row.total_spsi} onSave={(v) => handleCellEdit(row.gang_code, 'total_spsi', v)} />
 
                                                 <EditableCell editMode={editMode} value={row.total_upah_bersih} onSave={(v) => handleCellEdit(row.gang_code, 'total_upah_bersih', v)} isCurrency />
+                                                {shouldRenderReportComparison && (
+                                                    <td rowSpan={summaryComparisonRowSpan} className="text-right summary-compare-cell">
+                                                        <div className="summary-compare-value">
+                                                            Thumbprint: {formatNumber(reportComparison.thumbPrint)}
+                                                        </div>
+                                                        <div className={`summary-compare-diff ${reportComparison.selisih > 0 ? 'text-diff-neg' : reportComparison.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
+                                                            Selisih: {formatNumber(reportComparison.selisih)}
+                                                        </div>
+                                                    </td>
+                                                )}
                                             </tr>
-                                        ) : (
+                                            );
+                                        });
+                                    })
+                                ) : (
+                                    filteredSummaryData.map((row, idx) => (
                                             <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
                                                 <td className="text-left division-name sticky-col" style={{ border: '0.5pt solid #000' }}>
                                                     <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
@@ -979,7 +1108,6 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                     {formatNumber(row.total_thr)}
                                                 </td>
                                             </tr>
-                                        )
                                     ))
                                 )}
                             </tbody>
@@ -988,7 +1116,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 <tfoot>
                                     {reportMode === 'payroll' ? (
                                         <tr className="wsp-grand-total">
-                                            <td>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
+                                            <td>{filteredGrandTotalLabel}</td>
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
 
@@ -1008,10 +1136,11 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                             <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
 
                                             <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
+                                            <td></td>
                                         </tr>
                                     ) : (
                                         <tr className="wsp-grand-total" style={{ backgroundColor: '#000', color: '#fff', fontWeight: 800, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                                            <td style={{ border: '1.5pt solid #000' }}>{groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL'}</td>
+                                            <td style={{ border: '1.5pt solid #000' }}>{filteredGrandTotalLabel}</td>
                                             <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_employees)}</td>
                                             <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.full_workers)}</td>
                                             <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.prop_workers)}</td>
@@ -1024,6 +1153,106 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                             )}
                         </table>
                     </div>
+
+                    {reportMode === 'payroll' && (
+                        <div className="wsp-table-wrapper summary-detail-print-wrapper print-only">
+                            <table className="wsp-table summary-detail-print-table">
+                                <colgroup>
+                                    <col className="summary-col-gang" />
+                                    <col className="summary-col-workers" />
+                                    <col className="summary-col-hk" />
+                                    <col className="summary-col-premi" />
+                                    <col className="summary-col-lembur" />
+                                    <col className="summary-col-pph" />
+                                    <col className="summary-col-spsi" />
+                                    <col className="summary-col-total" />
+                                    <col className="summary-col-compare" />
+                                </colgroup>
+                                <thead>
+                                    <tr className="wsp-header-master">
+                                        <th rowSpan="2">ESTATE / GANG</th>
+                                        <th colSpan="2">MANPOWER</th>
+                                        <th>PREMI INCOME</th>
+                                        <th rowSpan="2">LEMBUR</th>
+                                        <th colSpan="2">DEDUCTIONS</th>
+                                        <th rowSpan="2">TOTAL UPAH BERSIH</th>
+                                        <th rowSpan="2">THUMBPRINT</th>
+                                    </tr>
+                                    <tr className="wsp-header-sub">
+                                        <th>WORKERS</th>
+                                        <th>HK</th>
+                                        <th>TOTAL PREMI</th>
+                                        <th>PPH 21</th>
+                                        <th>SPSI</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredSummaryData.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="9">No Data Available</td>
+                                        </tr>
+                                    ) : (
+                                        groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionGroups }, groupIdx) => {
+                                            return (
+                                                <React.Fragment key={`summary-print-group-${group}`}>
+                                                    <tr className="summary-print-group-row">
+                                                        <td colSpan="8">{formatSummaryGroupLabel(summaryGroupLabel)}</td>
+                                                        {groupIdx === 0 && summaryPrintComparisonRowSpan > 0 && (
+                                                            <td rowSpan={summaryPrintComparisonRowSpan} className="summary-compare-cell">
+                                                                <div className="summary-compare-value">Thumbprint: {formatNumber(reportComparison.thumbPrint)}</div>
+                                                                <div className={`summary-compare-diff ${reportComparison.selisih > 0 ? 'text-diff-neg' : reportComparison.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
+                                                                    Selisih: {formatNumber(reportComparison.selisih)}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                    {divisionGroups.map(({ divisionKey, rows }) => {
+                                                        return rows.map((row, idx) => {
+                                                            const hasGangDescription = row.gang_description && row.gang_description !== row.gang_code;
+                                                            const gangDescription = hasGangDescription ? row.gang_description : row.gang_code;
+
+                                                            return (
+                                                                <tr key={`print-${group}-${divisionKey}-${row.gang_code || idx}`}>
+                                                                    <td>
+                                                                        <div className="summary-print-desc">{gangDescription}</div>
+                                                                        {hasGangDescription && (
+                                                                            <div className="summary-print-code">{row.gang_code}</div>
+                                                                        )}
+                                                                    </td>
+                                                                    <td>{formatNumber(row.total_employees)}</td>
+                                                                    <td>{formatNumber(row.total_hk)}</td>
+                                                                    <td>{formatNumber(row.total_premi)}</td>
+                                                                    <td>{formatNumber(row.total_lembur)}</td>
+                                                                    <td>{formatNumber(row.total_pph21)}</td>
+                                                                    <td>{formatNumber(row.total_spsi)}</td>
+                                                                    <td>{formatNumber(row.total_upah_bersih)}</td>
+                                                                </tr>
+                                                            );
+                                                        });
+                                                    })}
+                                                </React.Fragment>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                                {filteredGrandTotal && (
+                                    <tfoot>
+                                        <tr className="wsp-grand-total">
+                                            <td>{filteredGrandTotalLabel}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_hk)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_premi)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_lembur)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_pph21)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_spsi)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                )}
+                            </table>
+                        </div>
+                    )}
 
                     {/* Signature Section */}
                     <div className="print-only">

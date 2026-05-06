@@ -20,7 +20,7 @@ const SUMMARY_GROUP_LABELS: Record<string, string> = {
     A: "ESTATE AIR RUAK",
     N: "NURSERY",
     W: "WORKSHOP (PG & AR)",
-    K: "ESTATE DME",
+    K: "DARRUR MAKMUR ESTATE",
     I: "DIVISI INFRASTRUKTUR",
     M: "OPERASI MILL"
 };
@@ -127,9 +127,13 @@ const emptyComparisonGrandTotal = () => ({
     total_spsi_current: 0,
     total_premi_previous: 0,
     total_premi_current: 0,
+    total_prunning_previous: 0,
     total_prunning_current: 0,
+    total_brondol_previous: 0,
     total_brondol_current: 0,
+    total_insentif_previous: 0,
     total_insentif_current: 0,
+    total_kinerja_previous: 0,
     total_kinerja_current: 0,
     total_lembur_previous: 0,
     total_lembur_current: 0,
@@ -149,9 +153,13 @@ const buildComparisonGrandTotal = (rows: any[]) => rows.reduce((acc, row) => {
     acc.total_spsi_current += Number(row.total_spsi_current || 0);
     acc.total_premi_previous += Number(row.total_premi_previous || 0);
     acc.total_premi_current += Number(row.total_premi_current || 0);
+    acc.total_prunning_previous += Number(row.total_prunning_previous || 0);
     acc.total_prunning_current += Number(row.total_prunning_current || 0);
+    acc.total_brondol_previous += Number(row.total_brondol_previous || 0);
     acc.total_brondol_current += Number(row.total_brondol_current || 0);
+    acc.total_insentif_previous += Number(row.total_insentif_previous || 0);
     acc.total_insentif_current += Number(row.total_insentif_current || 0);
+    acc.total_kinerja_previous += Number(row.total_kinerja_previous || 0);
     acc.total_kinerja_current += Number(row.total_kinerja_current || 0);
     acc.total_lembur_previous += Number(row.total_lembur_previous || 0);
     acc.total_lembur_current += Number(row.total_lembur_current || 0);
@@ -196,9 +204,13 @@ const buildComparisonKpiSummary = (rows: any[]) => {
 };
 
 const buildComparisonPremiBreakdownCurrent = (rows: any[]) => ({
+    total_prunning_previous: rows.reduce((acc, row) => acc + Number(row.total_prunning_previous || 0), 0),
     total_prunning_current: rows.reduce((acc, row) => acc + Number(row.total_prunning_current || 0), 0),
+    total_brondol_previous: rows.reduce((acc, row) => acc + Number(row.total_brondol_previous || 0), 0),
     total_brondol_current: rows.reduce((acc, row) => acc + Number(row.total_brondol_current || 0), 0),
+    total_insentif_previous: rows.reduce((acc, row) => acc + Number(row.total_insentif_previous || 0), 0),
     total_insentif_current: rows.reduce((acc, row) => acc + Number(row.total_insentif_current || 0), 0),
+    total_kinerja_previous: rows.reduce((acc, row) => acc + Number(row.total_kinerja_previous || 0), 0),
     total_kinerja_current: rows.reduce((acc, row) => acc + Number(row.total_kinerja_current || 0), 0)
 });
 

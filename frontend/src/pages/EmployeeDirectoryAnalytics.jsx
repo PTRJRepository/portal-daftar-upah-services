@@ -21,7 +21,7 @@ const DIVISION_CONFIG = {
     'PG1B': { label: 'PG1B - Plasma 1 Blok', short: 'PG1B', color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
     'PG2A': { label: 'PG2A - Plasma 2 Afdeling', short: 'PG2A', color: '#db2777', bg: '#fdf2f8', border: '#f9a8d4' },
     'PG2B': { label: 'PG2B - Plasma 2 Blok', short: 'PG2B', color: '#ea580c', bg: '#fff7ed', border: '#fed7aa' },
-    'DME': { label: 'DME - Dempo', short: 'DME', color: '#16a34a', bg: '#f0fdf4', border: '#86efac' },
+    'DME': { label: 'DME - Darrur Makmur Estate', short: 'DME', color: '#16a34a', bg: '#f0fdf4', border: '#86efac' },
     'ARA': { label: 'ARA - Area', short: 'ARA', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
     'AB1': { label: 'AB1 - Afdeling 1', short: 'AB1', color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
     'AB2': { label: 'AB2 - Afdeling 2', short: 'AB2', color: '#c026d3', bg: '#faf5ff', border: '#e9d5ff' },

@@ -198,6 +198,18 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
 
             const placeholders = allGangs.map(() => '?').join(',');
             const query_sql = `
+                WITH latest_rows AS (
+                    SELECT
+                        h.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY h.period_month, h.period_year, h.gang_code
+                            ORDER BY COALESCE(h.updated_at, h.created_at) DESC, h.id DESC
+                        ) as row_rank
+                    FROM dbo.daftar_upah_aggregation_history h
+                    WHERE h.period_month = ? AND h.period_year = ?
+                    AND h.gang_code IN (${placeholders})
+                    AND h.division_code != 'WORKSHOP'
+                )
                 SELECT
                     division_code, gang_code,
                     SUM(total_employees) as total_karyawan,
@@ -208,10 +220,8 @@ export const wagesRoutes = new Elysia({ prefix: "/payroll/wages" })
                     SUM(total_lembur) as total_lembur,
                     SUM(total_potongan) as total_potongan,
                     SUM(total_upah_bersih) as total_upah_bersih
-                FROM dbo.daftar_upah_aggregation_history
-                WHERE period_month = ? AND period_year = ?
-                AND gang_code IN (${placeholders})
-                AND division_code != 'WORKSHOP'
+                FROM latest_rows
+                WHERE row_rank = 1
                 GROUP BY division_code, gang_code
             `;
 

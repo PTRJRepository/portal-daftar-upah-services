@@ -6,9 +6,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Printer, RefreshCw } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Minus, Printer, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, fetchVirtualDivisions, updatePPH21, updateSPSI } from '../services/summaryReportService';
+import { fetchAllDivisionsTotals, fetchAvailablePeriods, fetchComparisonSummary, fetchVirtualDivisions, updateSPSI } from '../services/summaryReportService';
 import { fetchWagesRecapAll } from '../services/wagesService';
 import { otherIncomesService } from '../services/otherIncomesService';
 import { generatePDF } from '../utils/pdfGenerator';
@@ -28,7 +28,7 @@ import '../styles/report-print-foundation.css';
 
 export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Filters - Use selected payroll period when provided
     const [month, setMonth] = useState(initialMonth || null);
@@ -69,10 +69,19 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
     // Impact Report State
     const [impactReportMode, setImpactReportMode] = useState(false);
 
+    const handleComparisonModeToggle = useCallback(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (comparisonMode) {
+            nextParams.delete('mode');
+        } else {
+            nextParams.set('mode', 'comparison');
+        }
+        setSearchParams(nextParams);
+    }, [comparisonMode, searchParams, setSearchParams]);
+
     // Edit Mode State
     const [editMode, setEditMode] = useState(false);
     const [editingValues, setEditingValues] = useState({});
-    const [editingPPH21, setEditingPPH21] = useState({});
     const [editingSPSI, setEditingSPSI] = useState({});
 
     // State
@@ -191,31 +200,6 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
         }
     };
 
-    // Handle PPH21 Change
-    const handlePPH21Change = (divisionCode, value) => {
-        setEditingPPH21(prev => ({
-            ...prev,
-            [divisionCode]: value
-        }));
-    };
-
-    // Handle Save PPH21
-    const handleSavePPH21 = async (divisionCode, value) => {
-        try {
-            await updatePPH21(token, {
-                month,
-                year,
-                division: divisionCode,
-                value: parseFloat(value) || 0
-            });
-            // Refresh data to show updated totals
-            await fetchData();
-        } catch (err) {
-            console.error('Failed to save PPH21:', err);
-            alert('Failed to save PPH21 value');
-        }
-    };
-
     // Handle SPSI Change
     const handleSPSIChange = (divisionCode, value) => {
         setEditingSPSI(prev => ({
@@ -317,7 +301,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
             'A': 'ESTATE AIR RUAK',
             'N': 'NURSERY',
             'W': 'WORKSHOP (PG & AR)',
-            'K': 'ESTATE DME',
+            'K': 'DARRUR MAKMUR ESTATE',
             'I': 'DIVISI INFRASTRUKTUR',
             'M': 'OPERASI MILL',
         };
@@ -406,143 +390,153 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
         const totalTonase = kpi_summary.tbs_weight || { previous: 0, current: 0 };
         const premiBreakdownCurrent = comparisonPremiBreakdown || {};
 
-        const gajiDiff = totalGaji.current - totalGaji.previous;
-        const premiDiff = totalPremi.current - totalPremi.previous;
-        const lemburDiff = totalLembur.current - totalLembur.previous;
-
         // Premi breakdown totals for current month (from backend)
-        const totalPruning = Number(premiBreakdownCurrent.total_prunning_current || 0);
-        const totalBrondol = Number(premiBreakdownCurrent.total_brondol_current || 0);
-        const totalInsentif = Number(premiBreakdownCurrent.total_insentif_current || 0);
-        const totalKinerja = Number(premiBreakdownCurrent.total_kinerja_current || 0);
+        const totalPruning = {
+            previous: Number(premiBreakdownCurrent.total_prunning_previous ?? comparisonGrandTotal?.total_prunning_previous ?? 0),
+            current: Number(premiBreakdownCurrent.total_prunning_current ?? comparisonGrandTotal?.total_prunning_current ?? 0)
+        };
+        const totalBrondol = {
+            previous: Number(premiBreakdownCurrent.total_brondol_previous ?? comparisonGrandTotal?.total_brondol_previous ?? 0),
+            current: Number(premiBreakdownCurrent.total_brondol_current ?? comparisonGrandTotal?.total_brondol_current ?? 0)
+        };
+        const totalInsentif = {
+            previous: Number(premiBreakdownCurrent.total_insentif_previous ?? comparisonGrandTotal?.total_insentif_previous ?? 0),
+            current: Number(premiBreakdownCurrent.total_insentif_current ?? comparisonGrandTotal?.total_insentif_current ?? 0)
+        };
+        const totalKinerja = {
+            previous: Number(premiBreakdownCurrent.total_kinerja_previous ?? comparisonGrandTotal?.total_kinerja_previous ?? 0),
+            current: Number(premiBreakdownCurrent.total_kinerja_current ?? comparisonGrandTotal?.total_kinerja_current ?? 0)
+        };
 
-        const tonaseDiff = totalTonase.current - totalTonase.previous;
+        const formatMetricValue = (value, { prefix = '', suffix = '', decimals = 0 } = {}) => {
+            const formatted = formatNumber(value, decimals);
+            return `${prefix}${formatted}${suffix ? ` ${suffix}` : ''}`;
+        };
+
+        const getComparisonDelta = (current, previous, positiveDirection = 'down') => {
+            const currentValue = Number(current || 0);
+            const previousValue = Number(previous || 0);
+            const diff = currentValue - previousValue;
+            const direction = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+            const tone = direction === 'flat' ? 'neutral' : direction === positiveDirection ? 'good' : 'bad';
+            const percent = Math.abs(previousValue) > 0 ? (Math.abs(diff) / Math.abs(previousValue)) * 100 : null;
+            const Icon = direction === 'up' ? ArrowUpRight : direction === 'down' ? ArrowDownRight : Minus;
+
+            return {
+                diff,
+                absDiff: Math.abs(diff),
+                direction,
+                tone,
+                percent,
+                Icon,
+                label: direction === 'up' ? 'Naik' : direction === 'down' ? 'Turun' : 'Tetap'
+            };
+        };
+
+        const renderComparisonMetricCard = ({
+            label,
+            current,
+            previous,
+            accent = '#0f172a',
+            prefix = '',
+            suffix = '',
+            decimals = 0,
+            positiveDirection = 'down'
+        }) => {
+            const delta = getComparisonDelta(current, previous, positiveDirection);
+            const DirectionIcon = delta.Icon;
+            const currentText = formatMetricValue(current, { prefix, suffix, decimals });
+            const previousText = formatMetricValue(previous, { prefix, suffix, decimals });
+            const diffSign = delta.diff > 0 ? '+' : delta.diff < 0 ? '-' : '';
+            const diffText = `${diffSign}${formatMetricValue(delta.absDiff, { prefix, suffix, decimals })}`;
+
+            return (
+                <div className={`wsp-kpi-card comparison-card ${delta.tone}`} style={{ '--kpi-accent': accent }}>
+                    <div className="wsp-kpi-label">{label}</div>
+                    <div className="wsp-kpi-value comparison-main-value">{currentText}</div>
+                    <div className="wsp-kpi-previous-line">
+                        <span>{prevLabel}</span>
+                        <strong>{previousText}</strong>
+                    </div>
+                    <div className={`wsp-kpi-delta-chip ${delta.direction} ${delta.tone}`}>
+                        <DirectionIcon size={15} strokeWidth={2.6} />
+                        <span>{delta.label}</span>
+                        <strong>{diffText}</strong>
+                        {delta.percent !== null && (
+                            <small>{formatNumber(delta.percent, 1)}%</small>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const renderMiniComparisonCard = ({ label, metric, accent }) => {
+            const delta = getComparisonDelta(metric.current, metric.previous, 'down');
+            const DirectionIcon = delta.Icon;
+            const diffSign = delta.diff > 0 ? '+' : delta.diff < 0 ? '-' : '';
+
+            return (
+                <div className={`wsp-mini-kpi-card ${delta.tone}`} style={{ '--kpi-accent': accent }}>
+                    <div className="wsp-mini-kpi-head">
+                        <span>{label}</span>
+                        <span className={`wsp-kpi-direction ${delta.direction} ${delta.tone}`}>
+                            <DirectionIcon size={14} strokeWidth={2.6} />
+                        </span>
+                    </div>
+                    <div className="wsp-mini-kpi-value">{formatMetricValue(metric.current)}</div>
+                    <div className="wsp-mini-kpi-meta">
+                        <span>{prevLabel}: {formatMetricValue(metric.previous)}</span>
+                        <strong>{diffSign}{formatMetricValue(delta.absDiff)}</strong>
+                    </div>
+                </div>
+            );
+        };
 
         return (
             <>
                 {/* Main KPI Row */}
                 <div className="wsp-kpi-grid comparison-grid">
-                    {/* Total Upah Bersih */}
-                    <div className="wsp-kpi-card comparison-card">
-                        <div className="wsp-kpi-label">Total Upah Bersih (Rebinmas)</div>
-                        <div className="wsp-kpi-compare-row">
-                            <div className="wsp-kpi-trend-box prev">
-                                <div className="trend-label">{prevLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalGaji.previous)}
-                                </div>
-                            </div>
-                            <div className="wsp-kpi-trend-box curr">
-                                <div className="trend-label">{currLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalGaji.current)}
-                                </div>
-                            </div>
-                        </div>
-                        <div className={`wsp-kpi-diff ${gajiDiff > 0 ? 'pos' : gajiDiff < 0 ? 'neg' : 'neutral'}`}>
-                            <span>Variance:</span>
-                            <strong>Rp {formatNumber(gajiDiff)} {gajiDiff > 0 ? '▲' : gajiDiff < 0 ? '▼' : ''}</strong>
-                        </div>
-                    </div>
-
-                    {/* Total Premi */}
-                    <div className="wsp-kpi-card comparison-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-                        <div className="wsp-kpi-label">Total Premi</div>
-                        <div className="wsp-kpi-compare-row">
-                            <div className="wsp-kpi-trend-box prev">
-                                <div className="trend-label">{prevLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalPremi.previous)}
-                                </div>
-                            </div>
-                            <div className="wsp-kpi-trend-box curr">
-                                <div className="trend-label">{currLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalPremi.current)}
-                                </div>
-                            </div>
-                        </div>
-                        <div className={`wsp-kpi-diff ${premiDiff > 0 ? 'pos' : premiDiff < 0 ? 'neg' : 'neutral'}`}>
-                            <span>Variance:</span>
-                            <strong>Rp {formatNumber(premiDiff)} {premiDiff > 0 ? '▲' : premiDiff < 0 ? '▼' : ''}</strong>
-                        </div>
-                    </div>
-
-                    {/* Total Lembur */}
-                    <div className="wsp-kpi-card comparison-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
-                        <div className="wsp-kpi-label">Total Lembur (OT)</div>
-                        <div className="wsp-kpi-compare-row">
-                            <div className="wsp-kpi-trend-box prev">
-                                <div className="trend-label">{prevLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalLembur.previous)}
-                                </div>
-                            </div>
-                            <div className="wsp-kpi-trend-box curr">
-                                <div className="trend-label">{currLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalLembur.current)}
-                                </div>
-                            </div>
-                        </div>
-                        <div className={`wsp-kpi-diff ${lemburDiff > 0 ? 'pos' : lemburDiff < 0 ? 'neg' : 'neutral'}`}>
-                            <span>Variance:</span>
-                            <strong>Rp {formatNumber(lemburDiff)} {lemburDiff > 0 ? '▲' : lemburDiff < 0 ? '▼' : ''}</strong>
-                        </div>
-                    </div>
-
-                    {/* Total Tonase TBS */}
-                    <div className="wsp-kpi-card comparison-card" style={{ borderLeft: '4px solid #10b981' }}>
-                        <div className="wsp-kpi-label flex items-center gap-2">
-                            <span>🌴</span> Total Tonase TBS
-                        </div>
-                        <div className="wsp-kpi-compare-row">
-                            <div className="wsp-kpi-trend-box prev">
-                                <div className="trend-label">{prevLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalTonase.previous, 2)} <span style={{ fontSize: '0.75rem' }}>Ton</span>
-                                </div>
-                            </div>
-                            <div className="wsp-kpi-trend-box curr">
-                                <div className="trend-label">{currLabel}</div>
-                                <div className="trend-value">
-                                    {formatNumber(totalTonase.current, 2)} <span style={{ fontSize: '0.75rem' }}>Ton</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className={`wsp-kpi-diff ${tonaseDiff > 0 ? 'pos' : tonaseDiff < 0 ? 'neg' : 'neutral'}`}>
-                            <span>Variance:</span>
-                            <strong>{formatNumber(tonaseDiff, 2)} Ton {tonaseDiff > 0 ? '▲' : tonaseDiff < 0 ? '▼' : ''}</strong>
-                        </div>
-                    </div>
+                    {renderComparisonMetricCard({
+                        label: 'Total Upah Bersih',
+                        current: totalGaji.current,
+                        previous: totalGaji.previous,
+                        accent: '#0f172a',
+                        prefix: 'Rp ',
+                        positiveDirection: 'down'
+                    })}
+                    {renderComparisonMetricCard({
+                        label: 'Total Premi',
+                        current: totalPremi.current,
+                        previous: totalPremi.previous,
+                        accent: '#f59e0b',
+                        prefix: 'Rp ',
+                        positiveDirection: 'down'
+                    })}
+                    {renderComparisonMetricCard({
+                        label: 'Total Lembur',
+                        current: totalLembur.current,
+                        previous: totalLembur.previous,
+                        accent: '#8b5cf6',
+                        prefix: 'Rp ',
+                        positiveDirection: 'down'
+                    })}
+                    {renderComparisonMetricCard({
+                        label: 'Total Tonase TBS',
+                        current: totalTonase.current,
+                        previous: totalTonase.previous,
+                        accent: '#10b981',
+                        suffix: 'Ton',
+                        decimals: 2,
+                        positiveDirection: 'up'
+                    })}
                 </div>
 
                 {/* Premi Breakdown Mini Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '2rem' }}>
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Pruning</div>
-                        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1.1rem', fontWeight: 700, color: '#78350f' }}>
-                            {formatNumber(totalPruning)}
-                        </div>
-                    </div>
-                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Brondol</div>
-                        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1.1rem', fontWeight: 700, color: '#7f1d1d' }}>
-                            {formatNumber(totalBrondol)}
-                        </div>
-                    </div>
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Insentif Panen</div>
-                        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1.1rem', fontWeight: 700, color: '#14532d' }}>
-                            {formatNumber(totalInsentif)}
-                        </div>
-                    </div>
-                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Kinerja</div>
-                        <div style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '1.1rem', fontWeight: 700, color: '#1e3a5f' }}>
-                            {formatNumber(totalKinerja)}
-                        </div>
-                    </div>
+                <div className="wsp-mini-kpi-grid">
+                    {renderMiniComparisonCard({ label: 'Pruning', metric: totalPruning, accent: '#f59e0b' })}
+                    {renderMiniComparisonCard({ label: 'Brondol', metric: totalBrondol, accent: '#ef4444' })}
+                    {renderMiniComparisonCard({ label: 'Insentif Panen', metric: totalInsentif, accent: '#16a34a' })}
+                    {renderMiniComparisonCard({ label: 'Kinerja', metric: totalKinerja, accent: '#2563eb' })}
                 </div>
             </>
         );
@@ -564,10 +558,17 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
         return (
             <span className={`trend-indicator ${arrowClass}`}>
-                {isUp ? '▲' : '▼'}
+                {isUp ? <ArrowUpRight size={12} strokeWidth={2.6} /> : <ArrowDownRight size={12} strokeWidth={2.6} />}
             </span>
         );
     };
+
+    const renderTrendValue = (value, current, previous, type = 'cost', decimals = 0) => (
+        <span className="wages-comparison-cell-value">
+            <span>{formatNumber(value, decimals)}</span>
+            {renderTrendArrow(current, previous, type)}
+        </span>
+    );
 
     // Render comparison table
     const renderComparisonTable = () => {
@@ -578,11 +579,30 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
         const currMonthName = getMonthName(current_period.month).toUpperCase();
         const grandTotal = comparisonGrandTotal || {};
         return (
-            <div className="wsp-table-wrapper">
-                <table className="wsp-table comparison-table">
+            <>
+            <div className="wsp-table-wrapper wages-comparison-screen-wrapper no-print">
+                <table className="wsp-table comparison-table wages-rebinmas-comparison-table">
+                    <colgroup>
+                        <col className="wages-comparison-col-division" />
+                        <col className="wages-comparison-col-workers" />
+                        <col className="wages-comparison-col-workers" />
+                        <col className="wages-comparison-col-premi-detail" />
+                        <col className="wages-comparison-col-premi-detail" />
+                        <col className="wages-comparison-col-premi-detail" />
+                        <col className="wages-comparison-col-premi-detail" />
+                        <col className="wages-comparison-col-premi-total" />
+                        <col className="wages-comparison-col-lembur" />
+                        <col className="wages-comparison-col-pph" />
+                        <col className="wages-comparison-col-spsi" />
+                        <col className="wages-comparison-col-gaji" />
+                        <col className="wages-comparison-col-tbs" />
+                        <col className="wages-comparison-col-gaji" />
+                        <col className="wages-comparison-col-tbs" />
+                        <col className="wages-comparison-col-selisih" />
+                    </colgroup>
                     <thead>
                         {/* SCREEN VERSION of Comparison Headers */}
-                        <tr className="wsp-header-master no-print">
+                        <tr className="wsp-header-master no-print report-screen-header">
                             <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                             <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                             <th colSpan="5" className="th-group-premi">PREMI ({currMonthName})</th>
@@ -591,7 +611,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             <th colSpan="2" className="th-group-curr">REKAP {currMonthName.substring(0, 3)}</th>
                             <th rowSpan="2" className="th-group-diff">SELISIH</th>
                         </tr>
-                        <tr className="wsp-header-sub no-print">
+                        <tr className="wsp-header-sub no-print report-screen-header">
                             <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
                             <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
                             <th className="th-group-premi">PRUNING</th>
@@ -609,7 +629,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                         </tr>
 
                         {/* PRINT VERSION of Comparison Headers (Simplified) */}
-                        <tr className="wsp-header-master print-only">
+                        <tr className="wsp-header-master print-only report-print-header">
                             <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                             <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                             <th colSpan="1" className="th-group-premi">TOTAL PREMI</th>
@@ -618,7 +638,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             <th colSpan="2" className="th-group-curr">REKAP {currMonthName.substring(0, 3)}</th>
                             <th rowSpan="2" className="th-group-diff">SELISIH</th>
                         </tr>
-                        <tr className="wsp-header-sub print-only">
+                        <tr className="wsp-header-sub print-only report-print-header">
                             <th className="th-group-workers">{prevMonthName.substring(0, 3)}</th>
                             <th className="th-group-workers">{currMonthName.substring(0, 3)}</th>
                             <th className="th-group-premi" style={{ fontWeight: 800 }}>TOTAL</th>
@@ -640,10 +660,16 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                 <tr key={idx}>
                                     {/* Division: separate code and desc */}
                                     <td className="text-left division-name sticky-col">
-                                        <div className="div-code">{row.division_code}</div>
-                                        {row.description && row.description !== row.division_code && (
+                                        {row.description && row.description !== row.division_code ? (
+                                            <>
+                                                <div className="div-desc">
+                                                    {row.description}
+                                                </div>
+                                                <div className="div-code">{row.division_code}</div>
+                                            </>
+                                        ) : (
                                             <div className="div-desc">
-                                                {row.description}
+                                                {row.division_code}
                                             </div>
                                         )}
                                     </td>
@@ -651,8 +677,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                     {/* Workers */}
                                     <td className="text-right border-right-group">{formatNumber(row.workers_previous)}</td>
                                     <td className="text-right border-right-section">
-                                        {formatNumber(row.workers_current)}
-                                        {renderTrendArrow(row.workers_current, row.workers_previous, 'cost')}
+                                        {renderTrendValue(row.workers_current, row.workers_current, row.workers_previous, 'cost')}
                                     </td>
 
                                     {/* Premi Breakdown - Hide detail in print */}
@@ -662,14 +687,12 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                     <td className={`text-right no-print ${(row.total_kinerja_current || 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(row.total_kinerja_current || 0)}</td>
                                     {/* Keep Total Premi in print */}
                                     <td className="text-right border-right-section" style={{ fontWeight: 700 }}>
-                                        {formatNumber(row.total_premi_current)}
-                                        {renderTrendArrow(row.total_premi_current, row.total_premi_previous, 'cost')}
+                                        {renderTrendValue(row.total_premi_current, row.total_premi_current, row.total_premi_previous, 'cost')}
                                     </td>
 
                                     {/* Lembur & Deductions */}
                                     <td className="text-right">
-                                        {formatNumber(row.total_lembur_current)}
-                                        {renderTrendArrow(row.total_lembur_current, row.total_lembur_previous, 'cost')}
+                                        {renderTrendValue(row.total_lembur_current, row.total_lembur_current, row.total_lembur_previous, 'cost')}
                                     </td>
                                     <td className="text-right">{formatNumber(row.total_pph21_current)}</td>
                                     <td className="text-right border-right-section">{formatNumber(row.total_spsi_current)}</td>
@@ -682,20 +705,15 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
                                     {/* Current Month */}
                                     <td className="text-right font-semibold">
-                                        {formatNumber(currGaji)}
-                                        {renderTrendArrow(currGaji, prevGaji, 'cost')}
+                                        {renderTrendValue(currGaji, currGaji, prevGaji, 'cost')}
                                     </td>
                                     <td className={`text-right border-right-section font-semibold ${(row.current_month?.tbs_weight || 0) > 0 ? 'tonase-highlight' : ''}`}>
-                                        {formatNumber(row.current_month?.tbs_weight, 3)}
-                                        {renderTrendArrow(row.current_month?.tbs_weight, row.previous_month?.tbs_weight, 'yield')}
+                                        {renderTrendValue(row.current_month?.tbs_weight, row.current_month?.tbs_weight, row.previous_month?.tbs_weight, 'yield', 3)}
                                     </td>
 
                                     {/* SELISIH - calculated gaji difference */}
                                     <td className={`text-right font-semibold ${calculatedSelisih > 0 ? 'text-diff-neg' : calculatedSelisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
-                                        <span style={{ marginRight: '4px' }}>
-                                            {calculatedSelisih > 0 ? '▲' : calculatedSelisih < 0 ? '▼' : ''}
-                                        </span>
-                                        {formatNumber(calculatedSelisih)}
+                                        {renderTrendValue(calculatedSelisih, calculatedSelisih, 0, 'cost')}
                                     </td>
                                 </tr>
                             );
@@ -706,43 +724,130 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             <td className="text-left sticky-col">SUB TOTAL</td>
                             <td className="text-right">{formatNumber(grandTotal.workers_previous)}</td>
                             <td className="text-right">
-                                {formatNumber(grandTotal.workers_current)}
-                                {renderTrendArrow(grandTotal.workers_current, grandTotal.workers_previous, 'cost')}
+                                {renderTrendValue(grandTotal.workers_current, grandTotal.workers_current, grandTotal.workers_previous, 'cost')}
                             </td>
                             <td className="text-right no-print">{formatNumber(grandTotal.total_prunning_current)}</td>
                             <td className="text-right no-print">{formatNumber(grandTotal.total_brondol_current)}</td>
                             <td className="text-right no-print">{formatNumber(grandTotal.total_insentif_current)}</td>
                             <td className="text-right no-print">{formatNumber(grandTotal.total_kinerja_current)}</td>
                             <td className="text-right" style={{ fontWeight: 800 }}>
-                                {formatNumber(grandTotal.total_premi_current)}
-                                {renderTrendArrow(grandTotal.total_premi_current, grandTotal.total_premi_previous, 'cost')}
+                                {renderTrendValue(grandTotal.total_premi_current, grandTotal.total_premi_current, grandTotal.total_premi_previous, 'cost')}
                             </td>
                             <td className="text-right">
-                                {formatNumber(grandTotal.total_lembur_current)}
-                                {renderTrendArrow(grandTotal.total_lembur_current, grandTotal.total_lembur_previous, 'cost')}
+                                {renderTrendValue(grandTotal.total_lembur_current, grandTotal.total_lembur_current, grandTotal.total_lembur_previous, 'cost')}
                             </td>
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.total_spsi_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>
                             <td className={`text-right ${grandTotal.prev_tbs > 0 ? 'tonase-highlight' : ''}`}>{formatNumber(grandTotal.prev_tbs, 3)}</td>
                             <td className="text-right">
-                                {formatNumber(grandTotal.curr_gaji)}
-                                {renderTrendArrow(grandTotal.curr_gaji, grandTotal.prev_gaji, 'cost')}
+                                {renderTrendValue(grandTotal.curr_gaji, grandTotal.curr_gaji, grandTotal.prev_gaji, 'cost')}
                             </td>
                             <td className={`text-right ${grandTotal.curr_tbs > 0 ? 'tonase-highlight' : ''}`}>
-                                {formatNumber(grandTotal.curr_tbs, 3)}
-                                {renderTrendArrow(grandTotal.curr_tbs, grandTotal.prev_tbs, 'yield')}
+                                {renderTrendValue(grandTotal.curr_tbs, grandTotal.curr_tbs, grandTotal.prev_tbs, 'yield', 3)}
                             </td>
                             <td className={`text-right font-bold ${grandTotal.selisih > 0 ? 'text-diff-neg' : grandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
-                                <span style={{ marginRight: '4px' }}>
-                                    {grandTotal.selisih > 0 ? '▲' : grandTotal.selisih < 0 ? '▼' : ''}
-                                </span>
-                                {formatNumber(grandTotal.selisih)}
+                                {renderTrendValue(grandTotal.selisih, grandTotal.selisih, 0, 'cost')}
                             </td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
+
+            <div className="wsp-table-wrapper wages-comparison-print-wrapper print-only">
+                <table className="wsp-table wages-comparison-print-table">
+                    <colgroup>
+                        <col className="wages-print-col-division" />
+                        <col className="wages-print-col-workers" />
+                        <col className="wages-print-col-workers" />
+                        <col className="wages-print-col-premi" />
+                        <col className="wages-print-col-lembur" />
+                        <col className="wages-print-col-pph" />
+                        <col className="wages-print-col-spsi" />
+                        <col className="wages-print-col-gaji" />
+                        <col className="wages-print-col-gaji" />
+                        <col className="wages-print-col-selisih" />
+                        <col className="wages-print-col-tbs" />
+                        <col className="wages-print-col-tbs" />
+                    </colgroup>
+                    <thead>
+                        <tr className="wsp-header-master">
+                            <th rowSpan="2">ESTATE / DIVISI</th>
+                            <th colSpan="2">MANPOWER</th>
+                            <th colSpan="2">PENDAPATAN {currMonthName.substring(0, 3)}</th>
+                            <th colSpan="2">POTONGAN</th>
+                            <th colSpan="3">UPAH BERSIH</th>
+                            <th colSpan="2">TBS (TON)</th>
+                        </tr>
+                        <tr className="wsp-header-sub">
+                            <th>{prevMonthName.substring(0, 3)}</th>
+                            <th>{currMonthName.substring(0, 3)}</th>
+                            <th>PREMI</th>
+                            <th>LEMBUR</th>
+                            <th>PPH21</th>
+                            <th>SPSI</th>
+                            <th>{prevMonthName.substring(0, 3)}</th>
+                            <th>{currMonthName.substring(0, 3)}</th>
+                            <th>PERUBAHAN</th>
+                            <th>{prevMonthName.substring(0, 3)}</th>
+                            <th>{currMonthName.substring(0, 3)}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {divisions.map((row, idx) => {
+                            const currGaji = row.current_month?.gaji || 0;
+                            const prevGaji = row.previous_month?.gaji || 0;
+                            const calculatedSelisih = currGaji - prevGaji;
+                            return (
+                                <tr key={`print-comparison-${row.division_code || idx}`}>
+                                    <td className="division-name">
+                                        {row.description && row.description !== row.division_code ? (
+                                            <>
+                                                <div className="div-desc">{row.description}</div>
+                                                <div className="div-code">{row.division_code}</div>
+                                            </>
+                                        ) : (
+                                            <div className="div-desc">{row.division_code}</div>
+                                        )}
+                                    </td>
+                                    <td>{formatNumber(row.workers_previous)}</td>
+                                    <td>{renderTrendValue(row.workers_current, row.workers_current, row.workers_previous, 'cost')}</td>
+                                    <td>{renderTrendValue(row.total_premi_current, row.total_premi_current, row.total_premi_previous, 'cost')}</td>
+                                    <td>{renderTrendValue(row.total_lembur_current, row.total_lembur_current, row.total_lembur_previous, 'cost')}</td>
+                                    <td>{formatNumber(row.total_pph21_current)}</td>
+                                    <td>{formatNumber(row.total_spsi_current)}</td>
+                                    <td>{formatNumber(prevGaji)}</td>
+                                    <td>{renderTrendValue(currGaji, currGaji, prevGaji, 'cost')}</td>
+                                    <td className={calculatedSelisih > 0 ? 'text-diff-neg' : calculatedSelisih < 0 ? 'text-diff-pos' : 'text-neutral'}>
+                                        {renderTrendValue(calculatedSelisih, calculatedSelisih, 0, 'cost')}
+                                    </td>
+                                    <td>{formatNumber(row.previous_month?.tbs_weight, 2)}</td>
+                                    <td>{renderTrendValue(row.current_month?.tbs_weight, row.current_month?.tbs_weight, row.previous_month?.tbs_weight, 'yield', 2)}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                    <tfoot>
+                        <tr className="wsp-grand-total">
+                            <td>GRAND TOTAL</td>
+                            <td>{formatNumber(grandTotal.workers_previous)}</td>
+                            <td>{renderTrendValue(grandTotal.workers_current, grandTotal.workers_current, grandTotal.workers_previous, 'cost')}</td>
+                            <td>{renderTrendValue(grandTotal.total_premi_current, grandTotal.total_premi_current, grandTotal.total_premi_previous, 'cost')}</td>
+                            <td>{renderTrendValue(grandTotal.total_lembur_current, grandTotal.total_lembur_current, grandTotal.total_lembur_previous, 'cost')}</td>
+                            <td>{formatNumber(grandTotal.total_pph21_current)}</td>
+                            <td>{formatNumber(grandTotal.total_spsi_current)}</td>
+                            <td>{formatNumber(grandTotal.prev_gaji)}</td>
+                            <td>{renderTrendValue(grandTotal.curr_gaji, grandTotal.curr_gaji, grandTotal.prev_gaji, 'cost')}</td>
+                            <td className={grandTotal.selisih > 0 ? 'text-diff-neg' : grandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}>
+                                {renderTrendValue(grandTotal.selisih, grandTotal.selisih, 0, 'cost')}
+                            </td>
+                            <td>{formatNumber(grandTotal.prev_tbs, 2)}</td>
+                            <td>{renderTrendValue(grandTotal.curr_tbs, grandTotal.curr_tbs, grandTotal.prev_tbs, 'yield', 2)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            </>
         );
     };
 
@@ -818,11 +923,15 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                 {group.divisions.map((div, idx) => (
                     <tr key={`${groupKey}-${idx}`}>
                         <td className="text-left division-name sticky-col">
-                            <div className="div-code">{div.division_code}</div>
-                            {div.description && div.description !== div.division_code && (
-                                <div className="div-desc" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>
-                                    {div.description}
-                                </div>
+                            {div.description && div.description !== div.division_code ? (
+                                <>
+                                    <div className="div-desc">
+                                        {div.description}
+                                    </div>
+                                    <div className="div-code">{div.division_code}</div>
+                                </>
+                            ) : (
+                                <div className="div-desc">{div.division_code}</div>
                             )}
                         </td>
                         <td className={`text-right ${Number(div.total_employees) === 0 ? 'val-zero' : ''}`}>
@@ -832,27 +941,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             {formatNumber(div.total_hk)}
                         </td>
                         <td className={`text-right ${Number(div.total_pph21) === 0 ? 'val-zero' : ''}`}>
-                            {editMode ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <input
-                                        type="number"
-                                        className="wsp-input-edit"
-                                        value={editingPPH21[div.division_code] !== undefined ? editingPPH21[div.division_code] : (div.original_pph21 ?? div.total_pph21)}
-                                        onChange={(e) => handlePPH21Change(div.division_code, e.target.value)}
-                                        style={{ width: '100%', textAlign: 'right', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '4px', backgroundColor: '#ffffff', color: '#0f172a' }}
-                                    />
-                                    <button
-                                        onClick={() => handleSavePPH21(div.division_code, editingPPH21[div.division_code])}
-                                        className="wsp-btn-sm"
-                                        style={{ fontSize: '0.65rem', padding: '2px 6px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                        disabled={editingPPH21[div.division_code] === undefined}
-                                    >
-                                        Save
-                                    </button>
-                                </div>
-                            ) : (
-                                formatNumber(div.total_pph21)
-                            )}
+                            {formatNumber(div.total_pph21)}
                         </td>
                         <td className={`text-right border-right-section ${Number(div.total_spsi) === 0 ? 'val-zero' : ''}`}>
                             {editMode ? (
@@ -1074,6 +1163,15 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                         {thrMode ? 'Back to Summary' : 'THR Mode'}
                     </button>
                     <button
+                        onClick={handleComparisonModeToggle}
+                        className={`wsp-btn ${comparisonMode ? 'wsp-btn-primary' : ''}`}
+                        title="Toggle Wages Comparison Mode"
+                        style={{ marginLeft: '0.5rem', backgroundColor: comparisonMode ? '#10b981' : '' }}
+                        disabled={loading || thrMode || impactReportMode}
+                    >
+                        {comparisonMode ? 'Back to Wages Summary' : 'Wages Comparison'}
+                    </button>
+                    <button
                         onClick={() => setImpactReportMode(!impactReportMode)}
                         className={`wsp-btn ${impactReportMode ? 'wsp-btn-primary' : ''}`}
                         title="Toggle Impact Report Mode"
@@ -1137,7 +1235,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                         </div>
                     ) : (
                         /* Paper Document */
-                        <div className={`wsp-document ${thrMode ? 'thr-print-document' : ''}`} id="wsp-report-content">
+                        <div className={`wsp-document ${thrMode ? 'thr-print-document' : 'wages-rebinmas-print-document'}`} id="wsp-report-content">
                             <ReportWatermark />
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
@@ -1295,17 +1393,29 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                 </div>
                             ) : comparisonMode ? renderComparisonTable() : (
                                 <div className="wsp-table-wrapper">
-                                    <table className="wsp-table">
+                                    <table className="wsp-table wages-rebinmas-summary-table">
+                                        <colgroup>
+                                            <col className="wages-col-division" />
+                                            <col className="wages-col-workers" />
+                                            <col className="wages-col-hk" />
+                                            <col className="wages-col-pph" />
+                                            <col className="wages-col-spsi" />
+                                            <col className="wages-col-premi" />
+                                            <col className="wages-col-lembur" />
+                                            <col className="wages-col-netpay" />
+                                            <col className="wages-col-thumbprint" />
+                                            <col className="wages-col-diff" />
+                                        </colgroup>
                                         <thead>
                                             {/* SCREEN VERSION of Summary Headers */}
-                                            <tr className="wsp-header-master no-print">
+                                            <tr className="wsp-header-master no-print report-screen-header">
                                                 <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                                                 <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                                                 <th colSpan="2" className="th-group-deductions">DEDUCTIONS / POTONGAN</th>
                                                 <th colSpan="3" className="th-group-income">INCOME / PENDAPATAN</th>
                                                 <th colSpan="2" className="th-group-compare">PERBANDINGAN</th>
                                             </tr>
-                                            <tr className="wsp-header-sub no-print">
+                                            <tr className="wsp-header-sub no-print report-screen-header">
                                                 <th className="th-group-manpower">WORKERS</th>
                                                 <th className="th-group-manpower border-right-section">HK</th>
                                                 <th className="th-group-deductions">PPH 21</th>
@@ -1318,14 +1428,14 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                             </tr>
 
                                             {/* PRINT VERSION of Summary Headers */}
-                                            <tr className="wsp-header-master print-only">
+                                            <tr className="wsp-header-master print-only report-print-header">
                                                 <th rowSpan="2" className="th-sticky-col th-gang-name" style={{ width: '25%' }}>ESTATE / DIVISI</th>
                                                 <th colSpan="2" className="th-group-manpower">MANPOWER</th>
                                                 <th colSpan="2" className="th-group-deductions">DEDUCTIONS / POTONGAN</th>
                                                 <th colSpan="3" className="th-group-income">INCOME / PENDAPATAN</th>
                                                 <th colSpan="2" className="th-group-compare">PERBANDINGAN</th>
                                             </tr>
-                                            <tr className="wsp-header-sub print-only">
+                                            <tr className="wsp-header-sub print-only report-print-header">
                                                 <th className="th-group-manpower">WORKERS</th>
                                                 <th className="th-group-manpower border-right-section">HK</th>
                                                 <th className="th-group-deductions">PPH 21</th>

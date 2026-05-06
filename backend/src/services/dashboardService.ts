@@ -3,11 +3,36 @@ import { dataExtractorService } from "./dataExtractorService";
 import { Config } from "../config";
 import { gangService } from "./gangService";
 
+type TonaseReportPeriod = {
+    month: number;
+    year: number;
+    key: string;
+    label: string;
+};
+
+type TonaseAggregationRow = {
+    period_month: number;
+    period_year: number;
+    gang_code: string;
+    division_code?: string;
+    gang_description?: string;
+    total_upah_bersih?: number;
+    total_hk?: number;
+    total_premi?: number;
+    total_premi_brondol?: number;
+    total_premi_prunning?: number;
+    total_premi_insentif?: number;
+    total_premi_kinerja?: number;
+    total_ffb_weight?: number;
+    total_weight_tbs?: number;
+    total_employees?: number;
+};
+
 /**
  * Dashboard service for payroll analytics and KPI aggregation.
  *
  * Data is sourced from the daftar_upah_aggregation_history table (extend_db_ptrj).
- * The table does NOT have a version_index column; queries use the table directly.
+ * Aggregated reads must select the latest row per period/gang before summing.
  */
 
 export class DashboardService {
@@ -16,6 +41,20 @@ export class DashboardService {
 
     private constructor() {
         this.extendDb = Database.getInstance("extend_db_ptrj", Config.DB_EXTEND_PROFILE);
+    }
+
+    private latestAggregationRowsCte(): string {
+        return `
+            WITH latest_rows AS (
+                SELECT
+                    h.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY h.period_month, h.period_year, h.gang_code
+                        ORDER BY COALESCE(h.updated_at, h.created_at) DESC, h.id DESC
+                    ) as row_rank
+                FROM dbo.daftar_upah_aggregation_history h
+            )
+        `;
     }
 
     public static getInstance(): DashboardService {
@@ -40,6 +79,7 @@ export class DashboardService {
 
         // Query for 12-month trend
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.period_year,
                 h.period_month,
@@ -48,8 +88,10 @@ export class DashboardService {
                 SUM(ISNULL(h.total_premi, 0)) as total_premi,
                 SUM(ISNULL(h.total_employees, 0)) as total_headcount,
                 SUM(ISNULL(h.total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history h
+            FROM latest_rows h
             WHERE
+                h.row_rank = 1
+                AND
                 (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
                 AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
             GROUP BY h.period_year, h.period_month
@@ -88,14 +130,15 @@ export class DashboardService {
      */
     public async getDivisionBreakdown(month: number, year: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.division_code,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(h.total_premi, 0)) as total_premi,
                 SUM(ISNULL(h.total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             GROUP BY h.division_code
             ORDER BY total_wage DESC
         `;
@@ -108,13 +151,14 @@ export class DashboardService {
      */
     public async getGangBreakdown(month: number, year: number, limit: number = 15): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT TOP ${limit}
                 h.gang_code,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(h.total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             GROUP BY h.gang_code
             ORDER BY total_wage DESC
         `;
@@ -126,13 +170,14 @@ export class DashboardService {
      */
     public async getDivisionEfficiency(month: number, year: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.division_code,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_cost,
                 SUM(ISNULL(h.total_employees, 0)) as headcount,
                 SUM(ISNULL(h.total_hk, 0)) as total_man_days
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             GROUP BY h.division_code
             HAVING SUM(ISNULL(h.total_employees, 0)) > 0
             ORDER BY total_cost DESC
@@ -146,13 +191,16 @@ export class DashboardService {
     public async getProductivityTrend(endMonth: number, endYear: number): Promise<any[]> {
         const { startMonth, startYear } = this.getStartPeriod(endMonth, endYear);
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.period_month,
                 h.period_year,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history h
+            FROM latest_rows h
             WHERE
+                h.row_rank = 1
+                AND
                 (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
                 AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
             GROUP BY h.period_year, h.period_month
@@ -174,12 +222,13 @@ export class DashboardService {
      */
     public async getWageSpikes(month: number, year: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.gang_code,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_hk, 0)) as total_hk
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             GROUP BY h.gang_code
         `;
 
@@ -250,6 +299,43 @@ export class DashboardService {
         }
 
         return { startMonth, startYear };
+    }
+
+    private getPeriodKey(month: number, year: number): string {
+        return `${year}-${month.toString().padStart(2, "0")}`;
+    }
+
+    private getPeriodWindow(endMonth: number, endYear: number, count: number): TonaseReportPeriod[] {
+        const periods: TonaseReportPeriod[] = [];
+
+        for (let offset = count - 1; offset >= 0; offset -= 1) {
+            const date = new Date(endYear, endMonth - 1 - offset, 1);
+            const month = date.getMonth() + 1;
+            const year = date.getFullYear();
+            periods.push({
+                month,
+                year,
+                key: this.getPeriodKey(month, year),
+                label: `${this.getMonthName(month)} ${year}`
+            });
+        }
+
+        return periods;
+    }
+
+    private toReportNumber(value: unknown): number {
+        const numberValue = Number(value);
+        return Number.isFinite(numberValue) ? numberValue : 0;
+    }
+
+    private roundReportNumber(value: number, decimals: number = 0): number {
+        const factor = Math.pow(10, decimals);
+        return Math.round((value + Number.EPSILON) * factor) / factor;
+    }
+
+    private safeReportRatio(numerator: number, denominator: number, decimals: number = 0): number | null {
+        if (!denominator || denominator <= 0) return null;
+        return this.roundReportNumber(numerator / denominator, decimals);
     }
 
     /**
@@ -327,6 +413,7 @@ export class DashboardService {
 
             // Query for gang-level data (gang_description already stored in aggregation table)
             const query = `
+                ${this.latestAggregationRowsCte()}
                 SELECT
                     agg.gang_code,
                     agg.division_code,
@@ -334,8 +421,8 @@ export class DashboardService {
                     SUM(ISNULL(agg.total_upah_bersih, 0)) as total_cost,
                     SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                     SUM(ISNULL(agg.total_employees, 0)) as headcount
-                FROM dbo.daftar_upah_aggregation_history agg
-                WHERE ${whereClause}
+                FROM latest_rows agg
+                WHERE agg.row_rank = 1 AND ${whereClause}
                 GROUP BY agg.gang_code, agg.division_code, agg.gang_description
                 ORDER BY agg.division_code, agg.gang_code
             `;
@@ -418,12 +505,14 @@ export class DashboardService {
     public async getAvailableGangs(month: number, year: number): Promise<any[]> {
         try {
             const query = `
+                ${this.latestAggregationRowsCte()}
                 SELECT DISTINCT
                     agg.gang_code,
                     agg.division_code,
                     agg.gang_description
-                FROM dbo.daftar_upah_aggregation_history agg
-                WHERE agg.period_month = ? AND agg.period_year = ?
+                FROM latest_rows agg
+                WHERE agg.row_rank = 1
+                AND agg.period_month = ? AND agg.period_year = ?
                 AND agg.gang_code IS NOT NULL
                 AND agg.gang_code != ''
                 ORDER BY agg.gang_code
@@ -478,16 +567,18 @@ export class DashboardService {
      */
     public async getFilterOptions(month: number, year: number): Promise<{ divisions: string[], gangs: string[] }> {
         const divQuery = `
+            ${this.latestAggregationRowsCte()}
             SELECT DISTINCT h.division_code
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             ORDER BY h.division_code
         `;
 
         const gangQuery = `
+            ${this.latestAggregationRowsCte()}
             SELECT DISTINCT h.gang_code
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             ORDER BY h.gang_code
         `;
 
@@ -514,14 +605,16 @@ export class DashboardService {
         const placeholders = codes.map(() => '?').join(',');
 
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.${column} as name,
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(h.total_hk, 0)) as total_hk,
                 SUM(ISNULL(h.total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1
+              AND h.period_month = ?
               AND h.period_year = ?
               AND h.${column} IN (${placeholders})
             GROUP BY h.${column}
@@ -546,6 +639,7 @@ export class DashboardService {
      */
     public async getAggregatedGangData(divisionCode: string, month: number, year: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 agg.gang_code,
                 agg.gang_description,
@@ -554,8 +648,8 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_hk, 0)) as total_hk,
                 SUM(ISNULL(agg.total_employees, 0)) as headcount
-            FROM dbo.daftar_upah_aggregation_history agg
-            WHERE agg.period_month = ? AND agg.period_year = ?
+            FROM latest_rows agg
+            WHERE agg.row_rank = 1 AND agg.period_month = ? AND agg.period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? `AND agg.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY agg.gang_code, agg.gang_description
             ORDER BY agg.gang_code
@@ -583,6 +677,7 @@ export class DashboardService {
      */
     public async getPremiAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 SUM(ISNULL(h.total_premi_brondol, 0)) as brondol,
                 SUM(ISNULL(h.total_premi_prunning, 0)) as pruning,
@@ -590,8 +685,8 @@ export class DashboardService {
                 SUM(ISNULL(h.total_premi_kinerja, 0)) as kinerja,
                 SUM(ISNULL(h.total_premi, 0)) as total,
                 h.dynamic_premi_data
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? `AND h.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY h.dynamic_premi_data
         `;
@@ -679,6 +774,7 @@ export class DashboardService {
      */
     public async getPremiByDivision(month: number, year: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.division_code,
                 SUM(ISNULL(h.total_premi_brondol, 0)) as brondol,
@@ -686,8 +782,8 @@ export class DashboardService {
                 SUM(ISNULL(h.total_premi_insentif, 0)) as insentif,
                 SUM(ISNULL(h.total_premi_kinerja, 0)) as kinerja,
                 SUM(ISNULL(h.total_premi, 0)) as total
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             GROUP BY h.division_code
             ORDER BY total DESC
         `;
@@ -709,11 +805,12 @@ export class DashboardService {
      */
     public async getOvertimeAnalysis(month: number, year: number, divisionCode?: string): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 h.division_code,
                 SUM(ISNULL(h.total_lembur, 0)) as total_lembur
-            FROM dbo.daftar_upah_aggregation_history h
-            WHERE h.period_month = ? AND h.period_year = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
             ${divisionCode && divisionCode !== 'ALL' ? `AND h.division_code IN (${gangService.getAllDivisionAliases(divisionCode).map(() => '?').join(',')})` : ''}
             GROUP BY h.division_code
             ORDER BY total_lembur DESC
@@ -836,6 +933,7 @@ export class DashboardService {
     ) {
         // 1. Fetch Aggregation Data (Cost & Headcount)
         let sql = `
+            ${this.latestAggregationRowsCte()}
             SELECT
                 agg.gang_code,
                 agg.gang_description,
@@ -845,8 +943,8 @@ export class DashboardService {
                 SUM(ISNULL(agg.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(agg.total_premi, 0)) as total_premi,
                 SUM(ISNULL(agg.total_ffb_weight, 0)) as total_production_db
-            FROM dbo.daftar_upah_aggregation_history agg
-            WHERE agg.period_month = ? AND agg.period_year = ?
+            FROM latest_rows agg
+            WHERE agg.row_rank = 1 AND agg.period_month = ? AND agg.period_year = ?
         `;
 
         const params: any[] = [month, year];
@@ -1019,6 +1117,516 @@ export class DashboardService {
     /**
      * Get Top and Bottom Performing Gangs
      */
+    public async getTonaseAnalysisReport(
+        month: number,
+        year: number,
+        divisionCode?: string
+    ): Promise<any> {
+        const periods = this.getPeriodWindow(month, year, 5);
+        const startPeriod = periods[0];
+        const endPeriod = periods[periods.length - 1];
+
+        const normalizedScope = String(divisionCode || "REBINMAS").trim().toUpperCase();
+        const effectiveScope = normalizedScope === "NON_IJL" || normalizedScope === "NON-IJL"
+            ? "REBINMAS"
+            : normalizedScope;
+        const params: any[] = [
+            startPeriod.year,
+            startPeriod.year,
+            startPeriod.month,
+            endPeriod.year,
+            endPeriod.year,
+            endPeriod.month
+        ];
+
+        let divisionFilter = "";
+        if (effectiveScope !== "ALL") {
+            if (effectiveScope === "IJL") {
+                divisionFilter = "AND agg.division_code LIKE 'L%'";
+            } else if (effectiveScope === "REBINMAS") {
+                divisionFilter = "AND agg.division_code NOT LIKE 'L%'";
+            } else {
+                const aliases = gangService.getAllDivisionAliases(effectiveScope);
+                divisionFilter = `AND agg.division_code IN (${aliases.map(() => "?").join(",")})`;
+                params.push(...aliases);
+            }
+        }
+
+        const query = `
+            ${this.latestAggregationRowsCte()}
+            SELECT
+                agg.period_month,
+                agg.period_year,
+                agg.gang_code,
+                agg.division_code,
+                agg.gang_description,
+                SUM(ISNULL(agg.total_upah_bersih, 0)) as total_upah_bersih,
+                SUM(ISNULL(agg.total_hk, 0)) as total_hk,
+                SUM(ISNULL(agg.total_premi, 0)) as total_premi,
+                SUM(ISNULL(agg.total_premi_brondol, 0)) as total_premi_brondol,
+                SUM(ISNULL(agg.total_premi_prunning, 0)) as total_premi_prunning,
+                SUM(ISNULL(agg.total_premi_insentif, 0)) as total_premi_insentif,
+                SUM(ISNULL(agg.total_premi_kinerja, 0)) as total_premi_kinerja,
+                SUM(ISNULL(agg.total_ffb_weight, 0)) as total_ffb_weight,
+                SUM(ISNULL(agg.total_weight_tbs, 0)) as total_weight_tbs,
+                SUM(ISNULL(agg.total_employees, 0)) as total_employees
+            FROM latest_rows agg
+            WHERE
+                agg.row_rank = 1
+                AND (agg.period_year > ? OR (agg.period_year = ? AND agg.period_month >= ?))
+                AND (agg.period_year < ? OR (agg.period_year = ? AND agg.period_month <= ?))
+                ${divisionFilter}
+            GROUP BY
+                agg.period_month,
+                agg.period_year,
+                agg.gang_code,
+                agg.division_code,
+                agg.gang_description
+            ORDER BY agg.period_year, agg.period_month, agg.gang_code
+        `;
+
+        const rows = await this.extendDb.query<TonaseAggregationRow>(query, params);
+        const productionByPeriod = new Map<string, Map<string, number>>();
+
+        await Promise.all(periods.map(async (period) => {
+            productionByPeriod.set(period.key, await this.getGangProduction(period.month, period.year));
+        }));
+
+        const periodTotals = new Map<string, any>();
+        periods.forEach(period => {
+            periodTotals.set(period.key, {
+                period_key: period.key,
+                month: period.month,
+                year: period.year,
+                label: period.label,
+                total_tonase: 0,
+                total_ffb_weight: 0,
+                total_hk: 0,
+                total_upah_bersih: 0,
+                total_premi: 0,
+                total_employees: 0,
+                gang_count: 0,
+                missing_tonase_count: 0
+            });
+        });
+
+        const tonaseByPeriodDivision = new Map<string, Map<string, number[]>>();
+        const selectedPeriodKey = this.getPeriodKey(month, year);
+        const currentDivisionTotals = new Map<string, any>();
+        const getCurrentDivisionTotal = (divisionCode: string) => {
+            const normalizedDivisionCode = String(divisionCode || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+            if (!currentDivisionTotals.has(normalizedDivisionCode)) {
+                currentDivisionTotals.set(normalizedDivisionCode, {
+                    division_code: normalizedDivisionCode,
+                    total_tonase: 0,
+                    total_hk: 0,
+                    total_upah_bersih: 0,
+                    total_premi: 0,
+                    total_employees: 0,
+                    gang_count: 0
+                });
+            }
+            return currentDivisionTotals.get(normalizedDivisionCode)!;
+        };
+        const summarizeTonaseValues = (values: number[]) => {
+            const positiveValues = values.filter(value => value > 0);
+            if (positiveValues.length === 0) return 0;
+
+            const uniqueValues = [...new Set(positiveValues.map(value => this.roundReportNumber(value, 4)))];
+            return uniqueValues.length === 1
+                ? uniqueValues[0]
+                : positiveValues.reduce((sum, value) => sum + value, 0);
+        };
+        const currentRows: Array<TonaseAggregationRow & { effective_ffb_weight: number }> = [];
+        const divisionPeriodTotals = new Map<string, Map<string, any>>();
+        const getDivisionPeriodTotal = (periodKey: string, divisionCode: string) => {
+            const normalizedDivisionCode = String(divisionCode || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+            if (!divisionPeriodTotals.has(periodKey)) {
+                divisionPeriodTotals.set(periodKey, new Map());
+            }
+            const periodMap = divisionPeriodTotals.get(periodKey)!;
+            if (!periodMap.has(normalizedDivisionCode)) {
+                periodMap.set(normalizedDivisionCode, {
+                    period_key: periodKey,
+                    division_code: normalizedDivisionCode,
+                    total_tonase: 0,
+                    total_hk: 0,
+                    total_upah_bersih: 0,
+                    total_premi: 0,
+                    total_employees: 0,
+                    gang_count: 0
+                });
+            }
+            return periodMap.get(normalizedDivisionCode)!;
+        };
+        const currentDetailRows: Array<TonaseAggregationRow & {
+            effective_ffb_weight: number;
+            normalized_gang_code: string;
+            normalized_division_code: string;
+            gang_type: string;
+        }> = [];
+
+        for (const rawRow of rows) {
+            const gangCode = String(rawRow.gang_code || "").trim();
+            const periodKey = this.getPeriodKey(Number(rawRow.period_month), Number(rawRow.period_year));
+            const periodTotal = periodTotals.get(periodKey);
+            if (!periodTotal) continue;
+
+            const productionFallback = productionByPeriod.get(periodKey)?.get(gangCode) || 0;
+            const dbTonase = this.toReportNumber(rawRow.total_ffb_weight) || this.toReportNumber(rawRow.total_weight_tbs);
+            const effectiveTonase = dbTonase > 0 ? dbTonase : productionFallback / 1000;
+            const divisionKey = String(rawRow.division_code || gangCode || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+            const isCurrentPeriod = Number(rawRow.period_month) === month && Number(rawRow.period_year) === year;
+            const gangType = this.classifyGangType(gangCode);
+            if (isCurrentPeriod) {
+                currentDetailRows.push({
+                    ...rawRow,
+                    effective_ffb_weight: effectiveTonase,
+                    normalized_gang_code: gangCode,
+                    normalized_division_code: divisionKey,
+                    gang_type: gangType
+                });
+            }
+
+            if (effectiveTonase > 0) {
+                if (!tonaseByPeriodDivision.has(periodKey)) {
+                    tonaseByPeriodDivision.set(periodKey, new Map());
+                }
+                const divisionMap = tonaseByPeriodDivision.get(periodKey)!;
+                const values = divisionMap.get(divisionKey) || [];
+                values.push(effectiveTonase);
+                divisionMap.set(divisionKey, values);
+            }
+
+            if (gangType !== "harvesting") continue;
+
+            const totalHk = this.toReportNumber(rawRow.total_hk);
+            const totalUpahBersih = this.toReportNumber(rawRow.total_upah_bersih);
+            const totalPremi = this.toReportNumber(rawRow.total_premi);
+
+            periodTotal.total_hk += totalHk;
+            periodTotal.total_upah_bersih += totalUpahBersih;
+            periodTotal.total_premi += totalPremi;
+            periodTotal.total_employees += this.toReportNumber(rawRow.total_employees);
+            periodTotal.gang_count += 1;
+            const divisionPeriodTotal = getDivisionPeriodTotal(periodKey, divisionKey);
+            divisionPeriodTotal.total_hk += totalHk;
+            divisionPeriodTotal.total_upah_bersih += totalUpahBersih;
+            divisionPeriodTotal.total_premi += totalPremi;
+            divisionPeriodTotal.total_employees += this.toReportNumber(rawRow.total_employees);
+            divisionPeriodTotal.gang_count += 1;
+            if (effectiveTonase <= 0 && (totalHk > 0 || totalUpahBersih > 0 || totalPremi > 0)) {
+                periodTotal.missing_tonase_count += 1;
+            }
+
+            if (isCurrentPeriod) {
+                currentRows.push({
+                    ...rawRow,
+                    gang_code: gangCode,
+                    effective_ffb_weight: effectiveTonase
+                });
+                const divisionTotal = getCurrentDivisionTotal(divisionKey);
+                divisionTotal.total_hk += totalHk;
+                divisionTotal.total_upah_bersih += totalUpahBersih;
+                divisionTotal.total_premi += totalPremi;
+                divisionTotal.total_employees += this.toReportNumber(rawRow.total_employees);
+                divisionTotal.gang_count += 1;
+            }
+        }
+
+        for (const period of periods) {
+            const periodTotal = periodTotals.get(period.key);
+            const divisionMap = tonaseByPeriodDivision.get(period.key);
+            if (!periodTotal || !divisionMap) continue;
+
+            let totalTonase = 0;
+            for (const [divisionCode, values] of divisionMap.entries()) {
+                const divisionTonase = summarizeTonaseValues(values);
+                totalTonase += divisionTonase;
+                getDivisionPeriodTotal(period.key, divisionCode).total_tonase = divisionTonase;
+                if (period.key === selectedPeriodKey) {
+                    getCurrentDivisionTotal(divisionCode).total_tonase = divisionTonase;
+                }
+            }
+
+            periodTotal.total_tonase = totalTonase;
+            periodTotal.total_ffb_weight = totalTonase;
+        }
+
+        const trend = periods.map(period => {
+            const total = periodTotals.get(period.key);
+            const totalTonase = this.roundReportNumber(total.total_tonase, 2);
+            return {
+                ...total,
+                total_tonase: totalTonase,
+                total_ffb_weight: this.roundReportNumber(total.total_ffb_weight, 2),
+                total_hk: this.roundReportNumber(total.total_hk, 2),
+                total_upah_bersih: this.roundReportNumber(total.total_upah_bersih),
+                total_premi: this.roundReportNumber(total.total_premi),
+                total_employees: this.roundReportNumber(total.total_employees),
+                upah_bersih_per_hk: this.safeReportRatio(total.total_upah_bersih, total.total_hk),
+                premi_per_hk: this.safeReportRatio(total.total_premi, total.total_hk),
+                upah_bersih_per_ton: this.safeReportRatio(total.total_upah_bersih, totalTonase),
+                premi_per_ton: this.safeReportRatio(total.total_premi, totalTonase),
+                premi_share: this.safeReportRatio(total.total_premi * 100, total.total_upah_bersih, 2)
+            };
+        });
+
+        const current = trend[trend.length - 1];
+        const divisionBreakdown = [...currentDivisionTotals.values()]
+            .map(row => {
+                const totalTonase = this.roundReportNumber(row.total_tonase, 2);
+                const hasHarvestMetrics = row.gang_count > 0
+                    || row.total_hk > 0
+                    || row.total_upah_bersih > 0
+                    || row.total_premi > 0;
+                return {
+                    division_code: row.division_code,
+                    total_tonase: totalTonase,
+                    total_hk: this.roundReportNumber(row.total_hk, 2),
+                    total_upah_bersih: this.roundReportNumber(row.total_upah_bersih),
+                    total_premi: this.roundReportNumber(row.total_premi),
+                    total_employees: this.roundReportNumber(row.total_employees),
+                    gang_count: row.gang_count,
+                    upah_bersih_per_hk: hasHarvestMetrics
+                        ? this.safeReportRatio(row.total_upah_bersih, row.total_hk)
+                        : null,
+                    premi_per_hk: hasHarvestMetrics
+                        ? this.safeReportRatio(row.total_premi, row.total_hk)
+                        : null,
+                    upah_bersih_per_ton: hasHarvestMetrics
+                        ? this.safeReportRatio(row.total_upah_bersih, totalTonase)
+                        : null,
+                    premi_per_ton: hasHarvestMetrics
+                        ? this.safeReportRatio(row.total_premi, totalTonase)
+                        : null,
+                    tonase_share: this.safeReportRatio(totalTonase * 100, current.total_tonase, 2),
+                    premi_share: hasHarvestMetrics
+                        ? this.safeReportRatio(row.total_premi * 100, current.total_premi, 2)
+                        : null
+                };
+            })
+            .filter(row => row.total_tonase > 0 || row.total_hk > 0 || row.total_upah_bersih > 0 || row.total_premi > 0)
+            .sort((a, b) => b.total_tonase - a.total_tonase || a.division_code.localeCompare(b.division_code));
+        const divisionSummaryByCode = new Map(divisionBreakdown.map(row => [row.division_code, row]));
+        const divisionCodes = [...new Set([
+            ...divisionBreakdown.map(row => row.division_code),
+            ...currentDetailRows.map(row => row.normalized_division_code)
+        ])];
+        const divisionDetails = divisionCodes
+            .map(divisionCode => {
+                const rowsInDivision = currentDetailRows.filter(row => row.normalized_division_code === divisionCode);
+                const summary = divisionSummaryByCode.get(divisionCode) || {
+                    division_code: divisionCode,
+                    total_tonase: 0,
+                    total_hk: 0,
+                    total_upah_bersih: 0,
+                    total_premi: 0,
+                    total_employees: 0,
+                    gang_count: 0,
+                    upah_bersih_per_hk: null,
+                    premi_per_hk: null,
+                    upah_bersih_per_ton: null,
+                    premi_per_ton: null,
+                    tonase_share: null,
+                    premi_share: null
+                };
+                const gangRows = rowsInDivision
+                    .filter(row => row.gang_type === "harvesting")
+                    .map(row => {
+                        const totalHk = this.toReportNumber(row.total_hk);
+                        const totalUpahBersih = this.toReportNumber(row.total_upah_bersih);
+                        const totalPremi = this.toReportNumber(row.total_premi);
+                        const totalTonase = this.roundReportNumber(row.effective_ffb_weight, 2);
+                        return {
+                            gang_code: row.normalized_gang_code,
+                            gang_description: row.gang_description || row.normalized_gang_code,
+                            gang_type: row.gang_type,
+                            total_tonase: totalTonase,
+                            total_hk: this.roundReportNumber(totalHk, 2),
+                            total_upah_bersih: this.roundReportNumber(totalUpahBersih),
+                            total_premi: this.roundReportNumber(totalPremi),
+                            total_employees: this.roundReportNumber(this.toReportNumber(row.total_employees)),
+                            upah_bersih_per_hk: this.safeReportRatio(totalUpahBersih, totalHk),
+                            premi_per_hk: this.safeReportRatio(totalPremi, totalHk),
+                            upah_bersih_per_ton: this.safeReportRatio(totalUpahBersih, totalTonase),
+                            premi_per_ton: this.safeReportRatio(totalPremi, totalTonase)
+                        };
+                    })
+                    .sort((a, b) => b.total_hk - a.total_hk || a.gang_code.localeCompare(b.gang_code));
+                const tonaseRows = rowsInDivision
+                    .filter(row => row.effective_ffb_weight > 0)
+                    .map(row => ({
+                        gang_code: row.normalized_gang_code,
+                        gang_description: row.gang_description || row.normalized_gang_code,
+                        gang_type: row.gang_type,
+                        total_tonase: this.roundReportNumber(row.effective_ffb_weight, 2)
+                    }))
+                    .sort((a, b) => b.total_tonase - a.total_tonase || a.gang_code.localeCompare(b.gang_code));
+                const divisionTrend = periods.map(period => {
+                    const periodTotal = divisionPeriodTotals.get(period.key)?.get(divisionCode) || {
+                        total_tonase: 0,
+                        total_hk: 0,
+                        total_upah_bersih: 0,
+                        total_premi: 0,
+                        total_employees: 0,
+                        gang_count: 0
+                    };
+                    const totalTonase = this.roundReportNumber(periodTotal.total_tonase, 2);
+                    return {
+                        period_key: period.key,
+                        month: period.month,
+                        year: period.year,
+                        label: period.label,
+                        total_tonase: totalTonase,
+                        total_hk: this.roundReportNumber(periodTotal.total_hk, 2),
+                        total_upah_bersih: this.roundReportNumber(periodTotal.total_upah_bersih),
+                        total_premi: this.roundReportNumber(periodTotal.total_premi),
+                        total_employees: this.roundReportNumber(periodTotal.total_employees),
+                        gang_count: periodTotal.gang_count,
+                        upah_bersih_per_hk: this.safeReportRatio(periodTotal.total_upah_bersih, periodTotal.total_hk),
+                        premi_per_hk: this.safeReportRatio(periodTotal.total_premi, periodTotal.total_hk),
+                        upah_bersih_per_ton: this.safeReportRatio(periodTotal.total_upah_bersih, totalTonase),
+                        premi_per_ton: this.safeReportRatio(periodTotal.total_premi, totalTonase),
+                        premi_share: this.safeReportRatio(periodTotal.total_premi * 100, periodTotal.total_upah_bersih, 2)
+                    };
+                });
+
+                return {
+                    division_code: divisionCode,
+                    summary,
+                    trend: divisionTrend,
+                    gang_rows: gangRows,
+                    tonase_rows: tonaseRows
+                };
+            })
+            .filter(item => item.summary.total_tonase > 0 || item.gang_rows.length > 0 || item.tonase_rows.length > 0)
+            .sort((a, b) => b.summary.total_tonase - a.summary.total_tonase || a.division_code.localeCompare(b.division_code));
+
+        const knownPremiums = [
+            {
+                key: "brondol",
+                label: "Premi Brondol",
+                total_amount: currentRows.reduce((sum, row) => sum + this.toReportNumber(row.total_premi_brondol), 0)
+            },
+            {
+                key: "prunning",
+                label: "Premi Prunning",
+                total_amount: currentRows.reduce((sum, row) => sum + this.toReportNumber(row.total_premi_prunning), 0)
+            },
+            {
+                key: "insentif",
+                label: "Premi Insentif",
+                total_amount: currentRows.reduce((sum, row) => sum + this.toReportNumber(row.total_premi_insentif), 0)
+            },
+            {
+                key: "kinerja",
+                label: "Premi Kinerja",
+                total_amount: currentRows.reduce((sum, row) => sum + this.toReportNumber(row.total_premi_kinerja), 0)
+            }
+        ];
+        const knownPremiumTotal = knownPremiums.reduce((sum, item) => sum + item.total_amount, 0);
+        const otherPremium = Math.max(current.total_premi - knownPremiumTotal, 0);
+        const premiumBreakdownBase = knownPremiums
+            .filter(item => item.total_amount > 0)
+            .sort((a, b) => b.total_amount - a.total_amount);
+        if (otherPremium > 0) {
+            premiumBreakdownBase.push({
+                key: "lainnya",
+                label: "Premi Lainnya",
+                total_amount: otherPremium
+            });
+        }
+
+        const premiumBreakdown = premiumBreakdownBase.map(item => ({
+            ...item,
+            total_amount: this.roundReportNumber(item.total_amount),
+            per_hk: this.safeReportRatio(item.total_amount, current.total_hk),
+            per_ton: this.safeReportRatio(item.total_amount, current.total_tonase),
+            share: this.safeReportRatio(item.total_amount * 100, current.total_premi, 2)
+        }));
+
+        const highestTonasePeriod = [...trend].sort((a, b) => b.total_tonase - a.total_tonase)[0] || current;
+        let largestMovement = null;
+        for (let index = 1; index < trend.length; index += 1) {
+            const previous = trend[index - 1];
+            const item = trend[index];
+            const deltaTonase = this.roundReportNumber(item.total_tonase - previous.total_tonase, 2);
+            const movement = {
+                from_label: previous.label,
+                to_label: item.label,
+                delta_tonase: deltaTonase,
+                delta_percent: this.safeReportRatio(deltaTonase * 100, previous.total_tonase, 2)
+            };
+            if (!largestMovement || Math.abs(movement.delta_tonase) > Math.abs(largestMovement.delta_tonase)) {
+                largestMovement = movement;
+            }
+        }
+
+        const previous = trend[trend.length - 2];
+        const costDelta = current.upah_bersih_per_hk !== null && previous?.upah_bersih_per_hk !== null
+            ? current.upah_bersih_per_hk - previous.upah_bersih_per_hk
+            : null;
+        const warnings: string[] = [];
+        if (current.gang_count === 0) {
+            warnings.push("Tidak ada data gang panen untuk periode terpilih.");
+        }
+        if (current.total_tonase <= 0 && current.missing_tonase_count > 0) {
+            warnings.push(`Tonase belum tersedia untuk ${current.missing_tonase_count} gang panen pada periode terpilih.`);
+        }
+        if (current.total_hk <= 0) {
+            warnings.push("Total HK gang panen nol pada periode terpilih; metrik per HK tidak tersedia.");
+        }
+        if (current.total_tonase <= 0) {
+            warnings.push("Total tonase estate nol pada periode terpilih; metrik per ton tidak tersedia.");
+        }
+
+        return {
+            meta: {
+                selected_period: {
+                    month,
+                    year,
+                    label: `${this.getMonthName(month)} ${year}`
+                },
+                period_window: periods,
+                scope: effectiveScope === "REBINMAS"
+                    ? "SELURUH REBINMAS"
+                    : effectiveScope === "ALL"
+                        ? "ALL ESTATE"
+                        : effectiveScope,
+                gang_scope: "HARVESTING",
+                tonase_source: "extend_db_ptrj.dbo.daftar_upah_aggregation_history"
+            },
+            kpis: {
+                total_tonase: current.total_tonase,
+                total_ffb_weight: current.total_ffb_weight,
+                total_hk: current.total_hk,
+                total_upah_bersih: current.total_upah_bersih,
+                total_premi: current.total_premi,
+                total_employees: current.total_employees,
+                gang_count: current.gang_count,
+                upah_bersih_per_hk: current.upah_bersih_per_hk,
+                premi_per_hk: current.premi_per_hk,
+                upah_bersih_per_ton: current.upah_bersih_per_ton,
+                premi_per_ton: current.premi_per_ton,
+                premi_share: current.premi_share
+            },
+            trend,
+            division_breakdown: divisionBreakdown,
+            division_details: divisionDetails,
+            premium_breakdown: premiumBreakdown,
+            insights: {
+                highest_tonase_period: highestTonasePeriod,
+                largest_tonase_movement: largestMovement,
+                upah_bersih_hk_trend: costDelta === null ? "unavailable" : costDelta > 0 ? "rising" : costDelta < 0 ? "falling" : "flat",
+                upah_bersih_hk_delta: costDelta === null ? null : this.roundReportNumber(costDelta),
+                premium_share: current.premi_share,
+                missing_tonase_count: current.missing_tonase_count
+            },
+            warnings
+        };
+    }
+
     public async getTopBottomGangs(month: number, year: number, divisionCode?: string): Promise<{ top: any[], bottom: any[] }> {
         const allGangs = await this.getGangComparison(month, year, divisionCode);
         const validGangs = allGangs.filter(g => g.cost_per_hk > 0);
@@ -1035,6 +1643,7 @@ export class DashboardService {
      */
     public async getGangHistory(gangCode: string, endMonth: number, endYear: number): Promise<any[]> {
         const query = `
+            ${this.latestAggregationRowsCte()}
             SELECT TOP 6
             h.period_month as month,
             h.period_year as year,
@@ -1044,8 +1653,9 @@ export class DashboardService {
             SUM(h.total_hk) as total_hk,
             MAX(h.total_employees) as headcount,
             CAST(SUM(h.total_upah_bersih) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
-            FROM daftar_upah_aggregation_history h
-            WHERE h.gang_code = ?
+            FROM latest_rows h
+            WHERE h.row_rank = 1
+            AND h.gang_code = ?
             AND (h.period_year * 100 + h.period_month) <= (? * 100 + ?)
             GROUP BY h.period_month, h.period_year
             ORDER BY h.period_year DESC, h.period_month DESC
@@ -1087,6 +1697,7 @@ export class DashboardService {
         }
 
         const query = `
+        ${this.latestAggregationRowsCte()}
         SELECT
             h.gang_code,
             h.period_month as month,
@@ -1096,8 +1707,9 @@ export class DashboardService {
             SUM(h.total_premi) as total_premi,
             MAX(h.total_employees) as headcount,
             CAST(SUM(h.total_upah_bersih) AS FLOAT) / NULLIF(SUM(h.total_hk), 0) as cost_per_hk
-            FROM daftar_upah_aggregation_history h
+            FROM latest_rows h
         WHERE
+            h.row_rank = 1 AND
             (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?)) AND
             (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
             ${divisionFilter}

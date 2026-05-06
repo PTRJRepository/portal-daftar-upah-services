@@ -2,13 +2,20 @@ import React from 'react';
 
 export default function ReportWatermark({
   imageSrc = '/images/rebinmas.webp',
-  label = 'REBINMAS',
+  tileCount = 42,
 }) {
+  const safeTileCount = Number.isFinite(Number(tileCount))
+    ? Math.max(1, Number(tileCount))
+    : 42;
+
   return (
     <div className="report-watermark" aria-hidden="true">
-      <div className="report-watermark__mark">
-        <img className="report-watermark__image" src={imageSrc} alt="" />
-        <div className="report-watermark__text">{label}</div>
+      <div className="report-watermark__pattern">
+        {Array.from({ length: safeTileCount }, (_, idx) => (
+          <span key={idx} className="report-watermark__tile">
+            <img className="report-watermark__image" src={imageSrc} alt="" />
+          </span>
+        ))}
       </div>
     </div>
   );

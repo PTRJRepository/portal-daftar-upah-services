@@ -48,6 +48,24 @@
         display: block !important;
     }
 
+    .dashboard-layout-root,
+    .dashboard-layout-main,
+    .dashboard-layout-content {
+        position: static !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        display: block !important;
+    }
+
     /* Hide the Sidebar Header */
     div[style*="min-height: 70px"] {
         display: none !important;

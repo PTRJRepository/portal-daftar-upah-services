@@ -302,6 +302,25 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
         })
     })
 
+    .get('/tonase-analysis-report', async ({ query, set }) => {
+        try {
+            const month = parseInt(query.month);
+            const year = parseInt(query.year);
+            const divisionCode = query.division_code;
+            const data = await dashboardService.getTonaseAnalysisReport(month, year, divisionCode);
+            return { success: true, data };
+        } catch (e: any) {
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        query: t.Object({
+            month: t.String(),
+            year: t.String(),
+            division_code: t.Optional(t.String())
+        })
+    })
+
     /**
      * Cost per HK Comparison Report
      * Groups by gang type (Harvesting/Transport/Maintenance)

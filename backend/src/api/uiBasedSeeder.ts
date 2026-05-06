@@ -13,6 +13,7 @@
 import { Database } from "../db/client";
 import { dataExtractorService } from "../services/dataExtractorService";
 import { AggregationRecord } from "../services/payrollDataService";
+import { calculatePayrollTotals } from "../services/payrollTotalsCalculator";
 
 interface SeedResult {
     gang_code: string;
@@ -206,9 +207,12 @@ export async function seedFromUI(
  * Calculate aggregation record for a single gang
  * Matches the AggregationRecord interface from PayrollDataService exactly
  */
-function calculateGangAggregation(gangCode: string, employees: any[]): AggregationRecord {
+export function calculateGangAggregation(gangCode: string, employees: any[]): AggregationRecord {
+    const activeEmployees = employees.filter((emp) => (Number(emp.jumlah_hk) || 0) > 0);
+    const daftarUpahTotals = calculatePayrollTotals(employees, "TOTAL");
+
     // Accumulators
-    let totalEmployees = employees.length;
+    let totalEmployees = daftarUpahTotals.employee_count;
     let totalHk = 0;
     let totalHariKerja = 0;
     let totalCutiTahunan = 0;
@@ -242,7 +246,7 @@ function calculateGangAggregation(gangCode: string, employees: any[]): Aggregati
     // Dynamic premi accumulator
     const dynamicPremiMap: Record<string, number> = {};
 
-    for (const emp of employees) {
+    for (const emp of activeEmployees) {
         // Basic counts
         totalHk += emp.jumlah_hk || 0;
         totalHariKerja += emp.hari_kerja || 0;
@@ -282,8 +286,8 @@ function calculateGangAggregation(gangCode: string, employees: any[]): Aggregati
         // Potongan
         totalPotongan += emp.total_potongan || 0;
         totalPph21 += emp.pot_pph21 || 0;
-        totalBpjsPekerja += emp.bpjs_pek || 0;
-        totalBpjsMajikan += emp.bpjs_maj || 0;
+        totalBpjsPekerja += emp.pot_bpjs_pekerja_total || ((emp.pot_bpjs_kesehatan_pekerja || 0) + (emp.pot_bpjs_pensiun_pekerja || 0)) || emp.bpjs_pek || 0;
+        totalBpjsMajikan += ((emp.pot_bpjs_kesehatan_majikan || 0) + (emp.pot_bpjs_pensiun_majikan || 0)) || emp.bpjs_maj || 0;
         totalSpsi += emp.pot_spsi || 0;
 
         // Upah
@@ -306,32 +310,32 @@ function calculateGangAggregation(gangCode: string, employees: any[]): Aggregati
         gang_code: gangCode,
         gang_description: employees[0]?.gang_description || employees[0]?.gang || gangCode,
         total_employees: totalEmployees,
-        total_hk: totalHk,
-        total_hari_kerja: totalHariKerja,
-        total_cuti_tahunan: totalCutiTahunan,
-        total_cuti_sakit: totalCutiSakit,
-        total_cuti_minggu: totalCutiMinggu,
-        total_cuti_nasional: totalCutiNasional,
+        total_hk: daftarUpahTotals.jumlah_hk,
+        total_hari_kerja: daftarUpahTotals.hari_kerja,
+        total_cuti_tahunan: daftarUpahTotals.cuti_tahunan_hari,
+        total_cuti_sakit: daftarUpahTotals.cuti_sakit_haid_hari,
+        total_cuti_minggu: daftarUpahTotals.cuti_minggu_hari,
+        total_cuti_nasional: daftarUpahTotals.cuti_nasional_hari,
         total_upah_dasar: totalUpahDasar,
-        total_upah_pokok: totalUpahPokok,
-        total_gaji_pokok: totalGajiPokok,
-        total_beras: totalBeras,
-        total_jabatan: totalJabatan,
-        total_masa_kerja: totalMasaKerja,
-        total_lembur: totalLembur,
-        total_tunjangan: totalTunjangan,
-        total_premi_brondol: totalPremiBrondol,
-        total_premi_prunning: totalPremiPrunning,
+        total_upah_pokok: daftarUpahTotals.upah_pokok,
+        total_gaji_pokok: daftarUpahTotals.gaji_pokok,
+        total_beras: daftarUpahTotals.beras_jumlah,
+        total_jabatan: daftarUpahTotals.jabatan_jumlah,
+        total_masa_kerja: daftarUpahTotals.masa_kerja_jumlah,
+        total_lembur: daftarUpahTotals.lembur_jumlah,
+        total_tunjangan: daftarUpahTotals.total_tunjangan,
+        total_premi_brondol: daftarUpahTotals.premi_brondol,
+        total_premi_prunning: daftarUpahTotals.premi_pruning || totalPremiPrunning,
         total_premi_insentif: totalPremiInsentif,
         total_premi_kinerja: totalPremiKinerja,
-        total_premi: totalPremi,
-        total_potongan: totalPotongan,
-        total_pph21: totalPph21,
-        total_bpjs_pekerja: totalBpjsPekerja,
-        total_bpjs_majikan: totalBpjsMajikan,
-        total_spsi: totalSpsi,
-        total_upah_kotor: totalUpahKotor,
-        total_upah_bersih: totalUpahBersih,
+        total_premi: daftarUpahTotals.total_premi,
+        total_potongan: daftarUpahTotals.total_potongan,
+        total_pph21: daftarUpahTotals.pot_pph21,
+        total_bpjs_pekerja: daftarUpahTotals.pot_bpjs_pekerja_total || totalBpjsPekerja,
+        total_bpjs_majikan: (daftarUpahTotals.pot_bpjs_kesehatan_majikan + daftarUpahTotals.pot_bpjs_pensiun_majikan) || totalBpjsMajikan,
+        total_spsi: daftarUpahTotals.pot_spsi,
+        total_upah_kotor: daftarUpahTotals.jumlah_upah_kotor,
+        total_upah_bersih: daftarUpahTotals.upah_bersih,
         total_ffb_weight: totalFfbWeight,
         total_weight_tbs: totalWeightTbs,
         dynamic_premi_data: dynamicPremiData,

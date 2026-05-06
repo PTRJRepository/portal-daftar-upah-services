@@ -10,6 +10,7 @@ import ReportWatermark from '../components/common/ReportWatermark';
 import { initPrintMode } from '../utils/printOptimizer';
 import { getSourceModeLabel } from '../utils/reportPresentationLabels';
 import { printReport } from '../utils/printPageSetup';
+import { buildAnalysisReportInsights } from '../utils/analysisReportInsights';
 import '../styles/wages-summary-professional.css';
 import '../styles/report-print-foundation.css';
 
@@ -28,6 +29,13 @@ const COMPANY_INFO = {
 };
 
 const getCompanyInfo = (type) => COMPANY_INFO[type] || COMPANY_INFO.all;
+
+const formatPremiumHeaderLabel = (header) => {
+    if (header === 'LAINNYA') return 'LAINNYA';
+    return String(header || '').replace('PREMI_', '').replace(/_/g, ' ');
+};
+
+const getAnalysisRowLabel = (row) => row?.gang_label || row?.gang_code || row?.description || row?.division_code || '-';
 
 export default function AnalysisReportPage({ onBack, initialMonth, initialYear }) {
     const { token, user } = useAuth();
@@ -97,6 +105,12 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         return new Intl.NumberFormat('id-ID').format(Math.round(val));
     };
 
+    const formatPercent = (val) => {
+        if (val === null || val === undefined) return 'Periode baru';
+        const sign = val > 0 ? '+' : '';
+        return `${sign}${val.toFixed(1)}%`;
+    };
+
     const getDiffClass = (val) => {
         if (val > 0) return 'text-diff-neg'; // Red for increase in cost
         if (val < 0) return 'text-diff-pos'; // Green for decrease in cost
@@ -129,6 +143,14 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
         if (premiRange.min || premiRange.max) data = filterData(data, 'curr_premi', premiRange);
         return data;
     }, [reportData, otRange, premiRange]);
+
+    const analysisInsights = useMemo(() => buildAnalysisReportInsights({
+        rows: filteredMainTable,
+        totals: reportData?.totals || {},
+        headers: reportData?.all_premi_headers || [],
+        breakdownTotals: reportData?.breakdown_totals || {},
+        topPremiumLimit: 8
+    }), [filteredMainTable, reportData]);
 
     const handleSavePDF = () => {
         const element = document.getElementById('wsp-report-content');
@@ -333,9 +355,17 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
                         </div>
                     </div>
 
-                    {/* Section 1: Summary Premi & OT Analysis (Unified Table) */}
-                    <SummaryPremiOTTable 
-                        data={filteredMainTable}
+                    <AnalysisPrintInsights
+                        insights={analysisInsights}
+                        totals={reportData.totals || {}}
+                        formatCurrency={formatCurrency}
+                        formatPercent={formatPercent}
+                        getDiffClass={getDiffClass}
+                    />
+
+                    {/* Section 1: Summary Premi & OT Analysis (Aggregated by division) */}
+                    <AggregatedPremiOTTable
+                        groupedRows={analysisInsights.groupedRows}
                         totals={reportData.totals}
                         prevMonthLabel={`${prevMonthName}-${prevYearShort}`}
                         currMonthLabel={`${currMonthName}-${currYearShort}`}
@@ -345,10 +375,13 @@ export default function AnalysisReportPage({ onBack, initialMonth, initialYear }
 
                     {/* Section 2: Full Premi Breakdown (Seluruh Variasi Premi) */}
                     <FullPremiBreakdownTable 
-                        data={filteredMainTable}
+                        data={analysisInsights.groupedRows}
                         headers={reportData.all_premi_headers}
                         breakdownTotals={reportData.breakdown_totals}
                         breakdownGrandTotal={reportData.breakdown_grand_total}
+                        printPremiHeaders={analysisInsights.printPremiHeaders}
+                        printPremiRows={analysisInsights.printPremiRows}
+                        otherPremiTotal={analysisInsights.otherPremiTotal}
                         formatCurrency={formatCurrency}
                     />
 
@@ -431,56 +464,122 @@ const KPIComparisonCard = ({ label, prevLabel, currLabel, prevValue, currValue, 
     );
 };
 
-const SummaryPremiOTTable = ({ data, totals, prevMonthLabel, currMonthLabel, formatCurrency, getDiffClass }) => (
+const AnalysisPrintInsights = ({ insights, totals, formatCurrency, formatPercent, getDiffClass }) => {
+    const formatSignedCurrency = (value) => {
+        const sign = value > 0 ? '+' : '';
+        return `${sign}${formatCurrency(value)}`;
+    };
+
+    const largestDriver = insights.largestCostDriver;
+    const largestReducer = insights.largestCostReducer;
+    const largestPremium = insights.largestPremiumGang || insights.largestPremiumDivision;
+    const largestOvertime = insights.largestOvertimeGang || insights.largestOvertimeDivision;
+
+    return (
+        <div className="analysis-print-insights">
+            <div className="analysis-print-insight-card">
+                <div className="analysis-print-insight-label">Driver terbesar</div>
+                <div className={`analysis-print-insight-value ${getDiffClass(largestDriver?.total_diff)}`}>
+                    {getAnalysisRowLabel(largestDriver)}
+                </div>
+                <div className="analysis-print-insight-note">
+                    Net variance {formatSignedCurrency(largestDriver?.total_diff || 0)}
+                </div>
+            </div>
+            <div className="analysis-print-insight-card">
+                <div className="analysis-print-insight-label">Saving terbesar</div>
+                <div className={`analysis-print-insight-value ${getDiffClass(largestReducer?.total_diff)}`}>
+                    {getAnalysisRowLabel(largestReducer)}
+                </div>
+                <div className="analysis-print-insight-note">
+                    Net variance {formatSignedCurrency(largestReducer?.total_diff || 0)}
+                </div>
+            </div>
+            <div className="analysis-print-insight-card">
+                <div className="analysis-print-insight-label">Premi terbesar</div>
+                <div className="analysis-print-insight-value">
+                    {getAnalysisRowLabel(largestPremium)}
+                </div>
+                <div className="analysis-print-insight-note">
+                    Current premi {formatCurrency(largestPremium?.curr_premi || 0)}
+                </div>
+            </div>
+            <div className="analysis-print-insight-card">
+                <div className="analysis-print-insight-label">Lembur terbesar</div>
+                <div className="analysis-print-insight-note strong">
+                    {getAnalysisRowLabel(largestOvertime)}
+                </div>
+                <div className="analysis-print-insight-note">
+                    Current OT {formatCurrency(largestOvertime?.curr_ot || 0)}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const AggregatedPremiOTTable = ({ groupedRows = [], totals = {}, prevMonthLabel, currMonthLabel, formatCurrency, getDiffClass }) => (
     <div className="analysis-section" style={{ marginTop: '2rem' }}>
         <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #334155', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <span>Summary Premi & OT Progress</span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Unit: IDR (Rupiah)</span>
+            <span>Summary Premi & OT Progress - Agregat per Divisi</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Agregat per Divisi; gang hanya ditampilkan sebagai driver utama</span>
         </div>
         <div className="wsp-table-wrapper">
-            <table className="wsp-table">
+            <table className="wsp-table analysis-grouped-table">
                 <thead>
                     <tr className="wsp-header-master">
-                        <th rowSpan="2" style={{ textAlign: 'left', width: '220px' }}>ESTATE / DIVISION</th>
+                        <th rowSpan="2" style={{ textAlign: 'left', width: '220px' }}>ESTATE / DIVISI</th>
+                        <th rowSpan="2" style={{ width: '70px' }}>JUMLAH GANG</th>
+                        <th rowSpan="2" style={{ textAlign: 'left', width: '180px' }}>Driver Gang</th>
                         <th colSpan="2">{prevMonthLabel}</th>
                         <th colSpan="2">{currMonthLabel}</th>
-                        <th colSpan="2">PROGRESS (VARIANCE)</th>
+                        <th colSpan="3">PROGRESS (VARIANCE)</th>
                     </tr>
                     <tr className="wsp-header-sub">
-                        <th style={{ width: '110px' }}>PREMI</th>
-                        <th style={{ width: '110px' }}>OT</th>
-                        <th style={{ width: '110px' }}>PREMI</th>
-                        <th style={{ width: '110px' }}>OT</th>
+                        <th>PREMI</th>
+                        <th>OT</th>
+                        <th>PREMI</th>
+                        <th>OT</th>
                         <th>PREMI DIFF</th>
                         <th>OT DIFF</th>
+                        <th>NET DIFF</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {data.map((row, idx) => (
-                        <tr key={idx}>
-                            <td className="text-left font-bold">{row.description || row.division_code}</td>
-                            <td className="text-right">{formatCurrency(row.prev_premi)}</td>
-                            <td className="text-right">{formatCurrency(row.prev_ot)}</td>
-                            <td className="text-right font-bold" style={{ backgroundColor: '#f8fafc' }}>{formatCurrency(row.curr_premi)}</td>
-                            <td className="text-right font-bold" style={{ backgroundColor: '#f8fafc' }}>{formatCurrency(row.curr_ot)}</td>
-                            <td className={`text-right font-bold ${getDiffClass(row.diff_premi)}`}>
-                                {formatCurrency(row.diff_premi)}
+                    {groupedRows.length === 0 && (
+                        <tr>
+                            <td colSpan="10" className="text-left">Tidak ada data divisi untuk periode ini.</td>
+                        </tr>
+                    )}
+                    {groupedRows.map((group) => (
+                        <tr className="analysis-group-row" key={group.division_code || group.division_label}>
+                            <td className="text-left">
+                                <span className="analysis-group-title">{group.division_label}</span>
                             </td>
-                            <td className={`text-right font-bold ${getDiffClass(row.diff_ot)}`}>
-                                {formatCurrency(row.diff_ot)}
+                            <td className="text-right">{group.gang_count}</td>
+                            <td className="text-left">
+                                <span className="analysis-gang-code">{group.top_driver?.gang_label || '-'}</span>
+                                <span className="analysis-gang-desc">{group.top_driver?.gang_description_label || '-'}</span>
                             </td>
+                            <td className="text-right">{formatCurrency(group.prev_premi)}</td>
+                            <td className="text-right">{formatCurrency(group.prev_ot)}</td>
+                            <td className="text-right">{formatCurrency(group.curr_premi)}</td>
+                            <td className="text-right">{formatCurrency(group.curr_ot)}</td>
+                            <td className={`text-right ${getDiffClass(group.diff_premi)}`}>{formatCurrency(group.diff_premi)}</td>
+                            <td className={`text-right ${getDiffClass(group.diff_ot)}`}>{formatCurrency(group.diff_ot)}</td>
+                            <td className={`text-right ${getDiffClass(group.total_diff)}`}>{formatCurrency(group.total_diff)}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
                     <tr className="wsp-grand-total">
-                        <td className="text-right" style={{ paddingRight: '15px' }}>TOTAL C/ROLL</td>
+                        <td colSpan="3" className="text-right" style={{ paddingRight: '15px' }}>TOTAL C/ROLL</td>
                         <td className="text-right">{formatCurrency(totals.prev_premi)}</td>
                         <td className="text-right">{formatCurrency(totals.prev_ot)}</td>
                         <td className="text-right">{formatCurrency(totals.curr_premi)}</td>
                         <td className="text-right">{formatCurrency(totals.curr_ot)}</td>
-                        <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>{formatCurrency(totals.diff_premi)}</td>
-                        <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>{formatCurrency(totals.diff_ot)}</td>
+                        <td className="text-right">{formatCurrency(totals.diff_premi)}</td>
+                        <td className="text-right">{formatCurrency(totals.diff_ot)}</td>
+                        <td className="text-right">{formatCurrency((totals.diff_premi || 0) + (totals.diff_ot || 0))}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -488,17 +587,27 @@ const SummaryPremiOTTable = ({ data, totals, prevMonthLabel, currMonthLabel, for
     </div>
 );
 
-const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, breakdownGrandTotal, formatCurrency }) => (
+const FullPremiBreakdownTable = ({
+    data,
+    headers = [],
+    breakdownTotals = {},
+    breakdownGrandTotal,
+    printPremiHeaders = [],
+    printPremiRows = [],
+    otherPremiTotal = 0,
+    formatCurrency
+}) => (
     <div className="analysis-section" style={{ marginTop: '3rem', pageBreakBefore: 'always' }}>
         <div className="analysis-section-title" style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderLeft: '4px solid #1e40af', fontWeight: 700, display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <span>Uraian Premi Seluruh Variasi (Current Month)</span>
             <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>Rincian Lengkap Seluruh Premi</span>
         </div>
-        <div className="wsp-table-wrapper" style={{ overflowX: 'auto' }}>
+        <div className="wsp-table-wrapper print-hide" style={{ overflowX: 'auto' }}>
             <table className="wsp-table">
                 <thead>
                     <tr className="wsp-header-master">
-                        <th style={{ textAlign: 'left', width: '150px', position: 'static', left: 0, zIndex: 5 }}>DIVISI</th>
+                        <th style={{ textAlign: 'left', width: '130px', position: 'static', left: 0, zIndex: 5 }}>ESTATE / DIVISI</th>
+                        <th style={{ textAlign: 'left', width: '170px' }}>DRIVER GANG</th>
                         {headers.map(h => (
                             <th key={h} className="th-premi-detail" style={{ minWidth: '60px', fontSize: '0.6rem' }}>
                                 {h.replace('PREMI_', '').replace(/_/g, ' ')}
@@ -511,7 +620,11 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, breakdownGran
                     {data.map((row, idx) => (
                         <tr key={idx}>
                             <td className="text-left font-bold" style={{ position: 'sticky', left: 0, zIndex: 4, background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                                {row.division_code}
+                                {row.division_label || row.division_code}
+                            </td>
+                            <td className="text-left">
+                                <span className="analysis-gang-code">{row.top_driver?.gang_label || '-'}</span>
+                                <span className="analysis-gang-desc">{row.top_driver?.gang_description_label || '-'}</span>
                             </td>
                             {headers.map(h => (
                                 <td key={h} className="text-right">
@@ -526,7 +639,7 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, breakdownGran
                 </tbody>
                 <tfoot>
                     <tr className="wsp-grand-total">
-                        <td className="text-left sticky-col" style={{ position: 'sticky', left: 0, zIndex: 5 }}>TOTAL</td>
+                        <td className="text-left sticky-col" style={{ position: 'sticky', left: 0, zIndex: 5 }} colSpan="2">TOTAL</td>
                         {headers.map(h => (
                             <td key={h} className="text-right">
                                 {formatCurrency(breakdownTotals[h])}
@@ -535,6 +648,51 @@ const FullPremiBreakdownTable = ({ data, headers, breakdownTotals, breakdownGran
                         <td className="text-right" style={{ background: '#1e293b', color: '#fff' }}>
                             {formatCurrency(breakdownGrandTotal || 0)}
                         </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div className="analysis-print-top-premi-wrapper print-only">
+            <div className="analysis-print-appendix-title">
+                Appendix Print: Top Premi Current Month + LAINNYA
+            </div>
+            <table className="wsp-table analysis-print-top-premi-table">
+                <thead>
+                    <tr className="wsp-header-master">
+                        <th>ESTATE / DIVISI</th>
+                        <th>DRIVER GANG</th>
+                        {printPremiHeaders.map(h => (
+                            <th key={h}>{formatPremiumHeaderLabel(h)}</th>
+                        ))}
+                        <th>TOTAL PREMI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {printPremiRows.map((row, idx) => (
+                        <tr key={idx}>
+                            <td className="text-left font-bold">{row.division_label || row.division_code}</td>
+                            <td className="text-left">
+                                <span className="analysis-gang-code">{row.top_driver?.gang_label || '-'}</span>
+                                <span className="analysis-gang-desc">{row.top_driver?.gang_description_label || '-'}</span>
+                            </td>
+                            {printPremiHeaders.map(h => (
+                                <td key={h} className="text-right">
+                                    {formatCurrency(row.print_breakdown?.[h] || 0)}
+                                </td>
+                            ))}
+                            <td className="text-right font-bold">{formatCurrency(row.curr_premi)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr className="wsp-grand-total">
+                        <td className="text-left" colSpan="2">TOTAL</td>
+                        {printPremiHeaders.map(h => (
+                            <td key={h} className="text-right">
+                                {formatCurrency(h === 'LAINNYA' ? otherPremiTotal : breakdownTotals[h])}
+                            </td>
+                        ))}
+                        <td className="text-right">{formatCurrency(breakdownGrandTotal || 0)}</td>
                     </tr>
                 </tfoot>
             </table>

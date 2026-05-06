@@ -20,10 +20,15 @@ describe('ReportWatermark', () => {
       });
 
       const watermark = container.querySelector('.report-watermark');
+      const pattern = container.querySelector('.report-watermark__pattern');
+      const marks = container.querySelectorAll('.report-watermark__tile img');
+
       expect(watermark).not.toBeNull();
       expect(watermark.getAttribute('aria-hidden')).toBe('true');
-      expect(container.querySelector('.report-watermark__image')?.getAttribute('src')).toBe('/images/rebinmas.webp');
-      expect(container.textContent || '').toContain('REBINMAS');
+      expect(pattern).not.toBeNull();
+      expect(marks.length).toBeGreaterThanOrEqual(18);
+      expect(marks[0]?.getAttribute('src')).toBe('/images/rebinmas.webp');
+      expect(container.textContent || '').not.toMatch(/RESMI|CREDENTIAL|REBINMAS/i);
     } finally {
       await act(async () => {
         root.unmount();

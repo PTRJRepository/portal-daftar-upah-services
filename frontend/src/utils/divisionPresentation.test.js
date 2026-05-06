@@ -12,6 +12,11 @@ describe('divisionPresentation', () => {
     expect(getDivisionDisplayLabel('PG2B')).toBe('PG2B - Parit Gunung 2B');
   });
 
+  it('labels DME as Darrur Makmur Estate', () => {
+    expect(getDivisionShortDescription('DME')).toBe('Darrur Makmur Estate');
+    expect(getDivisionDisplayLabel('DME')).toBe('DME - Darrur Makmur Estate');
+  });
+
   it('keeps backend descriptions concise for unknown or virtual divisions', () => {
     expect(getDivisionDisplayLabel('INF', 'Infrastruktur - semua gang berawalan IN dari Plasma 1A')).toBe('INF - Infrastruktur');
     expect(getDivisionDisplayLabel('XYZ', 'Divisi Percobaan Panjang')).toBe('XYZ - Divisi Percobaan Panjang');

@@ -53,7 +53,7 @@
 /* Responsive Design */
 @media (max-width: 1400px) {
     .wsp-kpi-grid.comparison-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
 }
 
@@ -316,34 +316,135 @@
 
 /* Comparison KPI styles - Enhanced */
 .wsp-kpi-grid.comparison-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: stretch;
 }
 
 .wsp-kpi-card.comparison-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    border-radius: 8px;
-    padding-bottom: 0;
-    /* Remove padding bottom for full-width footer */
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid var(--kpi-accent, #0f172a);
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    min-width: 0;
     overflow: hidden;
-    /* Clip the footer */
+    padding: 1.15rem;
+    gap: 0.45rem;
+}
+
+.wsp-kpi-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.wsp-kpi-card.comparison-card .wsp-kpi-label {
+    min-width: 0;
+    margin-bottom: 0;
+    line-height: 1.2;
+}
+
+.wsp-kpi-current-label {
+    font-size: 0.68rem;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    line-height: 1.2;
+}
+
+.wsp-kpi-current-value {
+    font-family: 'Roboto Mono', monospace;
+    font-size: clamp(1.05rem, 1.35vw, 1.35rem);
+    font-weight: 850;
+    color: #0f172a;
+    line-height: 1.15;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.wsp-kpi-value.comparison-main-value {
+    font-size: 1.28rem;
+    line-height: 1.15;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wsp-kpi-previous-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.wsp-kpi-previous-line strong {
+    color: #334155;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: right;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wsp-kpi-delta-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.28rem;
+    width: fit-content;
+    max-width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.32rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.1;
+    white-space: normal;
+}
+
+.wsp-kpi-delta-chip strong,
+.wsp-kpi-delta-chip small {
+    font-family: 'Roboto Mono', monospace;
+}
+
+.wsp-kpi-delta-chip.good {
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.wsp-kpi-delta-chip.bad {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.wsp-kpi-delta-chip.neutral {
+    background: #f8fafc;
+    color: #64748b;
 }
 
 .wsp-kpi-compare-row {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-    padding: 0 0.5rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    min-width: 0;
 }
 
 .wsp-kpi-trend-box {
-    flex: 1;
-    padding: 0.75rem 0.5rem;
-    border-radius: 6px;
-    border: 1px solid #f1f5f9;
-    text-align: center;
+    min-width: 0;
+    padding: 0.55rem;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    text-align: left;
 }
 
 .wsp-kpi-trend-box.prev {
@@ -357,6 +458,20 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+.wsp-kpi-trend-box.delta.good {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.wsp-kpi-trend-box.delta.bad {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.wsp-kpi-trend-box.delta.neutral {
+    background: #f8fafc;
+}
+
 .wsp-kpi-trend-box .trend-label {
     font-size: 0.65rem;
     font-weight: 700;
@@ -364,55 +479,127 @@
     color: #94a3b8;
     margin-bottom: 0.4rem;
     letter-spacing: 0.05em;
+    line-height: 1.15;
 }
 
 .wsp-kpi-trend-box .trend-value {
     font-family: 'Roboto Mono', monospace;
-    font-size: 1.1rem;
+    font-size: clamp(0.74rem, 1vw, 0.92rem);
     font-weight: 700;
     color: #1e293b;
+    line-height: 1.15;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
-/* Diff Footer - Full Width Pill */
-.wsp-kpi-diff {
-    font-size: 0.9rem;
+.trend-percent {
+    margin-top: 0.18rem;
+    font-size: 0.64rem;
+    color: #64748b;
     font-weight: 700;
-    padding: 0.75rem 1rem;
-    margin-top: 0.5rem;
-    /* Full width bleed */
-    margin-left: -1.25rem;
-    margin-right: -1.25rem;
-    margin-bottom: 0;
-
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-top: 1px solid #e2e8f0;
 }
 
-/* Logic: Pos=Red(Bad for Cost), Neg=Green(Good for Cost) */
-.wsp-kpi-diff.pos,
-.wsp-kpi-diff.pos-invert {
+.wsp-kpi-direction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.22rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 0.28rem 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.wsp-kpi-direction.up {
     background-color: #fef2f2;
     color: #dc2626;
-    border-top-color: #fecaca;
 }
 
-.wsp-kpi-diff.neg,
-.wsp-kpi-diff.neg-invert {
+.wsp-kpi-direction.down {
     background-color: #f0fdf4;
     color: #16a34a;
-    border-top-color: #bbf7d0;
 }
 
-.wsp-kpi-diff.neutral {
+.wsp-kpi-direction.flat {
     background-color: #f8fafc;
     color: #64748b;
 }
 
-.wsp-kpi-diff span {
-    font-size: 1.25em;
-    /* Larger arrow */
+.wsp-kpi-direction.up.good,
+.wsp-kpi-direction.down.good {
+    background-color: #f0fdf4;
+    color: #16a34a;
+}
+
+.wsp-kpi-direction.up.bad,
+.wsp-kpi-direction.down.bad {
+    background-color: #fef2f2;
+    color: #dc2626;
+}
+
+.wsp-mini-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin: -0.75rem 0 2rem 0;
+}
+
+.wsp-mini-kpi-card {
+    min-width: 0;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--kpi-accent, #64748b);
+    border-radius: 6px;
+    padding: 0.8rem;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.wsp-mini-kpi-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    color: #475569;
+    font-size: 0.66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.wsp-mini-kpi-value {
+    margin-top: 0.45rem;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+.wsp-mini-kpi-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.45rem;
+    color: #64748b;
+    font-size: 0.68rem;
+    line-height: 1.2;
+    min-width: 0;
+}
+
+.wsp-mini-kpi-meta span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wsp-mini-kpi-meta strong {
+    flex: 0 0 auto;
+    color: #0f172a;
+    font-family: 'Roboto Mono', monospace;
 }
 
 /* Uraian Card Enhancements */
@@ -682,6 +869,79 @@
     font-size: 0.7rem;
     font-weight: 700;
     padding: 0.5rem 0.25rem;
+}
+
+.wages-comparison-screen-wrapper {
+    max-width: 100%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table {
+    min-width: 1520px;
+    table-layout: fixed;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-division {
+    width: 18%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-workers {
+    width: 5.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-premi-detail {
+    width: 6.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-premi-total {
+    width: 7.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-lembur,
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-pph,
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-spsi {
+    width: 6.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-gaji {
+    width: 8.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-tbs {
+    width: 6.5%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table .wages-comparison-col-selisih {
+    width: 7%;
+}
+
+.wsp-table.wages-rebinmas-comparison-table th,
+.wsp-table.wages-rebinmas-comparison-table td {
+    text-align: center !important;
+    vertical-align: middle;
+}
+
+.wsp-table.wages-rebinmas-comparison-table td.text-right {
+    text-align: center !important;
+}
+
+.wages-comparison-cell-value {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.22rem;
+    width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.wages-comparison-cell-value .trend-indicator {
+    flex: 0 0 auto;
+    margin-left: 0;
+}
+
+.wages-comparison-cell-value .trend-indicator svg {
+    width: 0.78rem;
+    height: 0.78rem;
 }
 
 /* STANDARD REPORT GROUPS */

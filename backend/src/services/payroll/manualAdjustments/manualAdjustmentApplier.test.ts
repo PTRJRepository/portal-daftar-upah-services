@@ -54,6 +54,27 @@ describe('applyManualAdjustmentsToEmployee', () => {
         expect(result.fieldSyncMeta.find((x) => x.fieldName === 'KOREKSI_DENDA_PANEN')?.previousAmount).toBe(7000);
     });
 
+    it('materializes legacy manual premium field names into report premium fields', () => {
+        const result = applyManualAdjustmentsToEmployee({
+            adjustments: [
+                { adjustment_type: 'PREMI', adjustment_name: 'premi_pruning', amount: 125000 }
+            ],
+            empPremi: {},
+            empPotongan: {},
+            premiTitleMap: {},
+            potonganTitleMap: {},
+            mode: 'override'
+        });
+
+        expect(result.empPremi.premi_pruning).toBe(125000);
+        expect(result.empPremi.premi_premi_pruning).toBeUndefined();
+        expect(result.totalPremiDelta).toBe(125000);
+        expect(result.fieldSyncMeta[0]).toMatchObject({
+            fieldName: 'premi_pruning',
+            finalAmount: 125000
+        });
+    });
+
     it('normalizes negative koreksi and potongan amounts to positive calculation values', () => {
         const result = applyManualAdjustmentsToEmployee({
             adjustments: [

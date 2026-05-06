@@ -1024,6 +1024,30 @@ describe("manual adjustment ADCode rules", () => {
         }
     });
 
+    it("keeps legacy manual adjustment rows with blank division_code available for division payroll loads", async () => {
+        const originalGetInstance = Database.getInstance;
+        const calls: QueryCall[] = [];
+        const mockDb = {
+            query: async (sql: string, params?: any[]) => {
+                calls.push({ sql, params: params || [] });
+                return [];
+            }
+        };
+
+        (Database as any).getInstance = () => mockDb;
+
+        try {
+            await manualAdjustmentService.getAdjustments(4, 2026, undefined, undefined, "PG2A");
+
+            expect(calls[0].sql).toContain("division_code IN");
+            expect(calls[0].sql).toContain("division_code IS NULL");
+            expect(calls[0].sql).toContain("LTRIM(RTRIM(division_code)) = ''");
+            expect(calls[0].params.slice(2).sort()).toEqual(["P2A", "PG2A"]);
+        } finally {
+            (Database as any).getInstance = originalGetInstance;
+        }
+    });
+
     it("can fetch only adjustments that have metadata_json", async () => {
         const originalGetInstance = Database.getInstance;
         const calls: QueryCall[] = [];

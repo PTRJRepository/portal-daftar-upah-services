@@ -20,6 +20,7 @@ import { resolveMonthlyTaxQuery } from "../utils/taxReportQuery";
 import { getApiKeyHeader, getAuthorizationHeader, resolveUserFromHeaders } from "../utils/authBypass";
 import { historyDatabaseService } from "../services/historyDatabaseService";
 import { applyReportIdentity, collectNikLookupKeys, resolveReportIdentity } from "../utils/taxReportIdentity";
+import { prepareDomTaxExcelRows } from "../utils/taxDomExportRows";
 
 /**
  * Sanitize string for filename - remove/replace invalid filename characters
@@ -1104,96 +1105,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             // ─────────────────────────────────────────────────────────
-            // FAST PREMI FETCH: PremiumExtractor only (2 lightweight queries)
-            // Replaces: getMonthlyTaxReport + DataExtractorService
+            // Build Excel rows from the already-rendered DOM payload.
+            // Avoid re-querying premium data here; the UI row is the source for this export.
             // ─────────────────────────────────────────────────────────
-            if (empCodes.length > 0) {
-                try {
-                    const { getPremiumExtractor } = await import("../services/payroll/extractors/PremiumExtractor");
-                    const premiumExtractor = getPremiumExtractor();
-
-                    const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
-                    const nextM = m === 12 ? 1 : m + 1;
-                    const nextY = m === 12 ? y + 1 : y;
-                    const endDate = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
-
-                    // Run premi + brondol in PARALLEL
-                    const [premiResult, brondolResult] = await Promise.all([
-                        premiumExtractor.extract(empCodes, startDate, endDate),
-                        premiumExtractor.extractBrondolLooseFruit(empCodes, startDate, endDate)
-                    ]);
-
-                    const t1 = performance.now();
-                    console.log(`[TaxReport DOM FAST] PremiumExtractor done in ${(t1 - t0).toFixed(0)}ms`);
-
-                    const normalizeKey = (k: string): string =>
-                        k.replace(/^PREMI\s*/i, '').replace(/_/g, ' ').trim().toUpperCase() || k.toUpperCase();
-
-                    employees.forEach((emp: any) => {
-                        const empCode = (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase();
-                        const empPremi = premiResult.amounts[empCode] || {};
-                        const empBrondol = brondolResult[empCode] || 0;
-                        const detail: Record<string, number> = {};
-
-                        for (const [docDesc, amount] of Object.entries(empPremi)) {
-                            if (amount <= 0) continue;
-                            const key = normalizeKey(docDesc);
-                            if (key === 'BRONDOL' || key.includes('BRONDOL')) {
-                                detail['BRONDOL'] = (detail['BRONDOL'] || 0) + amount;
-                                continue;
-                            }
-                            if (key.includes('PPH') || key.includes('KOREKSI') || key.includes('ADJ')) continue;
-                            detail[key] = (detail[key] || 0) + amount;
-                        }
-
-                        if (empBrondol > 0) detail['BRONDOL'] = (detail['BRONDOL'] || 0) + empBrondol;
-
-                        if (Object.keys(detail).length > 0) {
-                            emp.premi_detail = { ...detail, ...(emp.premi_detail || {}) };
-                        }
-                        if (detail['BRONDOL'] > 0) {
-                            emp.premi_brondol = detail['BRONDOL'];
-                            emp.premi_brondol_total = detail['BRONDOL'];
-                        }
-                    });
-                } catch (premiError: any) {
-                    console.error(`[TaxReport DOM FAST] PremiumExtractor failed:`, premiError.message);
-                }
-            }
-
-            // Ensure BRONDOL in premi_detail from top-level fields
-            employees.forEach((emp: any) => {
-                if (!emp.premi_detail) emp.premi_detail = {};
-                const hasBrondol = Object.keys(emp.premi_detail).some(k => k.toUpperCase() === 'BRONDOL');
-                if (!hasBrondol) {
-                    const bVal = Number(emp.premi_brondol_total) || Number(emp.premi_brondol) || 0;
-                    if (bVal > 0) emp.premi_detail['BRONDOL'] = bVal;
-                }
-            });
-
-            // Inject TAX_COMPONENT_METADATA for AccCode rows (static)
-            const { TAX_COMPONENT_METADATA: MTD } = await import("../services/taxReportService");
-            const metaToInject = MTD || TAX_COMPONENT_METADATA;
-            employees.forEach((emp: any) => { emp.component_metadata = metaToInject; });
-            console.log(`[TaxReport DOM FAST] Injected metadata keys: ${Object.keys(metaToInject || {}).join(', ')}`);
-
-
-
-            // Pot Alpa — pure calculation from DOM fields
-            employees.forEach((emp: any) => {
-                if (!emp.pot_alpa_cth && !emp.pot_alpa) {
-                    const ideal = Number(emp.gaji_pokok_ideal || 0);
-                    const aktual = Number(emp.gaji_pokok_aktual || 0);
-                    if (ideal > 0 && aktual > 0 && ideal > aktual) {
-                        emp.pot_alpa_cth = -(ideal - aktual);
-                    }
-                }
-            });
-
-            let totalPph21 = 0;
-            employees.forEach((emp: any) => {
-                 totalPph21 += (Number(emp.potongan_pph21) || Number(emp.pot_pph21) || Number(emp.pph21_ter) || 0);
-            });
+            const metaToInject = TAX_COMPONENT_METADATA;
+            const preparedDomRows = prepareDomTaxExcelRows(employees, Array.isArray(premiKeys) ? premiKeys : [], metaToInject);
+            const excelEmployees = preparedDomRows.employees;
+            const totalPph21 = preparedDomRows.totalPph21;
+            console.log(`[TaxReport DOM FAST] Prepared DOM rows without premium re-query: employees=${excelEmployees.length}, metadata=${Object.keys(metaToInject || {}).join(', ')}`);
 
             const gangLabel = gang || gangPrefix || 'ALL';
 
@@ -1214,7 +1133,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             try {
                 excelBuffer = await generateMonthlyTaxExcel(
-                    { employees, period: { month: m, year: y }, total_pph21: totalPph21 },
+                    { employees: excelEmployees, period: { month: m, year: y }, total_pph21: totalPph21 },
                     y, m,
                     division || 'ALL',
                     gangLabel,

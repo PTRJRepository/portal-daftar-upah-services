@@ -741,19 +741,29 @@
         white-space: normal !important; /* Allow wrapping in print */
     }
 
-    /* Darker headers for print */
-    .phc-header-group th {
-        background-color: #333 !important;
-        color: white !important;
+    /* Light headers for print; keep separators visible between columns */
+    .phc-table thead th,
+    .phc-header-group th,
+    .phc-header-cols th,
+    .phc-th-group,
+    .phc-th-group.wages,
+    .phc-th-group.comparison,
+    .phc-th-sticky {
+        background: #fff !important;
+        color: #000 !important;
+        border: 1pt solid #000 !important;
     }
 
-    .phc-header-cols th {
-        background-color: #666 !important;
-        color: white !important;
+    .phc-header-group th {
+        border-bottom: 1.5pt solid #000 !important;
     }
 
     /* Sticky headers don't work in print well */
-    .phc-th-sticky,
+    .phc-th-sticky {
+        position: static !important;
+        z-index: auto !important;
+    }
+
     .phc-td-sticky {
         position: static !important;
         background-color: transparent !important;
@@ -804,4 +814,3 @@
 .only-print {
     display: none;
 }
-

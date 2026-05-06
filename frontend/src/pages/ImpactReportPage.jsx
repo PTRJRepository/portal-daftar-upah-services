@@ -299,7 +299,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
 
     // Handle print
     const handlePrint = () => {
-        printReport({ orientation: 'landscape' });
+        printReport({ orientation: 'landscape', margin: '10mm' });
     };
 
     // Handle Luas Area Change
@@ -349,7 +349,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
         const icon = isPositive ? '▲' : '▼';
 
         return (
-            <span style={{ 
+            <span className="trend-indicator" style={{ 
                 color, 
                 marginLeft: '6px', 
                 fontWeight: 'bold', 
@@ -372,8 +372,22 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
         const prevLabel = getShortMonthName(prevMonth);
 
         return (
-            <div className="wsp-table-wrapper" style={{ marginBottom: '2rem' }}>
-                <table className="wsp-table">
+            <div className="wsp-table-wrapper impact-main-table-wrapper" style={{ marginBottom: '2rem' }}>
+                <table className="wsp-table impact-main-table">
+                    <colgroup>
+                        <col className="impact-col-estate" />
+                        <col className="impact-col-luas" />
+                        <col className="impact-col-worker" />
+                        <col className="impact-col-worker" />
+                        <col className="impact-col-worker" />
+                        <col className="impact-col-money" />
+                        <col className="impact-col-money" />
+                        <col className="impact-col-money" />
+                        <col className="impact-col-tbs" />
+                        <col className="impact-col-tbs" />
+                        <col className="impact-col-tbs" />
+                        <col className="impact-col-percent" />
+                    </colgroup>
                     <thead>
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col" style={{ minWidth: '120px' }}>Estate</th>
@@ -479,11 +493,16 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
         const totals = filteredData.pruning_totals;
 
         return (
-            <div className="wsp-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
-                <div style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+            <div className="wsp-table-wrapper impact-side-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
+                <div className="impact-print-section-title" style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
                     PRUNING ANALYSIS
                 </div>
-                <table className="wsp-table">
+                <table className="wsp-table impact-side-table impact-pruning-table">
+                    <colgroup>
+                        <col className="impact-col-side-estate" />
+                        <col className="impact-col-side-money" />
+                        <col className="impact-col-side-total" />
+                    </colgroup>
                     <thead>
                         <tr className="wsp-header-master">
                             <th rowSpan="2" className="th-sticky-col">Estate</th>
@@ -528,13 +547,19 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
         const formatShortMonth = (m) => getShortMonthName(m);
 
         return (
-            <div className="wsp-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
-                <div style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
+            <div className="wsp-table-wrapper impact-side-table-wrapper" style={{ flex: 1, height: 'fit-content' }}>
+                <div className="impact-print-section-title" style={{ padding: '0.65rem 1rem', background: '#0f172a', color: 'white', fontWeight: 800, fontSize: '0.75rem', letterSpacing: '0.05em' }}>
                     FINANCIAL IMPACT SUMMARY
                 </div>
 
                 {/* HK Analysis */}
-                <table className="wsp-table" style={{ marginBottom: '0', borderBottom: 'none' }}>
+                <table className="wsp-table impact-side-table impact-financial-table" style={{ marginBottom: '0', borderBottom: 'none' }}>
+                    <colgroup>
+                        <col className="impact-col-finance-desc" />
+                        <col className="impact-col-finance-hk" />
+                        <col className="impact-col-finance-money" />
+                        <col className="impact-col-finance-money" />
+                    </colgroup>
                     <thead>
                         <tr className="wsp-header-sub">
                             <th style={{ textAlign: 'left', paddingLeft: '1rem', width: '40%' }}>Description</th>
@@ -575,7 +600,11 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
                 </table>
 
                 {/* Summary Analysis */}
-                <table className="wsp-table">
+                <table className="wsp-table impact-side-table impact-summary-table">
+                    <colgroup>
+                        <col className="impact-col-summary-desc" />
+                        <col className="impact-col-summary-value" />
+                    </colgroup>
                     <tbody>
                         <tr>
                             <td className="text-left">{summary.turun_hk_label} HK ({currLabel}'{String(year).slice(-2)} - {prevLabel}'{String(prevYear).slice(-2)})</td>
@@ -711,7 +740,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
                 </div>
             ) : (
                 /* Paper Document */
-                <div className="wsp-document">
+                <div className="wsp-document impact-print-document" id="impact-report-content">
                     <ReportWatermark />
                     {/* Letterhead */}
                     <div className="wsp-letterhead">
@@ -741,7 +770,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
                     {renderMainTable()}
 
                     {/* Bottom Section: Two Tables Side by Side */}
-                    <div className="wsp-bottom-section" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                    <div className="wsp-bottom-section impact-bottom-section" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
                         {/* Pruning Table (Left) */}
                         {renderPruningTable()}
 
@@ -750,7 +779,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
                     </div>
 
                     {/* Report Footer & Signatures */}
-                    <div className="print-only" style={{ marginTop: '3rem', pageBreakInside: 'avoid' }}>
+                    <div className="print-only impact-print-signature" style={{ marginTop: '3rem', pageBreakInside: 'avoid' }}>
                         <PrintSignature />
                     </div>
 

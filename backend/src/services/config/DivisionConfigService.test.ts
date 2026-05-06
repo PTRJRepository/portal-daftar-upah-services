@@ -27,4 +27,9 @@ describe("DivisionConfigService gang exclusions", () => {
         expect(gangCodes).not.toContain("F1BHL");
         expect(gangCodes).toEqual(["F1H", "F1M", "F2H", "F2M", "F3H"]);
     });
+
+    it("labels DME as Darrur Makmur Estate", () => {
+        expect(divisionConfigService.getName("DME")).toBe("Darrur Makmur Estate");
+        expect(divisionConfigService.getDivision("DME")?.aliases).toContain("Darrur Makmur Estate");
+    });
 });

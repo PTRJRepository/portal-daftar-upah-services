@@ -21,6 +21,14 @@ describe('manualAdjustmentNaming', () => {
         expect(toManualAdjustmentFieldName('PREMI', 'premi    insentif')).toBe('premi_insentif');
     });
 
+    it('maps legacy field-key adjustment names without duplicating prefixes', () => {
+        expect(toManualAdjustmentFieldName('PREMI', 'premi_pruning')).toBe('premi_pruning');
+        expect(toManualAdjustmentFieldName('PREMI', 'PREMI_PRUNING')).toBe('premi_pruning');
+        expect(toManualAdjustmentFieldName('PREMI', 'premi_premi_pruning')).toBe('premi_pruning');
+        expect(toManualAdjustmentFieldName('POTONGAN_KOTOR', 'koreksi_denda_panen')).toBe('koreksi_denda_panen');
+        expect(toManualAdjustmentFieldName('POTONGAN_BERSIH', 'potongan_lainnya_kasbon')).toBe('potongan_lainnya_kasbon');
+    });
+
     it('retains zero-value placeholder rows with INIT_COLUMN or sync remarks', () => {
         expect(shouldDeleteStoredAdjustment(0, 'INIT_COLUMN ...')).toBe(false);
         expect(shouldDeleteStoredAdjustment(0, 'KOREKSI DENDA | DE0004 - (DE) POTONGAN PREMI | 0 | sync:MISS | match:MISMATCH')).toBe(false);

@@ -372,6 +372,16 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 total_bpjs_majikan: number;
                 total_spsi: number;
             }>(`
+                WITH latest_rows AS (
+                    SELECT
+                        h.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY h.period_month, h.period_year, h.gang_code
+                            ORDER BY COALESCE(h.updated_at, h.created_at) DESC, h.id DESC
+                        ) as row_rank
+                    FROM dbo.daftar_upah_aggregation_history h
+                    WHERE h.period_month = ? AND h.period_year = ?
+                )
                 SELECT
                     h.division_code,
                     COUNT(*) as gang_count,
@@ -386,8 +396,8 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                     SUM(h.total_bpjs_pekerja) as total_bpjs_pekerja,
                     SUM(h.total_bpjs_majikan) as total_bpjs_majikan,
                     SUM(h.total_spsi) as total_spsi
-                FROM dbo.daftar_upah_aggregation_history h
-                WHERE h.period_month = ? AND h.period_year = ?
+                FROM latest_rows h
+                WHERE h.row_rank = 1
                 GROUP BY h.division_code
                 ORDER BY h.division_code
             `, [month, year]);
@@ -515,9 +525,20 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
                 division_code: string;
                 gang_count: number;
             }>(`
+                WITH latest_rows AS (
+                    SELECT
+                        h.division_code,
+                        h.gang_code,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY h.period_month, h.period_year, h.gang_code
+                            ORDER BY COALESCE(h.updated_at, h.created_at) DESC, h.id DESC
+                        ) as row_rank
+                    FROM dbo.daftar_upah_aggregation_history h
+                    WHERE h.period_month = ? AND h.period_year = ?
+                )
                 SELECT h.division_code, COUNT(*) as gang_count
-                FROM dbo.daftar_upah_aggregation_history h
-                WHERE h.period_month = ? AND h.period_year = ?
+                FROM latest_rows h
+                WHERE h.row_rank = 1
                 GROUP BY h.division_code
                 ORDER BY h.division_code
             `, [month, year]);
@@ -554,22 +575,38 @@ export const aggregationSeederRoutes = new Elysia({ prefix: "/payroll/aggregatio
             const db = Database.getExtendedInstance();
 
             // Get stored aggregation totals
-            let aggQuery = `
-                SELECT division_code, gang_code, gang_description,
-                       total_employees, total_hk, total_upah_bersih, total_premi,
-                       total_lembur, total_pph21, total_spsi, total_potongan,
-                       total_premi_insentif, total_premi_kinerja, total_premi_prunning, total_koreksi
-                FROM dbo.daftar_upah_aggregation_history
-                WHERE period_month = ? AND period_year = ?
-            `;
+            const aggWhereClauses = ["period_month = ?", "period_year = ?"];
             const aggParams: any[] = [month, year];
+            let latestRowsFilter = "row_rank = 1";
 
             if (divisionCode) {
-                aggQuery += ` AND division_code = ?`;
+                latestRowsFilter += " AND division_code = ?";
                 aggParams.push(divisionCode);
             }
 
-            aggQuery += " ORDER BY division_code, gang_code";
+            const aggQuery = `
+                WITH latest_rows AS (
+                    SELECT
+                        division_code, gang_code, gang_description,
+                        total_employees, total_hk, total_upah_bersih, total_premi,
+                        total_lembur, total_pph21, total_spsi, total_potongan,
+                        total_premi_insentif, total_premi_kinerja, total_premi_prunning, total_koreksi,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY period_month, period_year, gang_code
+                            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+                        ) as row_rank
+                    FROM dbo.daftar_upah_aggregation_history
+                    WHERE ${aggWhereClauses.join(" AND ")}
+                )
+                SELECT
+                    division_code, gang_code, gang_description,
+                    total_employees, total_hk, total_upah_bersih, total_premi,
+                    total_lembur, total_pph21, total_spsi, total_potongan,
+                    total_premi_insentif, total_premi_kinerja, total_premi_prunning, total_koreksi
+                FROM latest_rows
+                WHERE ${latestRowsFilter}
+                ORDER BY division_code, gang_code
+            `;
 
             const storedAggregations = await db.query<any>(aggQuery, aggParams);
 
@@ -1143,7 +1180,7 @@ async function fetchFfbWeightForDivision(divisionCode: string, month: number, ye
         }
 
         // Debug: List available suppliers for this period if no match
-        // This helps us see if the division name is different (e.g. 'DME' vs 'ESTATE DME')
+        // This helps us see if the division name is different (e.g. 'DME' vs 'Darrur Makmur Estate')
         const debugCheck = await db.query<{ Code: string, Name: string }>(`
             SELECT DISTINCT TOP 5 T.CustomerCode as Code, S.Name
             FROM [dbo].[WM_TICKET] T

@@ -311,7 +311,7 @@ const DashboardLayout = () => {
 
     // Auto-expand reports if on a reports page
     useEffect(() => {
-        const reportsPaths = ['/summary', '/wages', '/comprehensive', '/report-pajak', '/analysis', '/executive', '/impact'];
+        const reportsPaths = ['/summary', '/wages', '/comprehensive', '/report-pajak', '/analysis', '/tonase-analysis', '/executive', '/impact'];
         const isReports = reportsPaths.some(p => location.pathname.includes(p));
         setReportsOpen(isReports);
     }, [location.pathname]);
@@ -337,6 +337,7 @@ const DashboardLayout = () => {
             { to: '/wages-comparison', icon: BarChart2, label: 'Summary Comparison', description: 'Perbandingan ringkasan', indent: true },
             { to: '/impact', icon: TrendingUp, label: 'Impact Report', description: 'Analisis dampak', indent: true },
             { to: '/analysis', icon: TrendingUp, label: 'Analisa Lembur & Premi', description: 'Lembur dan premi detail', indent: true },
+            { to: '/tonase-analysis', icon: BarChart2, label: 'Analisis Tonase', description: 'Tonase, HK, premi panen', indent: true },
             { to: '/executive', icon: BarChart2, label: 'Executive Analysis', description: 'Analisis eksekutif', indent: true },
             { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak', indent: true },
             { to: '/data-verification', icon: CheckCircle, label: 'Data Verification', description: 'Verifikasi konsistensi data', indent: true },
@@ -352,7 +353,7 @@ const DashboardLayout = () => {
 
     const isReportsPathActive = [
         '/summary', '/wages', '/comprehensive', '/report-pajak',
-        '/analysis', '/executive', '/impact'
+        '/analysis', '/tonase-analysis', '/executive', '/impact'
     ].some(p => location.pathname.includes(p));
 
     const isAdminPath = ['/seed', '/spreadsheet-sync', '/employee-directory', '/test'].some(p =>
@@ -360,7 +361,7 @@ const DashboardLayout = () => {
     );
 
     return (
-        <div style={{
+        <div className="dashboard-layout-root" style={{
             display: 'flex',
             height: '100vh',
             width: '100vw',
@@ -524,7 +525,7 @@ const DashboardLayout = () => {
             </div>
 
             {/* ─── MAIN AREA ────────────────────────────────────────────────── */}
-            <div style={{
+            <div className="dashboard-layout-main" style={{
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
@@ -540,7 +541,7 @@ const DashboardLayout = () => {
                 />
 
                 {/* Content - key forces Outlet remount on navigation, fixing stuck UI bug */}
-                <div style={{
+                <div className="dashboard-layout-content print-content-area" style={{
                     flex: 1,
                     overflowY: 'auto',
                     overflowX: 'hidden',

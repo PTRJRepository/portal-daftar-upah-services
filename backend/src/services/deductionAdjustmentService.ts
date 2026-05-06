@@ -3,7 +3,9 @@ import { file, write } from "bun";
 
 /**
  * Deduction Adjustment Service
- * Stores manual adjustments for PPH21 and SPSI values
+ * Stores manual adjustments for deduction values.
+ * PPH21 follows seeded Daftar Upah totals in reports; legacy PPH entries are
+ * retained as metadata only and are not applied to displayed totals.
  * Data structure: { "YYYY-MM": { "DIV_CODE": { pph21: number, spsi: number } } }
  */
 export class DeductionAdjustmentService {
@@ -133,8 +135,10 @@ export class DeductionAdjustmentService {
     }
 
     /**
-     * Apply adjustments to division data
-     * Adds adjustment values to existing pph21/spsi totals
+     * Apply adjustments to division data.
+     * SPSI remains adjustable. PPH21 must stay identical to the seeded
+     * Daftar Upah value, so any stored legacy PPH adjustment is exposed as
+     * metadata but not added to total_pph21.
      */
     public async applyAdjustmentsToDivisionData(
         month: number,
@@ -147,7 +151,7 @@ export class DeductionAdjustmentService {
             const adj = adjustments[div.division_code] || { pph21: 0, spsi: 0 };
             return {
                 ...div,
-                total_pph21: (div.total_pph21 || 0) + (adj.pph21 || 0),
+                total_pph21: div.total_pph21 || 0,
                 total_spsi: (div.total_spsi || 0) + (adj.spsi || 0),
                 // Store original values for reference
                 original_pph21: div.total_pph21,

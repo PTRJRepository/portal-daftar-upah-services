@@ -198,7 +198,7 @@ export class GangService {
         // Other divisions
         'ARA':  ['ARA', 'ara', 'Area'],
         'ARC':  ['ARC', 'arc', 'AREC', 'arec', 'Air Ruak Central'],
-        'DME':  ['DME', 'dme', 'Dempo'],
+        'DME':  ['DME', 'dme', 'Darrur Makmur Estate', 'Darrur Makmur'],
         'IJL':  ['IJL', 'ijl', 'Ijuk'],
         // Infrastructure & Support
         'INF':  ['INF', 'inf', 'INFRA', 'infra', 'INFRASTRUKTUR', 'Infrastruktur'],

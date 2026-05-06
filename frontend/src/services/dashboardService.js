@@ -77,8 +77,36 @@ export async function fetchFilterOptions(token, month, year) {
     return response.data;
 }
 
+/**
+ * Fetch estate-wide tonase analysis report for harvest gangs.
+ * @param {string} token - Auth token
+ * @param {Object} params - Query parameters
+ * @param {number} params.month - Month (1-12)
+ * @param {number} params.year - Year
+ * @param {string} [params.division_code] - Optional estate/division scope
+ * @returns {Promise<Object>} Tonase analysis report payload
+ */
+export async function fetchTonaseAnalysisReport(token, { month, year, division_code }) {
+    const params = {
+        month: month.toString(),
+        year: year.toString(),
+        division_code: division_code || 'REBINMAS'
+    };
+
+    const response = await axios.get('payroll/dashboard/tonase-analysis-report', {
+        params,
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
 export default {
     fetchGangComparison,
     fetchDivisionDetailData,
-    fetchFilterOptions
+    fetchFilterOptions,
+    fetchTonaseAnalysisReport
 };

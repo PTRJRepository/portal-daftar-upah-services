@@ -402,6 +402,13 @@ export default function DashboardHome() {
                 Productivity (Tonase vs Upah) <span>›</span>
               </button>
               <button
+                onClick={() => navigate('/tonase-analysis')}
+                className="dashboard-link-btn"
+                style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                Analisis Tonase <span>›</span>
+              </button>
+              <button
                 onClick={() => navigate('/detailed-salary')}
                 className="dashboard-link-btn"
                 style={{ textAlign: 'left', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}

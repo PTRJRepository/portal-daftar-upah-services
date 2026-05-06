@@ -22,7 +22,20 @@ const formatIncomeKeyLabel = (key) => {
         .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-const isPositiveAmount = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0
+const toFiniteNumber = (value) => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : 0
+}
+
+const sumPositiveFields = (source, predicate) => {
+    return Object.entries(source || {}).reduce((sum, [key, val]) => {
+        if (!predicate(key)) return sum
+        const amount = toFiniteNumber(val)
+        return amount > 0 ? sum + amount : sum
+    }, 0)
+}
+
+const isPositiveAmount = (value) => toFiniteNumber(value) > 0
 
 /**
  * PayslipCard - Compact payslip component for printing (4 per A4)
@@ -54,7 +67,7 @@ export default function PayslipCard({ data, month, year }) {
     // Helper to safely get numeric values
     const getNum = (key) => {
         const val = payroll[key] ?? empInfo[key]
-        return typeof val === 'number' ? val : 0
+        return toFiniteNumber(val)
     }
 
     // --- CALCULATIONS ---
@@ -113,11 +126,11 @@ export default function PayslipCard({ data, month, year }) {
     const lemburJam = getNum('lembur_jam') || getNum('total_jam_lembur')
     const lemburJumlah = getNum('lembur_jumlah') || getNum('total_upah_lembur') || getNum('upah_lembur')
 
-    // Potongan koreksi tetap dihitung di total, tetapi detailnya tidak dicetak agar tidak dobel.
-    const dynamicKoreksiTotal = Object.entries(payroll).reduce((sum, [key, val]) => {
-        if (!key.startsWith('koreksi_') || key === 'koreksi_hk') return sum
-        return sum + (typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : 0)
-    }, 0)
+    // Koreksi mengurangi pendapatan langsung, bukan potongan bersih.
+    const dynamicKoreksiTotal = sumPositiveFields(
+        payroll,
+        (key) => key.startsWith('koreksi_') && key !== 'koreksi_hk'
+    )
     const totalPotKotor = getNum('potongan_upah_kotor_total') || getNum('pot_koreksi') || dynamicKoreksiTotal
 
     // Potongan Upah Bersih
@@ -132,6 +145,7 @@ export default function PayslipCard({ data, month, year }) {
 
     // Dynamic deductions from 'potongan_' fields in payroll record
     Object.entries(payroll).forEach(([key, val]) => {
+        if (key === 'potongan_upah_kotor_total' || key.startsWith('potongan_upah_kotor')) return
         if (key.startsWith('potongan_') && typeof val === 'number' && val > 0) {
             const label = key.replace('potongan_', '').replace(/_/g, ' ').toUpperCase()
             // Avoid duplicates with hardcoded list
@@ -201,19 +215,34 @@ export default function PayslipCard({ data, month, year }) {
 
     const thrList = otherIncomeItems.filter((item) => item.type === 'THR' || item.name.toUpperCase().includes('THR'))
     const otherIncomeDeductionTotal = otherIncomeItems.reduce((sum, item) => sum + item.amount, 0)
+    const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
+
+    const taxBruto = getNum('penghasilan_bruto') || jumlahUpahKotor
+    const taxOtherIncome = getNum('taxable_pendapatan_lainnya') || totalOtherIncome
+    const taxAstekBpjs = [
+        getNum('astek_084'),
+        getNum('bpjs_kesehatan_majikan_4_pct'),
+        getNum('pot_astek') || getNum('pot_astek_jumlah') || getNum('pot_jht'),
+        getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan'),
+        getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun'),
+    ].reduce((sum, amount) => sum + amount, 0)
+    const taxRate = getNum('tarif_pajak_ter')
+    const taxPph21 = getNum('pph21_ter') || getNum('pot_pph21')
+    const showTaxBreakdown = taxPph21 > 0 && (taxBruto > 0 || taxOtherIncome > 0)
 
     // Total Kotor includes Gross regular + THR/Bonus
-    const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (totalPotKotor + potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + otherIncomeDeductionTotal + premiPph);
-    const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')
+    const totalPotongan = getNum('total_potongan_bersih') || getNum('total_potongan') || (potBersihList.reduce((acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value), 0) + otherIncomeDeductionTotal + premiPph);
     // upahBersih should be Gross - Total Potongan Bersih
     const upahBersih = getNum('upah_bersih') || (jumlahUpahKotor - totalPotongan)
 
     return (
         <div className="payslip-card">
-            {/* Watermark */}
+            {/* Dense symbol watermark */}
             <div className="payslip-watermark" aria-hidden="true">
-                {Array.from({ length: 12 }, (_, idx) => (
-                    <span key={idx} className="payslip-watermark__tile">REBINMAS JAYA</span>
+                {Array.from({ length: 32 }, (_, idx) => (
+                    <span key={idx} className="payslip-watermark__tile">
+                        <img className="payslip-watermark__image" src="/images/rebinmas.webp" alt="" />
+                    </span>
                 ))}
             </div>
 
@@ -254,11 +283,11 @@ export default function PayslipCard({ data, month, year }) {
                     <span className="payslip-info-label">PTKP</span>
                     <span className="payslip-info-value">: {payroll.status_ptkp || '-'} ({payroll.kategori_ter || '-'})</span>
                 </div>
-                {/* Alamat - collapsible, hidden by default */}
+                {/* Alamat - collapsible, hidden by default, hidden in print */}
                 {empInfo.alamat && empInfo.alamat.trim() && (
                     <>
                         <div
-                            className="payslip-info-row payslip-address-toggle"
+                            className="payslip-info-row payslip-address-toggle no-print"
                             onClick={() => setShowAddress(!showAddress)}
                             style={{ cursor: 'pointer' }}
                             title={showAddress ? 'Klik untuk sembunyikan alamat' : 'Klik untuk tampilkan alamat'}
@@ -269,7 +298,7 @@ export default function PayslipCard({ data, month, year }) {
                             </span>
                         </div>
                         {showAddress && (
-                            <div className="payslip-info-row payslip-address-row">
+                            <div className="payslip-info-row payslip-address-row no-print">
                                 <span className="payslip-info-label"></span>
                                 <span className="payslip-info-value payslip-address-text">
                                     {empInfo.alamat}
@@ -278,6 +307,14 @@ export default function PayslipCard({ data, month, year }) {
                         )}
                     </>
                 )}
+            </div>
+
+            <div className="payslip-activity-summary">
+                <span>Ringkasan Aktivitas</span>
+                <strong>{`HK: ${hk || 0}`}</strong>
+                <strong>{`Sakit: ${attSakit || 0} hr`}</strong>
+                <strong>{`Lembur: ${lemburJam || 0}j = ${formatCurrency(lemburJumlah)}`}</strong>
+                <strong>{`Koreksi: ${formatCurrency(totalPotKotor)}`}</strong>
             </div>
 
             {/* Content - Two Columns */}
@@ -338,7 +375,17 @@ export default function PayslipCard({ data, month, year }) {
                                     <span className="payslip-item-value">{formatCurrency(item.amount)}</span>
                                 </div>
                             ))}
+                            <div className="payslip-income-note">
+                                * Ditambah ke Upah Kotor & dikurangi di Upah Bersih karena sudah dibayarkan.
+                            </div>
                         </>
+                    )}
+
+                    {totalPotKotor > 0 && (
+                        <div className="payslip-item payslip-income-correction">
+                            <span className="payslip-item-label">Koreksi Pendapatan (-)</span>
+                            <span className="payslip-item-value payslip-negative">{formatCurrency(totalPotKotor)}</span>
+                        </div>
                     )}
 
                     <div className="total-line-wrapper">
@@ -370,25 +417,30 @@ export default function PayslipCard({ data, month, year }) {
                                             </span>
                                         </div>
                                         {/* Display Tax Calculation Breakdown below the PPh21 row */}
-                                        {isTax && (payroll.tarif_pajak_ter > 0 || payroll.pph21_ter > 0) && (
+                                        {isTax && showTaxBreakdown && (
                                             <div className="payslip-tax-breakdown">
-                                                <div style={{ borderBottom: '0.5px dashed #ccc', margin: '1mm 0', paddingBottom: '0.5mm', fontWeight: 'bold' }}>
-                                                    Detail Kalkulasi PPh21 (TER):
+                                                <div className="payslip-tax-breakdown-title">
+                                                    <span>Komponen Pajak / PPh 21</span>
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span>Bruto (DPP):</span>
-                                                    <span>Rp{formatCurrency(payroll.penghasilan_bruto)}</span>
+                                                <div className="payslip-tax-breakdown-row">
+                                                    <span>Bruto/DPP</span>
+                                                    <span>{formatCurrency(taxBruto)}</span>
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span>Tarif {payroll.kategori_ter || 'TER'} ({payroll.status_ptkp}):</span>
-                                                    <span>{Number(payroll.tarif_pajak_ter).toFixed(2)}%</span>
+                                                <div className="payslip-tax-breakdown-row">
+                                                    <span>Pendapatan Lainnya</span>
+                                                    <span>{formatCurrency(taxOtherIncome)}</span>
                                                 </div>
-                                                <div style={{ borderTop: '0.5px solid #666', marginTop: '0.5mm', paddingTop: '0.5mm', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                                                    <span>Pajak Terhutang:</span>
-                                                    <span>Rp{formatCurrency(payroll.pph21_ter)}</span>
+                                                <div className="payslip-tax-breakdown-row">
+                                                    <span>Astek/BPJS</span>
+                                                    <span>{formatCurrency(taxAstekBpjs)}</span>
                                                 </div>
-                                                <div style={{ fontSize: '7px', fontStyle: 'italic', color: '#666', marginTop: '0.5mm' }}>
-                                                    * Rumus: Bruto x Tarif Efektif Rata-rata
+                                                <div className="payslip-tax-breakdown-row">
+                                                    <span>{`Tarif TER ${payroll.kategori_ter || '-'} (${payroll.status_ptkp || '-'})`}</span>
+                                                    <span>{`${taxRate.toFixed(2)}%`}</span>
+                                                </div>
+                                                <div className="payslip-tax-breakdown-row payslip-tax-breakdown-total">
+                                                    <span>PPh 21</span>
+                                                    <span>{formatCurrency(taxPph21)}</span>
                                                 </div>
                                             </div>
                                         )}
@@ -422,12 +474,12 @@ export default function PayslipCard({ data, month, year }) {
                 </div>
             </div>
 
-            {/* THR Note Section - Only show if there is THR or in March */}
-            {(thrList.length > 0 || month === 3) && (
+            {/* THR Note Section - Only show if there is actual THR */}
+            {thrList.length > 0 && (
                 <div className="payslip-note-section">
                     <div className="payslip-note-text">
-                        <strong>Keterangan:</strong> THR yang dibayarkan bulan lalu belum dipotong pajak. 
-                        Sesuai peraturan perpajakan, pemotongan pajak atas THR dilakukan pada penggajian bulan berjalan ini 
+                        <strong>Keterangan:</strong> THR yang dibayarkan bulan lalu belum dipotong pajak.
+                        Sesuai peraturan perpajakan, pemotongan pajak atas THR dilakukan pada penggajian bulan berjalan ini
                         (digabungkan dengan penghasilan rutin).
                     </div>
                 </div>
@@ -437,20 +489,6 @@ export default function PayslipCard({ data, month, year }) {
             <div className="payslip-card-footer">
                 <div className="payslip-thp-label">PENERIMAAN BERSIH (Take Home Pay)</div>
                 <div className="payslip-thp-value">Rp {formatCurrency(upahBersih)}</div>
-            </div>
-
-            {/* Signature Section */}
-            <div className="payslip-card-signature">
-                <div className="payslip-sig-box">
-                    <div className="payslip-sig-label">Dibuat Oleh,</div>
-                    <div className="payslip-sig-line"></div>
-                    <div className="payslip-sig-name">Admin Payroll</div>
-                </div>
-                <div className="payslip-sig-box">
-                    <div className="payslip-sig-label">Diterima Oleh,</div>
-                    <div className="payslip-sig-line"></div>
-                    <div className="payslip-sig-name">{empInfo.nama || empInfo.EmpName || '-'}</div>
-                </div>
             </div>
         </div>
     );

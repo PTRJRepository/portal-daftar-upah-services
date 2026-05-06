@@ -145,20 +145,12 @@ export class PayrollDataService {
 
         try {
             const dataExtractor = DataExtractorService.getInstance();
-            
-            // Call service directly instead of HTTP
-            // Skip harvest is true for aggregation seeder
-            const result = await dataExtractor.extractPayrollData(
-                month, 
-                year, 
-                "ALL", 
-                division, 
-                null, 
-                Config.DB_PROFILE, 
-                includeVirtual, 
-                false, 
-                undefined, 
-                true
+            const result = await this.extractAggregationPayrollData(
+                dataExtractor,
+                month,
+                year,
+                division,
+                includeVirtual
             );
 
             // Group by gang and calculate totals manually to match the raw-tree endpoint response format
@@ -171,11 +163,7 @@ export class PayrollDataService {
 
             const calculateTotals = (employees: any[]) => {
                 const activeEmployees = employees.filter((emp: any) => {
-                    const minggu = emp.cuti_minggu_hari || 0;
-                    const nasional = emp.cuti_nasional_hari || 0;
-                    const hk = parseFloat(emp.jumlah_hk) || 0;
-                    const effective_hk = hk - (minggu + nasional);
-                    return effective_hk > 0;
+                    return (Number(emp.jumlah_hk) || 0) > 0;
                 });
 
                 const daftarUpahTotals = calculatePayrollTotals(activeEmployees, "TOTAL");
@@ -249,7 +237,19 @@ export class PayrollDataService {
             const gangsList = Object.entries(gangsMap).map(([gang_code, employees]) => ({
                 gang_code,
                 gang_totals: calculateTotals(employees)
-            }));
+            })).sort((a, b) => a.gang_code.localeCompare(b.gang_code));
+
+            const allEmployees = Object.values(gangsMap).flat();
+            const divisionTotals = calculateTotals(allEmployees);
+            const gangUpahBersihTotal = gangsList.reduce(
+                (sum, gang) => sum + (Number(gang.gang_totals.upah_bersih) || 0),
+                0
+            );
+            const upahBersihRoundingDelta = (Number(divisionTotals.upah_bersih) || 0) - Math.round(gangUpahBersihTotal);
+            if (upahBersihRoundingDelta !== 0 && gangsList.length > 0) {
+                gangsList[gangsList.length - 1].gang_totals.upah_bersih =
+                    (Number(gangsList[gangsList.length - 1].gang_totals.upah_bersih) || 0) + upahBersihRoundingDelta;
+            }
 
             return {
                 success: true,
@@ -263,6 +263,62 @@ export class PayrollDataService {
             console.error(`[PayrollDataService] Extraction error:`, error);
             throw error;
         }
+    }
+
+    private static async extractAggregationPayrollData(
+        dataExtractor: any,
+        month: number,
+        year: number,
+        division: string,
+        includeVirtual: boolean
+    ) {
+        if (typeof dataExtractor.extractPayrollDataProgressive === "function") {
+            let completeChunk: any = null;
+
+            for await (const chunk of dataExtractor.extractPayrollDataProgressive(
+                month,
+                year,
+                "ALL",
+                division,
+                Config.DB_PROFILE,
+                undefined,
+                false
+            )) {
+                if (chunk?.phase === "complete") {
+                    completeChunk = chunk;
+                }
+            }
+
+            if (completeChunk) {
+                const rows = Array.from((completeChunk.gangs || new Map()).values()).flat();
+                return {
+                    data_rows: rows,
+                    dynamic_premi_headers: completeChunk.dynamic_premi_headers || [],
+                    dynamic_potongan_headers: completeChunk.dynamic_potongan_headers || [],
+                    premi_title_map: completeChunk.dynamic_premi_titles || {},
+                    potongan_title_map: completeChunk.dynamic_potongan_titles || {},
+                    meta: {
+                        execution_time_ms: 0,
+                        row_count: rows.length,
+                        source: "progressive_complete"
+                    }
+                };
+            }
+        }
+
+        // Fallback for tests and older extractor implementations.
+        return await dataExtractor.extractPayrollData(
+            month,
+            year,
+            "ALL",
+            division,
+            null,
+            Config.DB_PROFILE,
+            includeVirtual,
+            false,
+            undefined,
+            true
+        );
     }
 
     /**
@@ -351,9 +407,9 @@ export class PayrollDataService {
             // DO NOT recalculate from dynamicPremiList - it may differ due to missing/duplicate items
             total_premi: totals.total_premi || totalPremi,
             total_potongan: totals.total_potongan || 0,
-            // [FIX] Use pph21_ter (calculated TER tax) not pot_pph21 (from PR_ADTRANS deduction)
-            // pph21_ter is the correct tax amount calculated using TER method in Phase 4b
-            total_pph21: totals.pph21_ter || 0,
+            // Match Daftar Upah grand total: use the actual PPH21 deduction from DB PTRJ,
+            // not the calculated TER comparison value.
+            total_pph21: totals.pot_pph21 || 0,
             total_bpjs_pekerja: totals.pot_bpjs_pekerja_total || ((totals.pot_bpjs_kesehatan_pekerja || 0) + (totals.pot_bpjs_pensiun_pekerja || 0)),
             total_bpjs_majikan: (totals.pot_bpjs_kesehatan_majikan || 0) + (totals.pot_bpjs_pensiun_majikan || 0),
             total_spsi: totals.pot_spsi || 0,

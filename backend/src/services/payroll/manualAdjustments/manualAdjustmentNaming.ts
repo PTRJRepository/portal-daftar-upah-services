@@ -56,13 +56,15 @@ export function toManualAdjustmentFieldName(
     adjustmentName: string
 ): string {
     const normalizedName = normalizeStoredAdjustmentName(adjustmentName);
+    const fieldPrefix = FIELD_PREFIX_BY_TYPE[adjustmentType];
     const suffix = normalizedName
         .replace(PREFIX_BY_TYPE[adjustmentType], '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
+        .replace(/^_+|_+$/g, '')
+        .replace(new RegExp(`^(?:${fieldPrefix}_)+`), '');
 
-    return `${FIELD_PREFIX_BY_TYPE[adjustmentType]}_${suffix}`;
+    return `${fieldPrefix}_${suffix}`;
 }
 
 export function shouldDeleteStoredAdjustment(amount: number, remarks?: string | null, hasMetadataJson = false): boolean {

@@ -7,6 +7,170 @@ function appendValuePriorityModeToObject(params, valuePriorityMode) {
     return params;
 }
 
+const DOM_TAX_EXPORT_FIELDS = [
+    'no',
+    'emp_code',
+    'ID_KARYAWAN',
+    'emp_name',
+    'NAMA_KARYAWAN',
+    'nama',
+    'parent_name',
+    'nik',
+    'new_nik',
+    'NIK',
+    'nik_ktp',
+    'npwp',
+    'NPWP',
+    'pajak_npwp',
+    'alamat',
+    'res_address',
+    'ResAddress',
+    'ALAMAT',
+    'address',
+    'jabatan',
+    'JABATAN',
+    'position',
+    'gender',
+    'jenis_kelamin',
+    'status_ptkp',
+    'ptkp',
+    'PTKP',
+    'kategori_ter',
+    'kategori',
+    'TER',
+    'gang_code',
+    'hk',
+    'jumlah_hk',
+    'kehadiran',
+    'hari_kerja',
+    'upah_dasar',
+    'gaji_pokok_ideal',
+    'gaji_pokok_aktual',
+    'gaji_pokok_dibayarkan',
+    'koreksi_hk',
+    'tunjangan_beras',
+    'beras_jumlah',
+    'tunjangan_jabatan',
+    'jabatan_jumlah',
+    'tunjangan_masa_kerja',
+    'masa_kerja_jumlah',
+    'tunjangan_lembur',
+    'lembur_jumlah',
+    'total_premi',
+    'pot_koreksi',
+    'pendapatan_thr',
+    'thr_amount',
+    'THR',
+    'thr',
+    'THR_AMOUNT',
+    'pendapatan_kontan',
+    'exgratia_amount',
+    'kontanan_amount',
+    'KONTANAN',
+    'bonus_amount',
+    'KONTAN',
+    'bpjs_kes_majikan',
+    'pot_bpjs_kesehatan_majikan',
+    'bpjs_kesehatan_majikan_4_pct',
+    'BPJS_KESEHATAN',
+    'astek_jht_majikan',
+    'astek_084',
+    'ASTEK_INS',
+    'upah_kotor',
+    'penghasilan_bruto',
+    'PENGHASILAN_BRUTO',
+    'bruto',
+    'tarif_pajak_ter',
+    'TARIF_TER',
+    'tarif',
+    'pph21_ter',
+    'potongan_pph21',
+    'pot_pph21',
+    'premi_brondol',
+    'premi_brondol_total',
+    'premi_pph',
+    'pendapatan_lainnya',
+    'pendapatan_tidak_tetap',
+    'taxable_pendapatan_thr',
+    'taxable_pendapatan_bonus',
+    'taxable_pendapatan_custom'
+];
+
+function copyDefinedFields(target, source, fields) {
+    fields.forEach((field) => {
+        if (source?.[field] !== undefined) {
+            target[field] = source[field];
+        }
+    });
+}
+
+function compactNumberMap(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const result = {};
+    Object.entries(value).forEach(([key, rawValue]) => {
+        const numeric = Number(rawValue);
+        if (Number.isFinite(numeric) && numeric !== 0) {
+            result[key] = numeric;
+        }
+    });
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function compactOtherIncomes(value) {
+    if (!Array.isArray(value)) return undefined;
+    const result = value
+        .map((item) => ({
+            type: item?.type,
+            name: item?.name,
+            amount: Number(item?.amount) || 0
+        }))
+        .filter((item) => item.type || item.name || item.amount !== 0);
+    return result.length > 0 ? result : undefined;
+}
+
+function compactDomTaxEmployeeRow(row, premiKeys = []) {
+    const compact = {};
+    copyDefinedFields(compact, row, DOM_TAX_EXPORT_FIELDS);
+
+    if (!compact.emp_name && row?.nama) compact.emp_name = row.nama;
+    if (!compact.nama && row?.emp_name) compact.nama = row.emp_name;
+    if (compact.hk === undefined) {
+        compact.hk = row?.hk ?? row?.jumlah_hk ?? row?.kehadiran ?? row?.hari_kerja ?? 0;
+    }
+
+    const premi = compactNumberMap(row?.premi);
+    if (premi) compact.premi = premi;
+
+    const premiDetail = compactNumberMap(row?.premi_detail);
+    if (premiDetail) compact.premi_detail = premiDetail;
+
+    const otherIncomes = compactOtherIncomes(row?.other_incomes);
+    if (otherIncomes) compact.other_incomes = otherIncomes;
+
+    const dynamicFields = new Set([
+        ...(Array.isArray(premiKeys) ? premiKeys : []),
+        ...Object.keys(row || {}).filter((key) =>
+            key.startsWith('premi_')
+            || key.startsWith('pendapatan_')
+            || key.startsWith('taxable_pendapatan_')
+        )
+    ]);
+
+    dynamicFields.forEach((field) => {
+        if (row?.[field] !== undefined) {
+            compact[field] = row[field];
+        }
+    });
+
+    return compact;
+}
+
+function compactDomTaxEmployeeRows(rows = [], premiKeys = []) {
+    return (Array.isArray(rows) ? rows : [])
+        .filter((row) => row && row.type === 'employee')
+        .map((row) => compactDomTaxEmployeeRow(row, premiKeys));
+}
+
 /**
  * Helper to handle blob processes (checks for 0-byte, handles errors returned in blobs)
  */
@@ -235,13 +399,14 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
  */
 export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, employeesData, premiKeys) {
     try {
+        const compactEmployees = compactDomTaxEmployeeRows(employeesData, premiKeys);
         const payload = {
             year: String(year),
             month: String(month),
             division: division || 'ALL',
             gang: gang || 'ALL',
             gangPrefix: gangPrefix || 'ALL',
-            employees: employeesData,
+            employees: compactEmployees,
             premiKeys: premiKeys
         };
 

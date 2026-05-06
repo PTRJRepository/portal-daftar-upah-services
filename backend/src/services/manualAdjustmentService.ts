@@ -1638,10 +1638,10 @@ export class ManualAdjustmentService {
         if (divisionCode) {
             const divisionCodes = getManualAdjustmentDivisionCodeVariants(divisionCode);
             if (divisionCodes.length === 1) {
-                query += ` AND division_code = ?`;
+                query += ` AND (division_code = ? OR division_code IS NULL OR LTRIM(RTRIM(division_code)) = '')`;
                 params.push(divisionCodes[0]);
             } else if (divisionCodes.length > 1) {
-                query += ` AND division_code IN (${divisionCodes.map(() => '?').join(', ')})`;
+                query += ` AND (division_code IN (${divisionCodes.map(() => '?').join(', ')}) OR division_code IS NULL OR LTRIM(RTRIM(division_code)) = '')`;
                 params.push(...divisionCodes);
             }
         }

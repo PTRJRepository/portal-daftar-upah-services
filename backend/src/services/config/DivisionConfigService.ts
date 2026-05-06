@@ -172,9 +172,9 @@ export class DivisionConfigService {
 
         this.registerDivision({
             code: 'DME',
-            name: 'Dempo',
+            name: 'Darrur Makmur Estate',
             type: 'real',
-            aliases: ['DME', 'dme', 'Dempo'],
+            aliases: ['DME', 'dme', 'Darrur Makmur Estate', 'Darrur Makmur'],
             gangPrefix: 'E'
         });
 

@@ -345,7 +345,7 @@ describe("HistorySeederService HR seeding", () => {
         expect(totals.total_upah_pokok).toBe(1700);
         expect(totals.total_gaji_pokok).toBe(2100);
         expect(totals.total_premi).toBe(150);
-        expect(totals.total_pph21).toBe(100);
+        expect(totals.total_pph21).toBe(22);
         expect(totals.total_bpjs_majikan).toBe(58);
         expect(totals.total_potongan).toBe(61);
         expect(totals.total_upah_kotor).toBe(5000);

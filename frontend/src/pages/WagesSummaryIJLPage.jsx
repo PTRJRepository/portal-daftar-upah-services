@@ -375,7 +375,9 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                                         {formatNumber(row.current_month?.tbs_weight, 3)}
                                         {renderTrendArrow(row.current_month?.tbs_weight, row.previous_month?.tbs_weight, 'yield')}
                                     </td>
-                                    <td className="text-right font-semibold border-right-section">{formatNumber(currGaji)}</td>
+                                    <td className={`text-right font-semibold border-right-section ${Number(row.current_month?.thumb_print ?? 0) === 0 ? 'val-zero' : ''}`}>
+                                        {formatNumber(row.current_month?.thumb_print ?? 0)}
+                                    </td>
                                     <td className={`text-right font-semibold ${calculatedSelisih > 0 ? 'text-diff-neg' : calculatedSelisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
                                         <span style={{ marginRight: '6px' }}>
                                             {calculatedSelisih > 0 ? '▲' : calculatedSelisih < 0 ? '▼' : ''}
@@ -397,7 +399,7 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                             <td className="text-right">{formatNumber(grandTotal.total_pph21_current)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_gaji)}</td>
                             <td className="text-right">{formatNumber(grandTotal.prev_tbs, 3)}</td>
-                            <td className="text-right">{formatNumber(grandTotal.curr_gaji)}</td>
+                            <td className="text-right">{formatNumber(grandTotal.curr_thumb_print ?? 0)}</td>
                             <td className="text-right">{formatNumber(grandTotal.curr_tbs, 3)}</td>
                             <td className="text-right">{formatNumber(grandTotal.curr_gaji)}</td>
                             <td className={`text-right font-bold ${grandTotal.selisih > 0 ? 'text-diff-neg' : grandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
@@ -433,8 +435,8 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                         <td className={`text-right ${Number(div.total_premi) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.total_premi)}</td>
                         <td className={`text-right ${Number(div.total_lembur) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.total_lembur)}</td>
                         <td className={`text-right border-right-section ${Number(div.total_manual) === 0 ? 'val-zero' : 'val-positive'}`}>{formatNumber(div.total_manual)}</td>
-                        <td className={`text-right ${Number(div.thumb_print) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.thumb_print)}</td>
-                        <td className={`text-right font-semibold ${div.selisih > 0 ? 'text-diff-neg' : div.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>{formatNumber(div.selisih)}</td>
+                        <td className={`text-right ${Number(div.thumb_print ?? 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(div.thumb_print ?? 0)}</td>
+                        <td className={`text-right font-semibold ${(div.selisih ?? 0) > 0 ? 'text-diff-neg' : (div.selisih ?? 0) < 0 ? 'text-diff-pos' : 'text-neutral'}`}>{formatNumber(div.selisih ?? 0)}</td>
                     </tr>
                 ))}
                 {group.subtotal && (
@@ -447,8 +449,8 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                         <td className="text-right">{formatNumber(group.subtotal.total_premi)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_lembur)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_manual)}</td>
-                        <td className="text-right">{formatNumber(group.subtotal.thumb_print || 0)}</td>
-                        <td className={`text-right font-semibold ${group.subtotal.selisih > 0 ? 'text-diff-neg' : group.subtotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>{formatNumber(group.subtotal.selisih || 0)}</td>
+                        <td className="text-right">{formatNumber(group.subtotal.thumb_print ?? 0)}</td>
+                        <td className={`text-right font-semibold ${(group.subtotal.selisih ?? 0) > 0 ? 'text-diff-neg' : (group.subtotal.selisih ?? 0) < 0 ? 'text-diff-pos' : 'text-neutral'}`}>{formatNumber(group.subtotal.selisih ?? 0)}</td>
                     </tr>
                 )}
             </React.Fragment>
@@ -583,9 +585,9 @@ export default function WagesSummaryIJLPage({ onBack, initialMonth, initialYear 
                                                     <td className="text-right">{formatNumber(ijlGrandTotal.total_premi)}</td>
                                                     <td className="text-right">{formatNumber(ijlGrandTotal.total_lembur)}</td>
                                                     <td className="text-right border-right-section">{formatNumber(ijlGrandTotal.total_manual)}</td>
-                                                    <td className="text-right">{formatNumber(ijlGrandTotal.thumb_print)}</td>
-                                                    <td className={`text-right font-bold ${ijlGrandTotal.selisih > 0 ? 'text-diff-neg' : ijlGrandTotal.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
-                                                        {formatNumber(ijlGrandTotal.selisih)}
+                                                    <td className={`text-right ${Number(ijlGrandTotal.thumb_print ?? 0) === 0 ? 'val-zero' : ''}`}>{formatNumber(ijlGrandTotal.thumb_print ?? 0)}</td>
+                                                    <td className={`text-right font-bold ${(ijlGrandTotal.selisih ?? 0) > 0 ? 'text-diff-neg' : (ijlGrandTotal.selisih ?? 0) < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
+                                                        {formatNumber(ijlGrandTotal.selisih ?? 0)}
                                                     </td>
                                                 </tr>
                                             </tfoot>
