@@ -74,6 +74,29 @@ export function filterRowsExcludedFromDivision<T extends { gang_code?: any }>(
     );
 }
 
+export function shouldKeepPayrollRowAfterEffectiveHkFilter(input: {
+    jumlahHk?: unknown;
+    cutiMingguHari?: unknown;
+    cutiNasionalHari?: unknown;
+    hasManualAdjustments?: boolean;
+}): boolean {
+    const effectiveHk = (Number(input.jumlahHk) || 0)
+        - ((Number(input.cutiMingguHari) || 0) + (Number(input.cutiNasionalHari) || 0));
+    return effectiveHk > 0 || input.hasManualAdjustments === true;
+}
+
+export function resolveManualAdjustmentFetchGangCode(gangCode?: string | null, divisionCode?: string | null): string | undefined {
+    const normalizedDivision = String(divisionCode || "").trim();
+    if (!normalizedDivision) {
+        const normalizedGang = String(gangCode || "").trim().toUpperCase();
+        return normalizedGang && normalizedGang !== "ALL" ? normalizedGang : undefined;
+    }
+
+    // Manual rows can keep an old gang_code after an employee is moved.
+    // Fetch by period/division, then match against the current employee list by emp_code/nik.
+    return undefined;
+}
+
 function pickStaticPotonganForManualBuffer(source: Record<string, number>): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [key, rawValue] of Object.entries(source || {})) {
@@ -1085,7 +1108,7 @@ export class DataExtractorService {
             safeQuery(
                 'getManualAdj',
                 () => fetchManualAdjustmentRows
-                    ? manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode)
+                    ? manualAdjustmentService.getAdjustments(month, year, resolveManualAdjustmentFetchGangCode(gangCode, divisionCode), undefined, divisionCode)
                     : Promise.resolve([]),
                 []
             )
@@ -1464,20 +1487,26 @@ export class DataExtractorService {
                 || (emp.jabatan || "").trim();   // [FIX] Fallback terakhir dari HR_GANGLN.Jabatan
 
             // ============================================================
-            // [PERATURAN BISNIS - STRICT EFFECTIVE HK FILTER]
-            // FILTER: Selalu exclude karyawan dengan effective_hk = 0
+            // [PERATURAN BISNIS - EFFECTIVE HK FILTER]
+            // Exclude effective_hk = 0, kecuali ada manual adjustment.
             //
             // effective_hk = hk - (cuti_minggu + cuti_nasional)
-            // - Jika effective_hk <= 0 → EXCLUDE (strict, tanpa pengecualian)
+            // Manual adjustment harus tetap terlihat agar nilai yang pernah diinput
+            // di payroll_manual_adjustments tidak hilang dari daftar upah.
             //
-            // ATURAN: effective_hk = 0 = TIDAK ADA → TIDAK MUNCUL
+            // ATURAN: effective_hk = 0 = TIDAK ADA, kecuali manual adjustment.
             // ============================================================
             const totalCuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid + empCuti.cuti_minggu + empCuti.cuti_nasional;
             const hari_kerja = Math.max(0, hk - totalCuti);
             const other_cuti = empCuti.cuti_tahunan + empCuti.cuti_sakit_haid;
+            const empAdjustments = getManualAdjustmentsForEmployee(manualAdjustmentIndex, emp);
 
-            // STRICT: selalu filter effective_hk = 0 (tanpa pengecualian)
-            if (effective_hk <= 0) continue;
+            if (!shouldKeepPayrollRowAfterEffectiveHkFilter({
+                jumlahHk: hk,
+                cutiMingguHari: empCuti.cuti_minggu,
+                cutiNasionalHari: empCuti.cuti_nasional,
+                hasManualAdjustments: empAdjustments.length > 0
+            })) continue;
 
             const upah_pokok = attData.total_amount_rp || 0;
             // [PHASE 2.5] Brondol dual source tracking
@@ -1561,7 +1590,6 @@ export class DataExtractorService {
                 }
             }
 
-            const empAdjustments = getManualAdjustmentsForEmployee(manualAdjustmentIndex, emp);
             registerManualAdjustmentMetadataDynamicHeaders(
                 empAdjustments,
                 dynamicPremiSet,
@@ -4351,7 +4379,7 @@ export class DataExtractorService {
         const manualAdjustmentsPromise = fetchManualAdjustmentRows
             ? safeQuery(
                 'manualAdjustments',
-                () => manualAdjustmentService.getAdjustments(month, year, gangCode || undefined, undefined, divisionCode),
+                () => manualAdjustmentService.getAdjustments(month, year, resolveManualAdjustmentFetchGangCode(gangCode, divisionCode), undefined, divisionCode),
                 [] as any[]
             )
             : Promise.resolve([] as any[]);
@@ -4562,6 +4590,12 @@ export class DataExtractorService {
             const empAdjustments = fetchManualAdjustmentRows
                 ? getManualAdjustmentsForEmployee(manualAdjustmentsByIdentity, emp)
                 : [];
+            Object.defineProperty(emp, "_manualAdjustmentCount", {
+                value: empAdjustments.length,
+                configurable: true,
+                writable: true,
+                enumerable: false
+            });
             registerManualAdjustmentMetadataDynamicHeaders(
                 empAdjustments,
                 dynamicPremiSet,
@@ -5124,9 +5158,12 @@ export class DataExtractorService {
             const hari_kerja = Math.max(0, (emp.jumlah_hk || 0) - totalCuti);
             const other_cuti = (emp.cuti_tahunan_hari || 0) + (emp.cuti_sakit_haid_hari || 0);
 
-            // STRICT FILTER: Keep employee ONLY if effective_hk > 0
-            // Filter OUT all employees with effective_hk <= 0 (regardless of other leave or earnings)
-            if (effective_hk > 0) {
+            if (shouldKeepPayrollRowAfterEffectiveHkFilter({
+                jumlahHk: emp.jumlah_hk,
+                cutiMingguHari: emp.cuti_minggu_hari,
+                cutiNasionalHari: emp.cuti_nasional_hari,
+                hasManualAdjustments: Number((emp as any)._manualAdjustmentCount || 0) > 0
+            })) {
                 filteredEmployees.push(emp);
             } else {
                 filteredOutCount++;

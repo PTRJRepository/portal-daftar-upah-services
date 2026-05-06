@@ -5,7 +5,9 @@ import {
     normalizePayrollValuePriorityMode,
     pickStaticPremiForManualBuffer,
     resolveManualAdjustmentDbPtrjCompareAmount,
-    resolveManualAdjustmentSourcePolicy
+    resolveManualAdjustmentFetchGangCode,
+    resolveManualAdjustmentSourcePolicy,
+    shouldKeepPayrollRowAfterEffectiveHkFilter
 } from "./dataExtractorService";
 
 describe("resolveManualAdjustmentSourcePolicy", () => {
@@ -41,6 +43,33 @@ describe("resolveManualAdjustmentSourcePolicy", () => {
         })).toEqual({
             brondol: 125000
         });
+    });
+
+    it("keeps zero-effective-HK employees when they have manual adjustment rows", () => {
+        expect(shouldKeepPayrollRowAfterEffectiveHkFilter({
+            jumlahHk: 2,
+            cutiMingguHari: 1,
+            cutiNasionalHari: 1,
+            hasManualAdjustments: true
+        })).toBe(true);
+
+        expect(shouldKeepPayrollRowAfterEffectiveHkFilter({
+            jumlahHk: 2,
+            cutiMingguHari: 1,
+            cutiNasionalHari: 1,
+            hasManualAdjustments: false
+        })).toBe(false);
+    });
+
+    it("fetches manual adjustments by division instead of current gang so moved employees keep manual premiums", () => {
+        expect(resolveManualAdjustmentFetchGangCode("C3M", "PG2A")).toBeUndefined();
+        expect(resolveManualAdjustmentFetchGangCode("ALL", "PG2A")).toBeUndefined();
+        expect(resolveManualAdjustmentFetchGangCode()).toBeUndefined();
+    });
+
+    it("keeps the gang filter when no division scope exists", () => {
+        expect(resolveManualAdjustmentFetchGangCode("C3M")).toBe("C3M");
+        expect(resolveManualAdjustmentFetchGangCode("ALL")).toBeUndefined();
     });
 
     it("adds manual adjustment compare entries for koreksi and potongan bersih fields", () => {

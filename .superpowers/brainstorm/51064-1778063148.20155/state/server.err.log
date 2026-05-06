@@ -1,0 +1,19 @@
+#< CLIXML
+node:fs:1953
+  binding.unlink(getValidatedPath(path));
+          ^
+
+Error: EPERM: operation not permitted, unlink 'D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production\.superpowers\brainstorm\51064-1778063148.20155\state\server-info'
+    at Object.unlinkSync (node:fs:1953:11)
+    at shutdown (C:\Users\nbgmf\.codex\plugins\cache\openai-curated\superpowers\27651a43bf55185d924f7a1fc49043a0a8be65a0\skills\brainstorming\scripts\server.cjs:304:37)
+    at Timeout._onTimeout (C:\Users\nbgmf\.codex\plugins\cache\openai-curated\superpowers\27651a43bf55185d924f7a1fc49043a0a8be65a0\skills\brainstorming\scripts\server.cjs:321:24)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7) {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'unlink',
+  path: 'D:\\Gawean Rebinmas\\PORTAL_ESTATE\\Plantware_Auto_Report\\Daftar_Upah_baru\\payroll_daftar_upah\\refactor_production\\.superpowers\\brainstorm\\51064-1778063148.20155\\state\\server-info'
+}
+
+Node.js v22.14.0
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

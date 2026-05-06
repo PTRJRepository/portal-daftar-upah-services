@@ -163,7 +163,11 @@
       "PowerShell(git reset *)",
       "PowerShell(codex *)",
       "Bash(claude mcp *)",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "PowerShell(bun test *)",
+      "Bash(perl -ne 'print unless m{\\(^|/\\)_tmp|\\\\.out\\\\.log$|\\\\.err\\\\.log$|^\\\\.claude/settings\\\\.local\\\\.json$|frontend/vite-5174\\\\.out\\\\.log$}')",
+      "Bash(perl -ne 'print unless m{\\(^|/\\)_tmp|\\\\.out\\\\.log$|\\\\.err\\\\.log$|^\\\\.superpowers/|^\\\\.claude/|frontend/vite-.*\\\\.out\\\\.log$}')",
+      "Bash(bash *)"
     ],
     "deny": [],
     "ask": [],
