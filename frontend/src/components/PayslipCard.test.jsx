@@ -146,6 +146,41 @@ describe('PayslipCard', () => {
         expect(html).toContain('---- +');
     });
 
+    it('moves long income detail into a clearly separated continuation section below deductions', () => {
+        const html = renderToString(
+            <PayslipCard
+                data={{
+                    ...basePayslipData,
+                    payroll_data: {
+                        ...basePayslipData.payroll_data,
+                        beras_jumlah: 100000,
+                        jabatan_jumlah: 200000,
+                        masa_kerja_jumlah: 50000,
+                        premi_brondol: 25000,
+                        premi_panen: 75000,
+                        premi_kualitas_buah: 30000,
+                        premi_basis: 45000,
+                        premi_tph: 15000,
+                        premi_topografi: 20000,
+                        total_premi: 210000,
+                    },
+                }}
+                month={4}
+                year={2026}
+            />
+        );
+
+        expect(html).toContain('payslip-income-overflow-section');
+        expect(html).toContain('LANJUTAN PENERIMAAN');
+        expect(html).toContain('BUKAN POTONGAN');
+        expect(html).toContain('Subtotal Premi');
+
+        const deductionIndex = html.indexOf('POTONGAN');
+        const continuationIndex = html.indexOf('LANJUTAN PENERIMAAN');
+        expect(deductionIndex).toBeGreaterThan(-1);
+        expect(continuationIndex).toBeGreaterThan(deductionIndex);
+    });
+
     it('renders a subtle repeated Rebinmas logo and label watermark pattern', () => {
         const html = renderToString(
             <PayslipCard data={basePayslipData} month={4} year={2026} />

@@ -40,13 +40,25 @@ describe('payslip print CSS', () => {
 
   it('centers and lifts the take-home-pay banner so it is prominent but not edge-to-edge', () => {
     expect(css).toMatch(/\.payslip-card\s*{[\s\S]*justify-content:\s*flex-start;/);
-    expect(css).toMatch(/\.payslip-card-content\s*{[\s\S]*flex:\s*0 0 auto;/);
+    expect(css).toMatch(/\.payslip-card-content\s*{[\s\S]*flex:\s*1 1 auto;/);
+    expect(css).toMatch(/\.payslip-card-content\s*{[\s\S]*min-height:\s*0;/);
+    expect(css).toMatch(/\.payslip-card-content\s*{[\s\S]*overflow:\s*hidden;/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*align-self:\s*center;/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*width:\s*94%;/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*margin:\s*0\.85mm auto 0 auto;/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*transform:\s*translateY\(-0\.15mm\);/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*justify-content:\s*center;/);
+    expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*flex:\s*0 0 auto;/);
     expect(css).toMatch(/\.payslip-thp-value\s*{[\s\S]*font-size:\s*10\.8pt;/);
+  });
+
+  it('reserves printable space for take-home-pay and routes long income detail below deductions', () => {
+    expect(css).toMatch(/\.payslip-card-content\s*{[\s\S]*flex:\s*1 1 auto;/);
+    expect(css).toMatch(/@media print[\s\S]*\.payslip-card-content\s*{[\s\S]*flex:\s*1 1 auto\s*!important;/);
+    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-card-content\s*{[\s\S]*flex:\s*1 1 auto\s*!important;/);
+    expect(css).toMatch(/\.payslip-income-overflow-section\s*{[\s\S]*border-top:\s*1px dashed var\(--payslip-rule\);/);
+    expect(css).toMatch(/\.payslip-overflow-divider\s*{[\s\S]*content-visibility:\s*visible;/);
+    expect(css).toMatch(/\.payslip-overflow-divider\s*{[\s\S]*background:\s*rgba\(18,\s*17,\s*13,\s*0\.08\);/);
   });
 
   it('centers the payslip header and keeps the header logo compact', () => {
@@ -109,5 +121,10 @@ describe('payslip print CSS', () => {
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[\s\S]*padding:\s*3mm\s*!important;/);
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-grid\s*{[\s\S]*grid-template-rows:\s*repeat\(3,\s*1fr\)\s*!important;/);
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-card\s*{[\s\S]*padding:\s*0\.9mm 1\.1mm\s*!important;[\s\S]*font-size:\s*6\.75pt\s*!important;/);
+  });
+
+  it('does not force an extra page break after each full-height A4 page during html2pdf export', () => {
+    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[^}]*page-break-after:\s*auto\s*!important;[^}]*break-after:\s*auto\s*!important;/);
+    expect(css).not.toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[^}]*page-break-after:\s*always\s*!important;[^}]*break-after:\s*page\s*!important;/);
   });
 });
