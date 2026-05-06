@@ -3,14 +3,15 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(new URL('./PayslipPrintPage.jsx', import.meta.url), 'utf8');
 
-describe('PayslipPrintPage eight-slip print layout', () => {
-  it('chunks payslips into eight cards per A4 portrait page and labels print guidance accordingly', () => {
-    expect(source).toContain('Layout: 8 payslips per A4 page');
-    expect(source).toContain('const payslipChunks = chunkArray(payslipData, 8);');
-    expect(source).toContain('agar 8 slip muat di 1 halaman A4');
-    expect(source).toContain('payslip-cut-line--quarter');
-    expect(source).toContain('payslip-cut-line--half');
-    expect(source).toContain('payslip-cut-line--three-quarter');
+describe('PayslipPrintPage six-slip print layout', () => {
+  it('chunks payslips into six cards per A4 portrait page and labels print guidance accordingly', () => {
+    expect(source).toContain('Layout: 6 payslips per A4 page');
+    expect(source).toContain('const payslipChunks = chunkArray(payslipData, 6);');
+    expect(source).toContain('agar 6 slip muat di 1 halaman A4');
+    expect(source).toContain('payslip-cut-line--upper');
+    expect(source).toContain('payslip-cut-line--lower');
+    expect(source).not.toContain('payslip-cut-line--quarter');
+    expect(source).not.toContain('payslip-cut-line--three-quarter');
   });
 
   it('prefers current Daftar Upah data passed by data_key before falling back to API data', () => {
