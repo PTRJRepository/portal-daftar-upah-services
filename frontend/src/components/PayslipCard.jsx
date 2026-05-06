@@ -323,20 +323,6 @@ export default function PayslipCard({ data, month, year }) {
     getNum("jumlah_upah_kotor") || getNum("penghasilan_bruto");
   const payslipGrossIncome = Math.max(0, jumlahUpahKotor - totalOtherIncome);
 
-  const taxBruto = getNum("penghasilan_bruto") || jumlahUpahKotor;
-  const taxOtherIncome =
-    getNum("taxable_pendapatan_lainnya") || totalOtherIncome;
-  const taxAstekBpjs = [
-    getNum("astek_084"),
-    getNum("bpjs_kesehatan_majikan_4_pct"),
-    getNum("pot_astek") || getNum("pot_astek_jumlah") || getNum("pot_jht"),
-    getNum("pot_bpjs_kesehatan_pekerja") || getNum("pot_bpjs_kesehatan"),
-    getNum("pot_bpjs_pensiun_pekerja") || getNum("pot_bpjs_pensiun"),
-  ].reduce((sum, amount) => sum + amount, 0);
-  const taxRate = getNum("tarif_pajak_ter");
-  const taxPph21 = getNum("pph21_ter") || getNum("pot_pph21");
-  const showTaxBreakdown = false;
-
   // Payslip deductions exclude other income; other income is tax-detail-only.
   const totalPotongan =
     getNum("total_potongan_bersih") ||
@@ -423,7 +409,7 @@ export default function PayslipCard({ data, month, year }) {
       {/* Content - Two Columns */}
       <div className="payslip-card-content">
         {/* Left: Penerimaan */}
-        <div className="payslip-card-column">
+        <div className="payslip-card-column payslip-card-column--income">
           <div className="payslip-column-header">PENERIMAAN (Income)</div>
 
           <div className="payslip-subheader">Gaji Pokok:</div>
@@ -535,33 +521,27 @@ export default function PayslipCard({ data, month, year }) {
         </div>
 
         {/* Right: Potongan */}
-        <div className="payslip-card-column">
+        <div className="payslip-card-column payslip-card-column--deduction">
           <div className="payslip-column-header">POTONGAN (Deduction)</div>
 
           {potBersihList.length > 0 && (
             <>
               <div className="payslip-subheader">Pot. Upah Bersih:</div>
-              {potBersihList.map((item, idx) => {
-                const isTax = item.label.toLowerCase().includes("pph 21");
-                return (
-                  <React.Fragment key={`potb-${idx}`}>
-                    <div className="payslip-item payslip-item-indent">
-                      <span className="payslip-item-label">
-                        {item.isCredit ? "+" : "-"} {item.label}
-                      </span>
-                      <span
-                        className={`payslip-item-value ${item.isCredit ? "" : "payslip-negative"}`}
-                        style={{
-                          fontWeight: item.isCredit ? "bold" : undefined,
-                        }}
-                      >
-                        {formatCurrency(item.value)}
-                      </span>
-                    </div>
-                    {/* Display Tax Calculation Breakdown below the PPh21 row */}
-                  </React.Fragment>
-                );
-              })}
+              {potBersihList.map((item, idx) => (
+                <div key={`potb-${idx}`} className="payslip-item payslip-item-indent">
+                  <span className="payslip-item-label">
+                    {item.isCredit ? "+" : "-"} {item.label}
+                  </span>
+                  <span
+                    className={`payslip-item-value ${item.isCredit ? "" : "payslip-negative"}`}
+                    style={{
+                      fontWeight: item.isCredit ? "bold" : undefined,
+                    }}
+                  >
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
             </>
           )}
 

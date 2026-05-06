@@ -1,5 +1,5 @@
 /**
- * Payslip Print Styles - 6 per A4 Portrait (2x3 Grid)
+ * Payslip Print Styles - 8 per A4 Portrait (2x4 Grid)
  * Designed for: High B&W contrast, no cutoff, precise A4 fitting
  */
 
@@ -55,7 +55,7 @@
     min-height: 297mm;
     background: var(--payslip-paper);
     margin: 0 auto 20px auto;
-    padding: 1.5mm;
+    padding: 2mm;
     box-shadow: 0 16px 42px var(--payslip-shadow);
     box-sizing: border-box;
     page-break-after: always;
@@ -73,8 +73,8 @@
     content: '';
     position: absolute;
     left: 50%;
-    top: 1.5mm;
-    bottom: 1.5mm;
+    top: 2mm;
+    bottom: 2mm;
     border-left: 0.35mm dashed var(--payslip-cut-rule);
     transform: translateX(-50%);
     pointer-events: none;
@@ -84,29 +84,33 @@
 .payslip-cut-line {
     content: '';
     position: absolute;
-    left: 1.5mm;
-    right: 1.5mm;
+    left: 2mm;
+    right: 2mm;
     border-top: 0.35mm dashed var(--payslip-cut-rule);
     display: block;
     pointer-events: none;
     z-index: 5;
 }
 
-.payslip-cut-line--upper {
-    top: calc(33.333% + 0.2mm);
+.payslip-cut-line--quarter {
+    top: calc(25% + 0.15mm);
 }
 
-.payslip-cut-line--lower {
-    top: calc(66.666% - 0.2mm);
+.payslip-cut-line--half {
+    top: 50%;
+}
+
+.payslip-cut-line--three-quarter {
+    top: calc(75% - 0.15mm);
 }
 
 /* ============================================
-   2x3 GRID - 6 slips per page
+   2x4 GRID - 8 slips per page
    ============================================ */
 .payslip-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: repeat(3, 1fr);
+    grid-template-rows: repeat(4, 1fr);
     gap: 0;
     width: 100%;
     height: 100%;
@@ -119,13 +123,13 @@
 .payslip-card {
     border: 1px solid var(--payslip-rule);
     border-left-width: 1.6mm;
-    padding: 0.55mm 0.7mm;
+    padding: 0.5mm 0.55mm;
     background: linear-gradient(90deg, rgba(184, 134, 11, 0.1), transparent 9mm), var(--payslip-paper);
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    font-size: 5pt;
-    line-height: 1.02;
+    font-size: 5.55pt;
+    line-height: 1.05;
     height: 100%;
     page-break-inside: avoid;
     position: relative;
@@ -200,35 +204,53 @@
    ============================================ */
 .payslip-card-header {
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
     border-bottom: 1px double var(--payslip-rule);
-    padding: 0.2mm 0.8mm 0.2mm 0.8mm;
+    padding: 0.2mm 0.4mm 0.2mm 0.4mm;
     margin-bottom: 0.2mm;
     flex-shrink: 0;
     background: linear-gradient(90deg, transparent, rgba(18, 17, 13, 0.08), transparent);
 }
 
 .payslip-card-company {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: 5.8mm minmax(0, auto) 5.8mm;
     align-items: center;
     justify-content: center;
-    gap: 0.8mm;
-    font-size: 6.1pt;
+    column-gap: 0.8mm;
+    width: fit-content;
+    margin: 0 auto;
+    font-size: 6.45pt;
     font-weight: 900;
     color: var(--payslip-ink);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
+.payslip-card-company::after {
+    content: '';
+    display: block;
+    width: 5.8mm;
+    height: 5.8mm;
+}
+
+.payslip-card-company strong {
+    min-width: 0;
+    text-align: center;
+}
+
 .payslip-header-logo {
-    width: 5.6mm;
-    height: 5.6mm;
+    width: 5.8mm;
+    height: 5.8mm;
     object-fit: contain;
     flex: 0 0 auto;
 }
 
 .payslip-card-title {
-    font-size: 5.7pt;
+    font-size: 6.15pt;
     font-weight: 900;
     margin: 0;
     letter-spacing: 0.08em;
@@ -239,7 +261,7 @@
 }
 
 .payslip-card-period {
-    font-size: 5pt;
+    font-size: 5.35pt;
     color: var(--payslip-muted);
     font-weight: 800;
     margin-top: 0.1mm;
@@ -253,8 +275,8 @@
     display: grid;
     grid-template-columns: 1.2fr 0.8fr;
     gap: 0 0.6mm;
-    font-size: 4.6pt;
-    padding: 0.25mm 0.35mm;
+    font-size: 5.15pt;
+    padding: 0.32mm 0.4mm;
     border: 1px solid var(--payslip-rule);
     background: rgba(246, 241, 230, 0.9);
     flex-shrink: 0;
@@ -263,14 +285,14 @@
 .payslip-info-row {
     display: flex;
     justify-content: flex-start;
-    margin-bottom: 0.08mm;
+    margin-bottom: 0.1mm;
 }
 
 .payslip-info-label {
     font-weight: 800;
     color: #000;
     min-width: 29px;
-    font-size: 4.6pt;
+    font-size: 5.15pt;
 }
 
 .payslip-info-value {
@@ -281,7 +303,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 600;
-    font-size: 4.6pt;
+    font-size: 5.15pt;
 }
 
 /* Address toggle styling */
@@ -318,11 +340,11 @@
     justify-content: space-between;
     gap: 0.25mm;
     margin-bottom: 0.2mm;
-    padding: 0.25mm 0.35mm;
+    padding: 0.35mm 0.45mm;
     border: 1px solid var(--payslip-rule, #000);
     background: rgba(255, 255, 255, 0.9);
-    font-size: 4.4pt;
-    line-height: 1;
+    font-size: 5.05pt;
+    line-height: 1.04;
     flex-shrink: 0;
 }
 
@@ -341,11 +363,11 @@
    ============================================ */
 .payslip-card-content {
     display: flex;
-    gap: 0.45mm;
+    gap: 0.65mm;
     flex: 0 0 auto;
     border-top: 1px solid var(--payslip-rule);
     border-bottom: 1px solid var(--payslip-rule);
-    padding: 0.2mm 0;
+    padding: 0.22mm 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -358,15 +380,23 @@
     overflow: hidden;
 }
 
+.payslip-card-column--income {
+    flex: 1.24 1 0;
+}
+
+.payslip-card-column--deduction {
+    flex: 0.76 1 0;
+}
+
 /* Column Header - Solid black bg, white text for B&W contrast */
 .payslip-column-header {
     font-weight: 900;
-    font-size: 5.05pt;
+    font-size: 5.65pt;
     text-align: left;
     background: var(--payslip-rule);
     color: #fff;
-    padding: 0.25mm 0.45mm;
-    margin-bottom: 0.15mm;
+    padding: 0.28mm 0.45mm;
+    margin-bottom: 0.18mm;
     border: 1px solid var(--payslip-rule);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -376,11 +406,11 @@
 }
 
 .payslip-subheader {
-    font-size: 4.9pt;
+    font-size: 5.25pt;
     font-weight: 800;
     color: #000;
-    margin-top: 0.12mm;
-    margin-bottom: 0.05mm;
+    margin-top: 0.18mm;
+    margin-bottom: 0.08mm;
     border-bottom: 0.5px solid #ddd;
     padding-bottom: 0.1mm;
     text-decoration: underline;
@@ -390,13 +420,13 @@
 .payslip-item {
     display: flex;
     justify-content: space-between;
-    font-size: 4.9pt;
-    margin-bottom: 0.04mm;
-    line-height: 1.02;
+    font-size: 5.3pt;
+    margin-bottom: 0.08mm;
+    line-height: 1.06;
 }
 
 .payslip-item-indent {
-    padding-left: 0.6mm;
+    padding-left: 0.7mm;
 }
 
 .payslip-item-label {
@@ -409,7 +439,7 @@
 .payslip-item-value {
     text-align: right;
     font-family: 'Courier New', Courier, monospace;
-    min-width: 27px;
+    min-width: 34px;
     font-weight: 700;
 }
 
@@ -417,50 +447,6 @@
     border-top: 0.5px dashed #777;
     padding-top: 0.15mm;
     margin-top: 0.15mm;
-}
-
-/* Tax breakdown - smaller italic text */
-.payslip-tax-breakdown {
-    font-size: 4.4pt !important;
-    line-height: 1.02 !important;
-    color: #333 !important;
-    font-style: italic;
-    margin-top: 0.2mm;
-    margin-bottom: 0.3mm;
-    background: rgba(249, 250, 251, 0.88);
-    margin-top: 0.1mm;
-    margin-bottom: 0.15mm;
-    padding: 0.2mm 0.4mm;
-    border-left: 1px solid #000;
-}
-
-.payslip-tax-breakdown-title,
-.payslip-tax-breakdown-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 1mm;
-}
-
-.payslip-tax-breakdown-title {
-    border-bottom: 0.5px dashed #999;
-    margin-bottom: 0.15mm;
-    padding-bottom: 0.12mm;
-    font-weight: 900;
-    font-style: normal;
-}
-
-.payslip-tax-breakdown-row span:last-child {
-    font-family: 'Courier New', Courier, monospace;
-    font-weight: 800;
-    text-align: right;
-}
-
-.payslip-tax-breakdown-total {
-    border-top: 0.5px solid #666;
-    margin-top: 0.25mm;
-    padding-top: 0.25mm;
-    font-weight: 900;
-    font-style: normal;
 }
 
 .payslip-income-deduction-note {
@@ -523,15 +509,15 @@
 .payslip-subtotal-line {
     display: flex;
     justify-content: space-between;
-    margin: 0.08mm 0 0.12mm 0.6mm;
-    padding-top: 0.08mm;
+    margin: 0.12mm 0 0.16mm 0.7mm;
+    padding-top: 0.12mm;
     border-top: 0.5px dashed #777;
-    font-size: 4.85pt;
+    font-size: 5.3pt;
     font-weight: 900;
 }
 
 .total-line-wrapper {
-    margin-top: 0.2mm;
+    margin-top: 0.25mm;
     padding-top: 0;
 }
 
@@ -539,7 +525,7 @@
     display: flex;
     justify-content: flex-end;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 4.8pt;
+    font-size: 5.25pt;
     font-weight: 900;
     line-height: 1;
     margin-bottom: 0.05mm;
@@ -549,8 +535,8 @@
     display: flex;
     justify-content: space-between;
     font-weight: 900;
-    font-size: 5.1pt;
-    padding-top: 0.12mm;
+    font-size: 5.75pt;
+    padding-top: 0.16mm;
     border-top: 1px solid #000;
 }
 
@@ -562,7 +548,7 @@
     align-self: center;
     width: 94%;
     margin: 0.1mm auto 0 auto;
-    padding: 0.55mm 0.8mm;
+    padding: 0.7mm 0.95mm;
     border: 1px solid var(--payslip-rule);
     border-right-width: 1.4mm;
     display: flex;
@@ -578,7 +564,7 @@
 }
 
 .payslip-thp-label {
-    font-size: 5pt;
+    font-size: 5.7pt;
     font-weight: 900;
     text-transform: uppercase;
     letter-spacing: 0;
@@ -586,7 +572,7 @@
 }
 
 .payslip-thp-value {
-    font-size: 7.8pt;
+    font-size: 8.8pt;
     font-weight: 950;
     font-family: 'Courier New', Courier, monospace;
     color: #fff;
@@ -768,7 +754,7 @@
         min-width: 210mm !important;
         min-height: 297mm !important;
         margin: 0 auto !important;
-        padding: 1.5mm !important;
+        padding: 2mm !important;
         box-shadow: none !important;
         page-break-after: always !important;
         border: none !important;
@@ -793,7 +779,7 @@
         height: 100% !important;
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
-        grid-template-rows: repeat(3, 1fr) !important;
+        grid-template-rows: repeat(4, 1fr) !important;
         gap: 0 !important;
         position: relative !important;
     }
@@ -806,17 +792,29 @@
         box-sizing: border-box !important;
         display: flex !important;
         flex-direction: column !important;
-        padding: 0.55mm 0.7mm !important;
+        padding: 0.5mm 0.55mm !important;
         border: 1px solid #000 !important;
         border-left-width: 1.6mm !important;
-        font-size: 5pt !important;
-        line-height: 1.02 !important;
+        font-size: 5.55pt !important;
+        line-height: 1.05 !important;
     }
 
-    .payslip-card-content,
+    .payslip-card-content {
+        overflow: hidden !important;
+        flex: 0 0 auto !important;
+    }
+
     .payslip-card-column {
         overflow: hidden !important;
-        flex: 1 !important;
+        flex: 1 1 0 !important;
+    }
+
+    .payslip-card-column--income {
+        flex: 1.24 1 0 !important;
+    }
+
+    .payslip-card-column--deduction {
+        flex: 0.76 1 0 !important;
     }
 
     .payslip-watermark {
@@ -827,6 +825,110 @@
         color: rgba(0, 0, 0, 0.12) !important;
         font-size: 9pt !important;
     }
+}
+
+/* ============================================
+   PDF EXPORT OVERRIDES - html2pdf captures screen media
+   ============================================ */
+.pdf-export-active.payslip-print-container {
+    background: white !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    width: 210mm !important;
+    min-height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+}
+
+.pdf-export-active.payslip-print-container *,
+.pdf-export-active.payslip-print-container *::before,
+.pdf-export-active.payslip-print-container *::after {
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-a4-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: hidden !important;
+    display: block !important;
+    position: relative !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    aspect-ratio: auto !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-a4-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-a4-page::before,
+.pdf-export-active.payslip-print-container .payslip-cut-line {
+    display: block !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-grid {
+    width: 100% !important;
+    height: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: repeat(4, 1fr) !important;
+    gap: 0 !important;
+    position: relative !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card {
+    height: 100% !important;
+    width: 100% !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0.5mm 0.55mm !important;
+    border: 1px solid #000 !important;
+    border-left-width: 1.6mm !important;
+    font-size: 5.55pt !important;
+    line-height: 1.05 !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card-content {
+    overflow: hidden !important;
+    flex: 0 0 auto !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card-column {
+    overflow: hidden !important;
+    flex: 1 1 0 !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card-column--income {
+    flex: 1.24 1 0 !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card-column--deduction {
+    flex: 0.76 1 0 !important;
+}
+
+.pdf-export-active.payslip-print-container .payslip-card-footer,
+.pdf-export-active.payslip-print-container .payslip-card-footer *,
+.pdf-export-active.payslip-print-container .payslip-column-header {
+    background: #000 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 
 /* ============================================

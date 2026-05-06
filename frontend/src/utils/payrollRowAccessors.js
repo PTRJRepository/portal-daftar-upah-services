@@ -85,6 +85,15 @@ function uniqueEmployeeCodes(codes = []) {
     return result;
 }
 
+export function buildPayslipEmployeeRowMap(rows = [], selectedCodes = []) {
+    const explicitSelection = uniqueEmployeeCodes(selectedCodes);
+    if (explicitSelection.length > 0) {
+        return buildSelectedEmployeeRowMap(rows, explicitSelection);
+    }
+
+    return buildEmployeeRowMap(rows);
+}
+
 export function resolvePayslipEmployeeCodes(selectedCodes = [], rows = []) {
     const explicitSelection = uniqueEmployeeCodes(selectedCodes);
     if (explicitSelection.length > 0) {

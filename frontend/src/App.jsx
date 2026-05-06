@@ -69,7 +69,7 @@ import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from '.
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
 import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGangPrefixState'
 import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payrollSourceMode'
-import { getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
+import { buildPayslipEmployeeRowMap, getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
 import ProductivityReportPage from './pages/ProductivityReportPage'
@@ -370,6 +370,23 @@ const OperationalReportWrapper = () => {
       use_history: effectiveUseHistoryDb ? 'true' : 'false'
     });
     appendSnapshotVersionToSearchParams(params, effectiveSnapshotVersion)
+
+    const currentPayslipRows = buildPayslipEmployeeRowMap(rows, selectedEmployees);
+    if (Object.keys(currentPayslipRows).length > 0) {
+      const dataKey = `payslip-print-${division || 'all'}-${year}-${month}-${Date.now()}`;
+      const payload = JSON.stringify(currentPayslipRows);
+      try {
+        sessionStorage.setItem(dataKey, payload);
+      } catch (err) {
+        console.warn('[OperationalReport] Failed to save payslip data to sessionStorage:', err);
+      }
+      try {
+        localStorage.setItem(dataKey, payload);
+      } catch (err) {
+        console.warn('[OperationalReport] Failed to save payslip data to localStorage:', err);
+      }
+      params.set('data_key', dataKey);
+    }
 
     const printPath = buildAppPath(`/payslip-print?${params.toString()}`);
     window.open(printPath, '_blank', 'noopener,noreferrer');

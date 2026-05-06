@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEmployeeRowMap, buildSelectedEmployeeRowMap, getEmployeeRows, resolveJabatanRate, resolvePayslipEmployeeCodes } from './payrollRowAccessors';
+import { buildEmployeeRowMap, buildPayslipEmployeeRowMap, buildSelectedEmployeeRowMap, getEmployeeRows, resolveJabatanRate, resolvePayslipEmployeeCodes } from './payrollRowAccessors';
 
 const sampleRows = [
     { type: 'gang_header', gang_code: 'A1H' },
@@ -32,6 +32,28 @@ describe('buildEmployeeRowMap', () => {
 describe('buildSelectedEmployeeRowMap', () => {
     it('keeps only selected employees without storing the whole table in parent state', () => {
         expect(buildSelectedEmployeeRowMap(sampleRows, ['e002', 'e003', 'missing'])).toEqual({
+            E002: { type: 'employee', emp_code: 'e002', nik: '1002', nama: 'Beta' },
+            E003: { type: 'employee', emp_code: 'e003', nik: '1003', nama: 'Gamma' }
+        });
+    });
+});
+
+describe('buildPayslipEmployeeRowMap', () => {
+    it('uses the current edited display rows for selected payslip employees', () => {
+        const rows = [
+            { type: 'employee', emp_code: 'e001', gaji_pokok: 1000000, upah_bersih: 900000 },
+            { type: 'employee', emp_code: 'e002', gaji_pokok: 2500000, upah_bersih: 2300000 },
+            { type: 'gang_total', gaji_pokok: 3500000 }
+        ];
+
+        expect(buildPayslipEmployeeRowMap(rows, ['e002'])).toEqual({
+            E002: { type: 'employee', emp_code: 'e002', gaji_pokok: 2500000, upah_bersih: 2300000 }
+        });
+    });
+
+    it('falls back to all current display rows when printing all employees', () => {
+        expect(buildPayslipEmployeeRowMap(sampleRows, [])).toEqual({
+            E001: { type: 'employee', emp_code: 'e001', nik: '1001', nama: 'Alpha' },
             E002: { type: 'employee', emp_code: 'e002', nik: '1002', nama: 'Beta' },
             E003: { type: 'employee', emp_code: 'e003', nik: '1003', nama: 'Gamma' }
         });

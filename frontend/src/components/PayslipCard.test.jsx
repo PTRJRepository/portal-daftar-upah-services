@@ -1,7 +1,10 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import PayslipCard from './PayslipCard';
+
+const source = readFileSync(new URL('./PayslipCard.jsx', import.meta.url), 'utf8');
 
 const basePayslipData = {
     emp_code: 'EMP001',
@@ -317,6 +320,14 @@ describe('PayslipCard', () => {
         expect(html).not.toContain('Astek/BPJS');
         expect(html).not.toContain('Tarif TER A (TK/0)');
         expect(html).not.toContain('5.00%');
+    });
+
+    it('removes the compact tax calculation detail markup from the payslip component', () => {
+        expect(source).not.toContain('Komponen Pajak / PPh 21');
+        expect(source).not.toContain('payslip-tax-breakdown');
+        expect(source).not.toContain('Bruto/DPP');
+        expect(source).not.toContain('Astek/BPJS');
+        expect(source).not.toContain('Tarif TER');
     });
 
     it('does not render signature fields on the compact printed slip', () => {
