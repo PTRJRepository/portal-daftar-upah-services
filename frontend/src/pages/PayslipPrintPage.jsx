@@ -74,12 +74,15 @@ export default function PayslipPrintPage() {
             setError('');
 
             try {
-                // OPTIMIZATION 1: Try to read data from sessionStorage (passed from UI)
+                // OPTIMIZATION 1: Try to read current UI data passed from Daftar Upah.
                 // This is MUCH faster than re-fetching from API
                 if (dataKey) {
-                    const storedData = sessionStorage.getItem(dataKey);
+                    const storedData = sessionStorage.getItem(dataKey) || localStorage.getItem(dataKey);
                     if (storedData) {
-                        const employeeDataMap = JSON.parse(storedData);
+                        const parsedData = JSON.parse(storedData);
+                        const employeeDataMap = parsedData?.data && typeof parsedData.data === 'object'
+                            ? parsedData.data
+                            : parsedData;
                         console.log('[PayslipPrintPage] ✅ Using fast sessionStorage data from UI');
 
                         const results = [];

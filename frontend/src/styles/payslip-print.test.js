@@ -7,7 +7,7 @@ describe('payslip print CSS', () => {
   it('uses the full A4 page for a 2x4 payslip grid with a small print-safe page margin', () => {
     expect(css).toMatch(/@page\s+payslip-portrait\s*{[^}]*size:\s*A4 portrait;[^}]*margin:\s*0;/);
     expect(css).not.toMatch(/@page\s*{[^}]*size:\s*A4 portrait/i);
-    expect(css).toMatch(/\.payslip-a4-page\s*{[^}]*width:\s*210mm;[^}]*height:\s*297mm;[^}]*padding:\s*2mm;/);
+    expect(css).toMatch(/\.payslip-a4-page\s*{[^}]*width:\s*210mm;[^}]*height:\s*297mm;[^}]*padding:\s*3mm;/);
     expect(css).toMatch(/\.payslip-grid\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;/);
     expect(css).toMatch(/\.payslip-grid\s*{[^}]*grid-template-columns:\s*1fr 1fr;[^}]*grid-template-rows:\s*repeat\(4,\s*1fr\);/);
     expect(css).toMatch(/\.payslip-grid\s*{[^}]*gap:\s*0;/);
@@ -45,7 +45,7 @@ describe('payslip print CSS', () => {
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*margin:\s*0\.1mm auto 0 auto;/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*transform:\s*translateY\(-0\.15mm\);/);
     expect(css).toMatch(/\.payslip-card-footer\s*{[\s\S]*justify-content:\s*center;/);
-    expect(css).toMatch(/\.payslip-thp-value\s*{[\s\S]*font-size:\s*8\.8pt;/);
+    expect(css).toMatch(/\.payslip-thp-value\s*{[\s\S]*font-size:\s*9pt;/);
   });
 
   it('centers the payslip header and keeps the header logo compact', () => {
@@ -62,18 +62,21 @@ describe('payslip print CSS', () => {
   });
 
   it('uses a larger readable scale for both screen preview and print while keeping eight slips on one portrait page', () => {
-    expect(css).toMatch(/\.payslip-card\s*{[\s\S]*padding:\s*0\.5mm 0\.55mm;/);
-    expect(css).toMatch(/\.payslip-card\s*{[\s\S]*font-size:\s*5\.55pt;/);
+    expect(css).toMatch(/\.payslip-card\s*{[\s\S]*padding:\s*0\.55mm 0\.75mm;/);
+    expect(css).toMatch(/\.payslip-card\s*{[\s\S]*font-size:\s*5\.75pt;/);
     expect(css).toMatch(/\.payslip-card\s*{[\s\S]*line-height:\s*1\.05;/);
-    expect(css).toMatch(/\.payslip-card-company\s*{[\s\S]*font-size:\s*6\.45pt;/);
-    expect(css).toMatch(/\.payslip-card-title\s*{[\s\S]*font-size:\s*6\.15pt;/);
-    expect(css).toMatch(/\.payslip-card-period\s*{[\s\S]*font-size:\s*5\.35pt;/);
-    expect(css).toMatch(/\.payslip-card-info\s*{[\s\S]*font-size:\s*5\.15pt;/);
-    expect(css).toMatch(/\.payslip-activity-summary\s*{[\s\S]*font-size:\s*5\.05pt;/);
-    expect(css).toMatch(/\.payslip-column-header\s*{[\s\S]*font-size:\s*5\.65pt;/);
-    expect(css).toMatch(/\.payslip-item\s*{[\s\S]*font-size:\s*5\.3pt;/);
-    expect(css).toMatch(/@media print[\s\S]*\.payslip-card\s*{[\s\S]*padding:\s*0\.5mm 0\.55mm\s*!important;/);
-    expect(css).toMatch(/@media print[\s\S]*\.payslip-card\s*{[\s\S]*font-size:\s*5\.55pt\s*!important;/);
+    expect(css).toMatch(/\.payslip-card-company\s*{[\s\S]*font-size:\s*6\.6pt;/);
+    expect(css).toMatch(/\.payslip-card-title\s*{[\s\S]*font-size:\s*6\.3pt;/);
+    expect(css).toMatch(/\.payslip-card-period\s*{[\s\S]*font-size:\s*5\.45pt;/);
+    expect(css).toMatch(/\.payslip-card-info\s*{[\s\S]*font-size:\s*5\.3pt;/);
+    expect(css).toMatch(/\.payslip-activity-summary\s*{[\s\S]*font-size:\s*5\.2pt;/);
+    expect(css).toMatch(/\.payslip-column-header\s*{[\s\S]*font-size:\s*5\.85pt;/);
+    expect(css).toMatch(/\.payslip-item\s*{[\s\S]*font-size:\s*5\.6pt;/);
+    expect(css).toMatch(/\.payslip-item-value\s*{[\s\S]*min-width:\s*38px;/);
+    expect(css).toMatch(/\.payslip-subtotal-line\s*{[\s\S]*font-size:\s*5\.55pt;/);
+    expect(css).toMatch(/\.payslip-total-line\s*{[\s\S]*font-size:\s*6\.05pt;/);
+    expect(css).toMatch(/@media print[\s\S]*\.payslip-card\s*{[\s\S]*padding:\s*0\.55mm 0\.75mm\s*!important;/);
+    expect(css).toMatch(/@media print[\s\S]*\.payslip-card\s*{[\s\S]*font-size:\s*5\.75pt\s*!important;/);
   });
 
   it('gives the income column more room than deductions on the compact payslip', () => {
@@ -90,7 +93,7 @@ describe('payslip print CSS', () => {
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s*{[\s\S]*width:\s*210mm\s*!important;[\s\S]*min-height:\s*auto\s*!important;/);
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[\s\S]*width:\s*210mm\s*!important;[\s\S]*height:\s*297mm\s*!important;/);
     expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[\s\S]*margin:\s*0\s*!important;[\s\S]*box-shadow:\s*none\s*!important;/);
-    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[\s\S]*padding:\s*2mm\s*!important;/);
-    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-card\s*{[\s\S]*padding:\s*0\.5mm 0\.55mm\s*!important;[\s\S]*font-size:\s*5\.55pt\s*!important;/);
+    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-a4-page\s*{[\s\S]*padding:\s*3mm\s*!important;/);
+    expect(css).toMatch(/\.pdf-export-active\.payslip-print-container\s+\.payslip-card\s*{[\s\S]*padding:\s*0\.55mm 0\.75mm\s*!important;[\s\S]*font-size:\s*5\.75pt\s*!important;/);
   });
 });

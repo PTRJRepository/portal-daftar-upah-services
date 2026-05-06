@@ -13,6 +13,12 @@ describe('PayslipPrintPage eight-slip print layout', () => {
     expect(source).toContain('payslip-cut-line--three-quarter');
   });
 
+  it('prefers current Daftar Upah data passed by data_key before falling back to API data', () => {
+    expect(source).toContain('sessionStorage.getItem(dataKey) || localStorage.getItem(dataKey)');
+    expect(source).toContain('const employeeDataMap = parsedData?.data');
+    expect(source).toContain('Using fast sessionStorage data from UI');
+  });
+
   it('exports payslip PDF with CSS page breaks instead of avoid-all pagination', () => {
     expect(source).toContain("jsPDF: { orientation: 'portrait' }");
     expect(source).toContain("pagebreak: { mode: ['css', 'legacy'], avoid: ['.payslip-card'] }");

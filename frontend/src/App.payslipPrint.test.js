@@ -7,6 +7,7 @@ describe('Operational payslip print action', () => {
   it('passes current Daftar Upah display rows to the payslip print preview', () => {
     expect(source).toContain('buildPayslipEmployeeRowMap');
     expect(source).toContain('sessionStorage.setItem(dataKey');
+    expect(source).toContain('localStorage.setItem(dataKey');
     expect(source).toContain("params.set('data_key', dataKey)");
   });
 });
