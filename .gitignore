@@ -25,3 +25,31 @@ _dev_utils/scripts/*
 !_dev_utils/scripts/seed_raking_data.ts
 backend/_dev_utils/
 Browser Automation/manual-adjustment-grouped-tester.html
+
+# Temp dev logs
+_tmp_*.log
+_tmp_*.err.log
+_tmp_*.out.log
+frontend/_tmp_*.log
+frontend/_tmp_*.err.log
+frontend/_tmp_*.out.log
+frontend/vite-*.log
+frontend/vite-*.err.log
+frontend/vite-*.out.log
+frontend/build_log*.txt
+frontend/build_error*.log
+frontend/build_success*.log
+
+# Agent/tool artifacts
+.claude/worktrees/agent-*/
+.playwright-mcp/
+.superpowers/
+.agentMemory
+.qwen/
+.agent/
+
+# Misplaced OS paths
+C:Users*/
+
+# Chrome profile data
+_dev_utils/chrome-wages-comparison-check/
