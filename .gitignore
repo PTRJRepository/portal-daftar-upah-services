@@ -41,7 +41,7 @@ frontend/build_error*.log
 frontend/build_success*.log
 
 # Agent/tool artifacts
-.claude/worktrees/agent-*/
+.claude/
 .playwright-mcp/
 .superpowers/
 .agentMemory
@@ -50,9 +50,14 @@ frontend/build_success*.log
 
 # Misplaced OS paths
 C:Users*/
+C*Users*/
 
 # Chrome profile data
 _dev_utils/chrome-wages-comparison-check/
+
+# Node modules (should never be tracked)
+node_modules/
+frontend/node_modules/
 
 # Generated outputs
 outputs/
