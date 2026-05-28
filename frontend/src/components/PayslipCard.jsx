@@ -54,7 +54,7 @@ const sumPositiveFields = (source, predicate) => {
 const isPositiveAmount = (value) => toFiniteNumber(value) > 0;
 
 /**
- * PayslipCard - Compact payslip component for printing (6 per A4)
+ * PayslipCard - Compact payslip component for printing (4 per A4)
  * @param {Object} props
  * @param {Object} props.data - Employee checkroll data
  * @param {number} props.month - Month number
@@ -170,10 +170,6 @@ export default function PayslipCard({ data, month, year }) {
   const totalPremi = getNum("total_premi");
   const totalPremiDetail = premiList.reduce((sum, item) => sum + item.value, 0);
   const displayedTotalPremi = totalPremi > 0 ? totalPremi : totalPremiDetail;
-  const overflowTunjanganList = tunjanganList;
-  const overflowPremiList = premiList;
-  const hasIncomeOverflow =
-    overflowTunjanganList.length > 0 || overflowPremiList.length > 0;
   const lemburJam = getNum("lembur_jam") || getNum("total_jam_lembur");
   const lemburJumlah =
     getNum("lembur_jumlah") ||
@@ -455,16 +451,22 @@ export default function PayslipCard({ data, month, year }) {
           {tunjanganList.length > 0 && (
             <>
               <div className="payslip-subheader">Tunjangan:</div>
-              <div className="payslip-item payslip-item-indent">
-                <span className="payslip-item-label">
-                  - Tunjangan (rincian kanan)
-                </span>
+              {tunjanganList.map((item, idx) => (
+                <div
+                  key={`tunj-${idx}`}
+                  className="payslip-item payslip-item-indent"
+                >
+                  <span className="payslip-item-label">- {item.label}</span>
+                  <span className="payslip-item-value">
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
+              <div className="payslip-subtotal-line">
+                <span className="payslip-item-label">Subtotal Tunjangan</span>
                 <span className="payslip-item-value">
                   {formatCurrency(totalTunjangan)}
                 </span>
-              </div>
-              <div className="payslip-income-overflow-note">
-                Rincian tunjangan ada di bawah kolom potongan.
               </div>
             </>
           )}
@@ -472,16 +474,22 @@ export default function PayslipCard({ data, month, year }) {
           {premiList.length > 0 && (
             <>
               <div className="payslip-subheader">Premi:</div>
-              <div className="payslip-item payslip-item-indent">
-                <span className="payslip-item-label">
-                  - Premi (rincian kanan)
-                </span>
+              {premiList.map((item, idx) => (
+                <div
+                  key={`premi-${idx}`}
+                  className="payslip-item payslip-item-indent"
+                >
+                  <span className="payslip-item-label">- {item.label}</span>
+                  <span className="payslip-item-value">
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
+              <div className="payslip-subtotal-line">
+                <span className="payslip-item-label">Subtotal Premi</span>
                 <span className="payslip-item-value">
                   {formatCurrency(displayedTotalPremi)}
                 </span>
-              </div>
-              <div className="payslip-income-overflow-note">
-                Rincian premi/penerimaan ada di bawah kolom potongan.
               </div>
             </>
           )}
@@ -559,58 +567,6 @@ export default function PayslipCard({ data, month, year }) {
             </div>
           </div>
 
-          {hasIncomeOverflow && (
-            <div className="payslip-income-overflow-section">
-              <div className="payslip-overflow-divider">
-                <span>LANJUTAN PENERIMAAN</span>
-                <strong>BUKAN POTONGAN</strong>
-              </div>
-              {overflowTunjanganList.length > 0 && (
-                <>
-                  <div className="payslip-subheader">Tunjangan:</div>
-                  {overflowTunjanganList.map((item, idx) => (
-                    <div
-                      key={`tunj-overflow-${idx}`}
-                      className="payslip-item payslip-item-indent"
-                    >
-                      <span className="payslip-item-label">- {item.label}</span>
-                      <span className="payslip-item-value">
-                        {formatCurrency(item.value)}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="payslip-subtotal-line">
-                    <span className="payslip-item-label">Subtotal Tunjangan</span>
-                    <span className="payslip-item-value">
-                      {formatCurrency(totalTunjangan)}
-                    </span>
-                  </div>
-                </>
-              )}
-              {overflowPremiList.length > 0 && (
-                <>
-                  <div className="payslip-subheader">Premi:</div>
-              {overflowPremiList.map((item, idx) => (
-                <div
-                  key={`premi-overflow-${idx}`}
-                  className="payslip-item payslip-item-indent"
-                >
-                  <span className="payslip-item-label">- {item.label}</span>
-                  <span className="payslip-item-value">
-                    {formatCurrency(item.value)}
-                  </span>
-                </div>
-              ))}
-              <div className="payslip-subtotal-line">
-                <span className="payslip-item-label">Subtotal Premi</span>
-                <span className="payslip-item-value">
-                  {formatCurrency(displayedTotalPremi)}
-                </span>
-              </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

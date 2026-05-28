@@ -39,6 +39,7 @@ const VALUE_PRIORITY_MODE_META = {
 
 // Lazy load pages - TEMPORARILY STATIC
 import DashboardHome from './pages/DashboardHome'
+import ProfessionalDashboard from './pages/ProfessionalDashboard'
 import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
 import HrInfoRoute from './pages/HrInfoRoute'
 import LoginPage from './pages/LoginPage'
@@ -1134,7 +1135,7 @@ function AppInner() {
               <DashboardLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<DashboardHome key={location.pathname + location.search} />} />
+            <Route index element={<ProfessionalDashboard key={location.pathname + location.search} />} />
 
             <Route path="operational" element={<OperationalReportWrapper key={location.pathname + location.search} />} />
             <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />

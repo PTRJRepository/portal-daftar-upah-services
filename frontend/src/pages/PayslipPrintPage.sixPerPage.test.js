@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(new URL('./PayslipPrintPage.jsx', import.meta.url), 'utf8');
 
-describe('PayslipPrintPage six-slip print layout', () => {
-  it('chunks payslips into six cards per A4 portrait page and labels print guidance accordingly', () => {
-    expect(source).toContain('Layout: 6 payslips per A4 page');
-    expect(source).toContain('const payslipChunks = chunkArray(payslipData, 6);');
-    expect(source).toContain('agar 6 slip muat di 1 halaman A4');
-    expect(source).toContain('payslip-cut-line--upper');
-    expect(source).toContain('payslip-cut-line--lower');
+describe('PayslipPrintPage four-slip print layout', () => {
+  it('chunks payslips into four cards per A4 portrait page and labels print guidance accordingly', () => {
+    expect(source).toContain('Layout: 4 payslips per A4 page');
+    expect(source).toContain('const payslipChunks = chunkArray(payslipData, 4);');
+    expect(source).toContain('agar 4 slip muat di 1 halaman A4');
+    expect(source).toContain('payslip-cut-line--half');
+    expect(source).not.toContain('payslip-cut-line--upper');
+    expect(source).not.toContain('payslip-cut-line--lower');
     expect(source).not.toContain('payslip-cut-line--quarter');
     expect(source).not.toContain('payslip-cut-line--three-quarter');
   });
@@ -20,8 +21,9 @@ describe('PayslipPrintPage six-slip print layout', () => {
     expect(source).toContain('Using fast sessionStorage data from UI');
   });
 
-  it('exports payslip PDF with CSS page breaks instead of avoid-all pagination', () => {
+  it('exports payslip PDF with CSS page breaks that can split oversized content instead of hiding it', () => {
     expect(source).toContain("jsPDF: { orientation: 'portrait' }");
-    expect(source).toContain("pagebreak: { mode: ['css', 'legacy'], avoid: ['.payslip-card'] }");
+    expect(source).toContain("pagebreak: { mode: ['css', 'legacy'] }");
+    expect(source).not.toContain("avoid: ['.payslip-card']");
   });
 });

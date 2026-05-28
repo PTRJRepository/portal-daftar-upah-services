@@ -205,7 +205,7 @@ describe('PayslipCard', () => {
         expect(html).toContain('---- +');
     });
 
-    it('moves long income detail into a clearly separated continuation section below deductions', () => {
+    it('keeps all income detail in the left income column before deductions', () => {
         const html = renderToString(
             <PayslipCard
                 data={{
@@ -229,15 +229,19 @@ describe('PayslipCard', () => {
             />
         );
 
-        expect(html).toContain('payslip-income-overflow-section');
-        expect(html).toContain('LANJUTAN PENERIMAAN');
-        expect(html).toContain('BUKAN POTONGAN');
         expect(html).toContain('Subtotal Premi');
+        expect(html).not.toContain('payslip-income-overflow-section');
+        expect(html).not.toContain('LANJUTAN PENERIMAAN');
+        expect(html).not.toContain('BUKAN POTONGAN');
 
         const deductionIndex = html.indexOf('POTONGAN');
-        const continuationIndex = html.indexOf('LANJUTAN PENERIMAAN');
+        const subtotalTunjanganIndex = html.indexOf('Subtotal Tunjangan');
+        const subtotalPremiIndex = html.indexOf('Subtotal Premi');
         expect(deductionIndex).toBeGreaterThan(-1);
-        expect(continuationIndex).toBeGreaterThan(deductionIndex);
+        expect(subtotalTunjanganIndex).toBeGreaterThan(-1);
+        expect(subtotalPremiIndex).toBeGreaterThan(-1);
+        expect(subtotalTunjanganIndex).toBeLessThan(deductionIndex);
+        expect(subtotalPremiIndex).toBeLessThan(deductionIndex);
     });
 
     it('renders a subtle repeated Rebinmas logo and label watermark pattern', () => {

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Printer, RefreshCw, ArrowLeft, Save, FileText } from 'lucide-react';
+import { Printer, RefreshCw, ArrowLeft, Save, FileText, ListTree, Eye, X } from 'lucide-react';
 import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
 import { generatePDF } from '../utils/pdfGenerator';
 import AggregationSeederModal from '../components/AggregationSeederModal';
@@ -18,6 +18,7 @@ import { getDivisionTypeLabel } from '../utils/reportPresentationLabels';
 import { getReportDivisionSummary } from '../utils/divisionPresentation';
 import { printReport } from '../utils/printPageSetup';
 import { buildGangDescriptionGroupLabel } from '../utils/gangDescriptionGroupLabel';
+import { buildSummaryPremiumBreakdown, getSummaryRowPremiumDoubleCount, getSummaryRowPremiumItems } from '../utils/summaryPremiumBreakdown';
 import '../styles/wages-summary-professional.css';
 import '../styles/print-optimization.css';
 import '../styles/report-print-foundation.css';
@@ -139,6 +140,215 @@ function EditableCell({ editMode, value, onSave, isCurrency }) {
     );
 }
 
+function SummaryPremiumBreakdownReport({ breakdown, periodLabel, reportDivisionSummary }) {
+    if (!breakdown || breakdown.items.length === 0) return null;
+
+    return (
+        <section className="summary-premium-report">
+            <div className="summary-premium-report-header">
+                <div>
+                    <div className="summary-premium-eyebrow">Report Khusus</div>
+                    <h2>Uraian Total Premi</h2>
+                    <p>{reportDivisionSummary} | {periodLabel}</p>
+                </div>
+                <div className={`summary-premium-status ${breakdown.isReconciled ? 'ok' : 'warn'}`}>
+                    {breakdown.isReconciled ? 'Total uraian sama dengan total premi' : 'Total uraian belum sama'}
+                </div>
+            </div>
+
+            <div className="summary-premium-metrics">
+                <div>
+                    <span>Total Premi</span>
+                    <strong>Rp {formatNumber(breakdown.grandTotal)}</strong>
+                </div>
+                <div>
+                    <span>Total Uraian</span>
+                    <strong>Rp {formatNumber(breakdown.breakdownTotal)}</strong>
+                </div>
+                <div>
+                    <span>Selisih dari Dynamic</span>
+                    <strong>Rp {formatNumber(breakdown.residualTotal)}</strong>
+                </div>
+            </div>
+
+            {Math.abs(Number(breakdown.residualTotal || 0)) > 0.01 && (
+                <div className="summary-premium-note">
+                    Baris <strong>PREMI LAINNYA / SELISIH TOTAL</strong> adalah rekonsiliasi agar jumlah uraian tetap sama dengan total premi.
+                    Ini bisa terjadi ketika detail premi tidak menutup total, termasuk kemungkinan data lama masih ikut terhitung dari proses seeder berbasis upsert yang tidak menghapus data lama.
+                </div>
+            )}
+
+            {breakdown.doubleCountItems.length > 0 && (
+                <div className="summary-premium-double-section">
+                    <div className="summary-premium-double-title">Indikasi Premi Double Count</div>
+                    <p>
+                        Nominal berikut terdeteksi muncul lagi di selisih total. Artinya saat detail dibuka, premi ini sudah ada di uraian dynamic premi tetapi ikut menambah total premi sekali lagi.
+                    </p>
+                    <table className="wsp-table summary-premium-table summary-premium-double-table">
+                        <thead>
+                            <tr className="wsp-header-master">
+                                <th>PREMI TERINDIKASI DOUBLE</th>
+                                <th>TOTAL DOUBLE</th>
+                                <th>% TOTAL PREMI</th>
+                                <th>JUMLAH GANG</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {breakdown.doubleCountItems.map((item) => (
+                                <tr key={item.header}>
+                                    <td className="text-left">{item.header}</td>
+                                    <td className="text-right">{formatNumber(item.total)}</td>
+                                    <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                    <td className="text-right">{formatNumber(item.gangCount)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            <div className="wsp-table-wrapper summary-premium-table-wrapper">
+                <table className="wsp-table summary-premium-table">
+                    <thead>
+                        <tr className="wsp-header-master">
+                            <th>URAIAN PREMI</th>
+                            <th>TOTAL</th>
+                            <th>% TOTAL</th>
+                            <th>JUMLAH GANG</th>
+                            <th>CATATAN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {breakdown.items.map((item) => (
+                            <tr key={item.header} className={item.isResidual ? 'summary-premium-residual-row' : ''}>
+                                <td className="text-left">{item.header}</td>
+                                <td className="text-right">{formatNumber(item.total)}</td>
+                                <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                <td className="text-right">{formatNumber(item.gangCount)}</td>
+                                <td className="text-left">
+                                    {item.isResidual
+                                        ? 'Selisih agar total uraian sama dengan total premi'
+                                        : 'Dari dynamic premi summary'}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                        <tr className="wsp-grand-total">
+                            <td>TOTAL URAIAN PREMI</td>
+                            <td className="text-right">{formatNumber(breakdown.breakdownTotal)}</td>
+                            <td className="text-right">100%</td>
+                            <td></td>
+                            <td>{breakdown.isReconciled ? 'Sama dengan total premi' : 'Perlu cek sumber data'}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+    );
+}
+
+function SummaryPremiumDetailModal({ row, headers, onClose }) {
+    const items = useMemo(() => getSummaryRowPremiumItems(row, headers), [row, headers]);
+    const doubleCount = useMemo(() => getSummaryRowPremiumDoubleCount(row, headers), [row, headers]);
+    if (!row) return null;
+
+    const totalPremi = Number(row.total_premi || 0);
+    const detailTotal = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const hasResidual = items.some((item) => item.isResidual);
+
+    return (
+        <div className="summary-premium-modal-backdrop no-print" onClick={onClose}>
+            <div className="summary-premium-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="summary-premium-modal-header">
+                    <div>
+                        <div className="summary-premium-eyebrow">Detail Total Premi</div>
+                        <h3>{row.gang_code || 'Gang'}</h3>
+                        {row.gang_description && row.gang_description !== row.gang_code && (
+                            <p>{row.gang_description}</p>
+                        )}
+                    </div>
+                    <button type="button" className="summary-premium-icon-button" onClick={onClose} aria-label="Tutup detail premi">
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="summary-premium-metrics compact">
+                    <div>
+                        <span>Total Premi</span>
+                        <strong>Rp {formatNumber(totalPremi)}</strong>
+                    </div>
+                    <div>
+                        <span>Total Uraian</span>
+                        <strong>Rp {formatNumber(detailTotal)}</strong>
+                    </div>
+                </div>
+
+                {hasResidual && (
+                    <div className="summary-premium-note">
+                        Ada selisih antara dynamic premi dan total premi. Selisih ditampilkan sebagai <strong>PREMI LAINNYA / SELISIH TOTAL</strong> agar total uraian tetap sama dengan total premi.
+                    </div>
+                )}
+
+                {doubleCount.isDetected && (
+                    <div className="summary-premium-double-section modal-section">
+                        <div className="summary-premium-double-title">Premi Terindikasi Double</div>
+                        <p>{doubleCount.reason}. Nominal di bawah sudah ada di uraian dynamic premi dan muncul lagi sebagai selisih total.</p>
+                        <table className="wsp-table summary-premium-table summary-premium-double-table">
+                            <thead>
+                                <tr className="wsp-header-master">
+                                    <th>PREMI</th>
+                                    <th>NOMINAL DOUBLE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {doubleCount.items.map((item) => (
+                                    <tr key={item.header}>
+                                        <td className="text-left">{item.header}</td>
+                                        <td className="text-right">{formatNumber(item.total)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                <div className="summary-premium-modal-body">
+                    <table className="wsp-table summary-premium-table">
+                        <thead>
+                            <tr className="wsp-header-master">
+                                <th>URAIAN PREMI</th>
+                                <th>TOTAL</th>
+                                <th>% TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items.length === 0 ? (
+                                <tr>
+                                    <td colSpan="3" className="text-center">Tidak ada uraian premi</td>
+                                </tr>
+                            ) : items.map((item) => (
+                                <tr key={item.header} className={item.isResidual ? 'summary-premium-residual-row' : ''}>
+                                    <td className="text-left">{item.header}</td>
+                                    <td className="text-right">{formatNumber(item.total)}</td>
+                                    <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="wsp-grand-total">
+                                <td>TOTAL URAIAN</td>
+                                <td className="text-right">{formatNumber(detailTotal)}</td>
+                                <td className="text-right">100%</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
     const { token, user } = useAuth();
 
@@ -181,6 +391,8 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
     const [showValidation, setShowValidation] = useState(false);
     const [validationResult, setValidationResult] = useState(null);
     const [showSeederModal, setShowSeederModal] = useState(false);
+    const [showPremiumReport, setShowPremiumReport] = useState(false);
+    const [premiumDetailRow, setPremiumDetailRow] = useState(null);
 
     // Helper to extract Asistensi (Group)
     // Rule: K2 gangs belong to Group 1 (special estate classification).
@@ -657,6 +869,10 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
     // Use filtered headers from backend
     const dynamicPremiHeaders = filteredHeaders;
+    const premiumBreakdown = useMemo(
+        () => buildSummaryPremiumBreakdown(filteredSummaryData, dynamicPremiHeaders),
+        [filteredSummaryData, dynamicPremiHeaders]
+    );
 
     // Helper function to get dynamic premi value from a row
     const getDynamicPremiValue = useCallback((row, headerName) => {
@@ -855,6 +1071,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                     >
                         {showDetail ? 'Hide Detail' : 'Show Detail Premi'}
                     </button>
+                    {reportMode === 'payroll' && (
+                        <button
+                            onClick={() => setShowPremiumReport(prev => !prev)}
+                            className="wsp-btn"
+                            style={{ backgroundColor: showPremiumReport ? '#ecfdf5' : '#fff', borderColor: showPremiumReport ? '#86efac' : undefined, fontWeight: 700 }}
+                        >
+                            <ListTree size={18} /> {showPremiumReport ? 'Hide Uraian Premi' : 'Report Uraian Premi'}
+                        </button>
+                    )}
                     <button onClick={handleSeedAll} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isSeeding ? '#fef3c7' : '#10b981', color: isSeeding ? '#92400e' : '#fff', borderColor: isSeeding ? '#fde68a' : '#059669' }} disabled={isSeeding || loading}>
                         <RefreshCw size={18} className={isSeeding ? 'animate-spin' : ''} />
                         {isSeeding ? 'Seeding UI Data...' : 'Seed UI Data'}
@@ -976,6 +1201,14 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         </div>
                     )}
 
+                    {reportMode === 'payroll' && showPremiumReport && (
+                        <SummaryPremiumBreakdownReport
+                            breakdown={premiumBreakdown}
+                            periodLabel={periodLabel}
+                            reportDivisionSummary={reportDivisionSummary}
+                        />
+                    )}
+
                     {/* Table */}
                     <div className={`wsp-table-wrapper ${reportMode === 'payroll' ? 'summary-detail-screen-wrapper no-print' : ''}`}>
                         <table className={`wsp-table ${reportMode === 'payroll' ? 'summary-detail-screen-table' : 'summary-thr-table'}`}>
@@ -1066,7 +1299,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
                                                 {/* Total Premi - Show FULL total from portal */}
                                                 <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
-                                                    {formatNumber(row.total_premi)}
+                                                    <button
+                                                        type="button"
+                                                        className="summary-premi-total-button"
+                                                        onClick={() => setPremiumDetailRow(row)}
+                                                        title="Buka uraian total premi"
+                                                    >
+                                                        <span>{formatNumber(row.total_premi)}</span>
+                                                        <Eye size={14} />
+                                                    </button>
                                                 </td>
 
                                                 <EditableCell editMode={editMode} value={row.total_lembur} onSave={(v) => handleCellEdit(row.gang_code, 'total_lembur', v)} />
@@ -1272,6 +1513,12 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                 </div>
             )
             }
+
+            <SummaryPremiumDetailModal
+                row={premiumDetailRow}
+                headers={dynamicPremiHeaders}
+                onClose={() => setPremiumDetailRow(null)}
+            />
 
             {/* Validation Results Modal */}
             {showValidation && validationResult && (

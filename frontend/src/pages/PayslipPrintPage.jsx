@@ -11,7 +11,7 @@ import '../styles/payslip-print.css';
 
 /**
  * PayslipPrintPage - Page for printing multiple employee payslips
- * Layout: 6 payslips per A4 page
+ * Layout: 4 payslips per A4 page
  */
 export default function PayslipPrintPage() {
     const { token } = useAuth();
@@ -230,7 +230,7 @@ export default function PayslipPrintPage() {
             await generatePDF(printRef.current, filename, {
                 jsPDF: { orientation: 'portrait' },
                 margin: [0, 0, 0, 0],
-                pagebreak: { mode: ['css', 'legacy'], avoid: ['.payslip-card'] }
+                pagebreak: { mode: ['css', 'legacy'] }
             });
         } catch (err) {
             console.error('PDF Export error:', err);
@@ -243,7 +243,7 @@ export default function PayslipPrintPage() {
         navigate(-1);
     };
 
-    // Chunk data into groups of 6 for each A4 page
+    // Chunk data into groups of 4 for each A4 page
     const chunkArray = (array, size) => {
         const chunks = [];
         for (let i = 0; i < array.length; i += size) {
@@ -252,7 +252,7 @@ export default function PayslipPrintPage() {
         return chunks;
     };
 
-    const payslipChunks = chunkArray(payslipData, 6);
+    const payslipChunks = chunkArray(payslipData, 4);
 
     // Get month name
     const getMonthName = (m) => {
@@ -361,7 +361,7 @@ export default function PayslipPrintPage() {
                 fontSize: '0.85rem'
             }} className="no-print">
                 <strong style={{ color: '#b45309' }}>⚠️ WAJIB: </strong>
-                <span style={{ color: '#92400e' }}>Saat Print, pilih <strong>Orientation: Portrait</strong> dan <strong>Scale: 100%</strong> agar 6 slip muat di 1 halaman A4</span>
+                <span style={{ color: '#92400e' }}>Saat Print, pilih <strong>Orientation: Portrait</strong> dan <strong>Scale: 100%</strong> agar 4 slip muat di 1 halaman A4</span>
             </div>
 
             {/* Print Pages */}
@@ -372,8 +372,7 @@ export default function PayslipPrintPage() {
                         className="payslip-a4-page"
                         style={chunkIndex === payslipChunks.length - 1 ? { pageBreakAfter: 'auto' } : {}}
                     >
-                        <span className="payslip-cut-line payslip-cut-line--upper" aria-hidden="true"></span>
-                        <span className="payslip-cut-line payslip-cut-line--lower" aria-hidden="true"></span>
+                        <span className="payslip-cut-line payslip-cut-line--half" aria-hidden="true"></span>
                         <div className="payslip-grid">
                             {chunk.map((employeeData, slotIndex) => (
                                 <PayslipCard
