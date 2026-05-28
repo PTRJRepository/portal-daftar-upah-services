@@ -1,2 +1,0 @@
-﻿risk_level,can_update,dry_run_action,review_reason,proposed_empcode,proposed_ptkp,empcode,nik,nama,npwp,ptkp,ptkp_values,rows,match_statuses,has_conflict,sources,dry_run_note
-HIGH,REVIEW,REVIEW_PTKP_CONFLICT,Multiple PTKP values found across source rows.,,,B0663,1902014705720002,FEROSA DALINA,-,,K/0;TK/0,2,MATCH_NIK,YES,PERHITUNGAN PPH 21 2026 PGE 1B.xlsx::PADANG TEMBALUN!37=K/0 | PPH 21 JANUARI 2026 ARE B2.xlsx::AIR BANGEK!101=TK/0,No update in dry run: Multiple PTKP values found across source rows.

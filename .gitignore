@@ -53,3 +53,14 @@ C:Users*/
 
 # Chrome profile data
 _dev_utils/chrome-wages-comparison-check/
+
+# Generated outputs
+outputs/
+
+# Context portal (vector DB)
+context_portal/
+
+# Temp scripts
+temp_*.ps1
+test_check_*.ts
+test_seed.ts
