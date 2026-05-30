@@ -23,6 +23,7 @@ import { useGangFilter } from '../context/GangFilterContext'
 import { exportReportToExcelPro } from '../utils/exportReportToExcelPro'
 import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
+import { getEditableOtherIncomeConfig } from '../utils/otherIncomeColumns'
 
 // Check if running in development mode
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV_MODE === 'true'
@@ -215,13 +216,13 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   }, [editModeNik])
 
   // Generic pendapatan lainnya edit handler
-  const handlePendapatanChange = useCallback((nik, empName, gangCode, incomeType, incomeName, newVal) => {
+  const handlePendapatanChange = useCallback((nik, empCode, empName, gangCode, incomeType, incomeName, newVal) => {
     const amount = parseFloat(newVal) || 0;
     // KEY: Use NIK + Nama + TYPE to disambiguate employees with the same NIK
     const key = `${nik}::${empName}::${incomeType}`;
     setPendingPendapatanEdits(prev => ({
       ...prev,
-      [key]: { nik, emp_name: empName, gang_code: gangCode, amount, income_type: incomeType, income_name: incomeName }
+      [key]: { nik, emp_code: empCode, emp_name: empName, gang_code: gangCode, amount, income_type: incomeType, income_name: incomeName }
     }))
   }, [])
 
@@ -265,6 +266,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           },
           body: JSON.stringify({
             nik: edit.nik,
+            emp_code: edit.emp_code,
             emp_name: edit.emp_name,
             period_month: parseInt(activeMonth),
             period_year: parseInt(activeYear),
@@ -1388,10 +1390,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
 
     // 7. Dynamic Pendapatan Lainnya Edit Mode
-    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
+    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_custom', 'pendapatan_lainnya'].includes(f);
     if (customPendapatanField) {
       const fieldType = f.replace('pendapatan_', '').toUpperCase();
       const typeInfo = (params) => {
+        const editableConfig = getEditableOtherIncomeConfig(f);
+        if (editableConfig) return editableConfig;
         if (fieldType === 'THR') return { type: 'THR', name: 'Tunjangan Hari Raya' };
         return (params.context.customPendapatanTypes || []).find(t => t.type === fieldType);
       }
@@ -1421,6 +1425,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
           if (params.context.onPendapatanChange && ti) {
             params.context.onPendapatanChange(
               params.data.nik,
+              params.data.emp_code,
               params.data.nama,
               params.data.gang_code,
               ti.type,

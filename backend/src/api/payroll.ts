@@ -2112,18 +2112,36 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const parsedAmount = parseFloat(data.amount?.toString()) || 0;
             const incomeType = String(data.income_type || '').toUpperCase().trim().replace(/\s+/g, '_');
             const incomeName = String(data.income_name || data.income_type || '').trim();
+            const empCode = String(data.emp_code || '').toUpperCase().trim();
+            const nik = String(data.nik || '').trim();
+            const empName = String(data.emp_name || '').trim();
+            const gangCode = String(data.gang_code || '').trim();
+            const divisionCode = data.division_code || null;
+            const isTaxable = incomeType === 'BONUS' || incomeType === 'EXGRATIA' ? 1 : 0;
 
             if (!incomeType) {
                 set.status = 400;
                 return { error: "income_type is required" };
             }
 
-            // Look for existing record for this NIK + emp_name + income_type in this period
-            // Using NIK + emp_name to disambiguate employees that may share the same NIK
-            const existing = await db.query(`
-                SELECT id FROM employee_other_incomes 
-                WHERE nik = ? AND emp_name = ? AND period_year = ? AND period_month = ? AND income_type = ?
-            `, [data.nik, data.emp_name, data.period_year, data.period_month, incomeType]);
+            let existing: any[] = [];
+            if (empCode) {
+                existing = await db.query(`
+                    SELECT TOP 1 id, income_name FROM employee_other_incomes
+                    WHERE UPPER(LTRIM(RTRIM(ISNULL(emp_code, '')))) = ?
+                      AND period_year = ? AND period_month = ? AND income_type = ?
+                    ORDER BY id DESC
+                `, [empCode, data.period_year, data.period_month, incomeType]);
+            }
+
+            if ((!existing || existing.length === 0) && nik) {
+                existing = await db.query(`
+                    SELECT TOP 1 id, income_name FROM employee_other_incomes
+                    WHERE LTRIM(RTRIM(ISNULL(nik, ''))) = ?
+                      AND period_year = ? AND period_month = ? AND income_type = ?
+                    ORDER BY id DESC
+                `, [nik, data.period_year, data.period_month, incomeType]);
+            }
 
             const clearPeriodCache = () => {
                 const pattern = `payroll_data:${data.period_month}:${data.period_year}`;
@@ -2132,18 +2150,27 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             };
 
             if (existing && existing.length > 0) {
+                const storedIncomeName = existing[0].income_name || incomeName;
                 if (parsedAmount === 0) {
                     await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [existing[0].id]);
                     clearPeriodCache();
-                    return { success: true, action: 'deleted', message: `${incomeName} removed.` };
+                    return { success: true, action: 'deleted', message: `${storedIncomeName} removed.` };
                 } else {
                     await db.query(`
                         UPDATE employee_other_incomes 
-                        SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, income_name = ?, updated_at = GETDATE()
+                        SET nik = COALESCE(NULLIF(?, ''), nik),
+                            emp_code = COALESCE(NULLIF(?, ''), emp_code),
+                            amount = ?,
+                            emp_name = COALESCE(NULLIF(?, ''), emp_name),
+                            gang_code = COALESCE(NULLIF(?, ''), gang_code),
+                            division_code = COALESCE(?, division_code),
+                            income_name = COALESCE(NULLIF(?, ''), income_name),
+                            is_taxable = ?,
+                            updated_at = GETDATE()
                         WHERE id = ?
-                    `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, incomeName, existing[0].id]);
+                    `, [nik, empCode, parsedAmount, empName, gangCode, divisionCode, storedIncomeName, isTaxable, existing[0].id]);
                     clearPeriodCache();
-                    return { success: true, action: 'updated', id: existing[0].id, message: `${incomeName} updated.` };
+                    return { success: true, action: 'updated', id: existing[0].id, message: `${storedIncomeName} updated.` };
                 }
             } else {
                 if (parsedAmount === 0) {
@@ -2151,10 +2178,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 }
                 await db.query(`
                     INSERT INTO employee_other_incomes (
-                        nik, emp_name, division_code, gang_code, period_year, period_month,
+                        nik, emp_code, emp_name, division_code, gang_code, period_year, period_month,
                         income_type, income_name, amount, is_paid_in_thp, is_taxable
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
-                `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, incomeType, incomeName, parsedAmount]);
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                `, [nik, empCode || null, empName || null, divisionCode, gangCode || null, data.period_year, data.period_month, incomeType, incomeName, parsedAmount, isTaxable]);
                 clearPeriodCache();
                 return { success: true, action: 'inserted', message: `${incomeName} saved.` };
             }
@@ -2166,6 +2193,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     }, {
         body: t.Object({
             nik: t.String(),
+            emp_code: t.Optional(t.String()),
             emp_name: t.String(),
             period_month: t.Number(),
             period_year: t.Number(),
