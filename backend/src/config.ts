@@ -21,6 +21,9 @@ export class Config {
     // Proxy Configuration
     public static readonly USE_PROXY: boolean = (env.USE_PROXY === "true");
     public static readonly PROXY_STRIP_PREFIX: string = env.PROXY_STRIP_PREFIX || "/backend/upah";
+    // Mount API routes under /backend/upah prefix (for reverse proxy environments)
+    // Set PROXY_MOUNT=true in .env to enable. Default: false (single mount at root)
+    public static readonly PROXY_MOUNT: boolean = (env.PROXY_MOUNT === "true") || (env.USE_PROXY === "true");
 
     // Auth Mode: If proxy is true, default to 'external'. Else 'internal'.
     public static readonly AUTH_MODE: "internal" | "external" =

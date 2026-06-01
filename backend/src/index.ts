@@ -22,6 +22,7 @@ import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
 import { employeeComparisonRoutes } from "./api/employeeComparisonRoutes";
 import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
 import { millProductionRoutes } from "./api/millProductionRoutes";
+import { stagingRoutes } from "./api/stagingRoutes";
 import { Database } from "./db/client";
 import { employeeHrDataService } from "./services/employeeHrDataService";
 import { OtherIncomesService } from "./services/otherIncomesService";
@@ -280,64 +281,68 @@ const app = new Elysia()
     .use(otherIncomesRoutes)
     // Mill Production Report
     .group("/api/mill-production", app => app.use(millProductionRoutes))
+    // Staging Comparison
+    .use(stagingRoutes)
 
-    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
-    // Explicitly using the string literal to ensure matching
-    .group("/backend/upah", app => app
-        .use(authRoutes)
-        .use(usersRoutes)
-        .use(reportsRoutes)
-        .use(payrollRoutes)
-        .use(employeeRoutes)
-        .use(employeeEstateRoutes)
-        .use(tunjanganRoutes)
-        .use(aggregationSeederRoutes)
-        .use(spreadsheetRoutes)
-        .use(summaryRoutes)
-        .use(dashboardRoutes)
-        .use(historyRoutes)
-        .use(wagesRoutes)
-        .use(logsRoutes)
-        .use(devConfigRoutes)
-        .use(taxReportRoutes)
-        .use(employeeHrDataRoutes)
-        .use(employeeGangHistoryRoutes)
-        .use(employeeComparisonRoutes)
-        .use(otherIncomesRoutes)
-        .group("/api/mill-production", nestedApp => nestedApp.use(millProductionRoutes))
-    )
+// Mount API routes under /backend/upah prefix (always active - proxy uses this path)
+app.group("/backend/upah", (g: any) => g
+    .use(authRoutes)
+    .use(usersRoutes)
+    .use(reportsRoutes)
+    .use(payrollRoutes)
+    .use(employeeRoutes)
+    .use(employeeEstateRoutes)
+    .use(tunjanganRoutes)
+    .use(aggregationSeederRoutes)
+    .use(spreadsheetRoutes)
+    .use(summaryRoutes)
+    .use(dashboardRoutes)
+    .use(historyRoutes)
+    .use(wagesRoutes)
+    .use(logsRoutes)
+    .use(devConfigRoutes)
+    .use(taxReportRoutes)
+    .use(employeeHrDataRoutes)
+    .use(employeeGangHistoryRoutes)
+    .use(employeeComparisonRoutes)
+    .use(otherIncomesRoutes)
+    .group("/api/mill-production", (n: any) => n.use(millProductionRoutes))
+    .use(stagingRoutes)
+);
 
-    // Test route - must be before wildcard
-    .get("/api/employee-compare/test", () => ({
-        test: "working"
-    }))
-    // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
-    .get("*", async ({ request, set }) => {
-        const url = new URL(request.url);
-        const pathname = url.pathname;
+// Test route - must be before wildcard
+app.get("/api/employee-compare/test", () => ({
+    test: "working"
+}));
 
-        // If it looks like an API call, return 404
-        const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/");
-        if (isApi) {
-            set.status = 404;
-            return { error: "Route not found", path: pathname };
-        }
+// SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
+app.get("*", async ({ request, set }) => {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
 
-        // If it looks like a static file (has extension), return 404 - static plugin should have handled it
-        const hasExtension = pathname.includes(".");
-        if (hasExtension) {
-            set.status = 404;
-            return "File not found";
-        }
+    // If it looks like an API call, return 404
+    const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/");
+    if (isApi) {
+        set.status = 404;
+        return { error: "Route not found", path: pathname };
+    }
 
-        // Otherwise, serve index.html for SPA routing
-        return Bun.file("../frontend/dist/index.html");
-    })
-    // Start server
-    .listen({
-        port: Config.PORT,
-        hostname: Config.HOST
-    });
+    // If it looks like a static file (has extension), return 404 - static plugin should have handled it
+    const hasExtension = pathname.includes(".");
+    if (hasExtension) {
+        set.status = 404;
+        return "File not found";
+    }
+
+    // Otherwise, serve index.html for SPA routing
+    return Bun.file("../frontend/dist/index.html");
+});
+
+// Start server
+app.listen({
+    port: Config.PORT,
+    hostname: Config.HOST
+});
 
 console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
 console.log(`Run Mode: ${Config.RUN_MODE}`);
