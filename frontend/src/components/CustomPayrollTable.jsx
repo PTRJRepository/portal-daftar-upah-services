@@ -495,6 +495,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const initialDisplayState = useMemo(() => resolvePayrollDisplayModeState(), []);
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
+    const [compactMode, setCompactMode] = useState(() => {
+        try { return localStorage.getItem('payroll.compactMode') === 'true'; } catch { return false; }
+    });
     const [internalValuePriorityMode, setInternalValuePriorityMode] = useState(resolveInitialValuePriorityMode);
     const valuePriorityMode = controlledValuePriorityMode === null || controlledValuePriorityMode === undefined
         ? internalValuePriorityMode
@@ -4591,6 +4594,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     onSeedAutoBuffer={handleSeedAutoBufferToManualAdjustment}
                     onToggleTax={() => toggleGroup('PAJAK')}
                 />
+                <button
+                    onClick={() => {
+                        const next = !compactMode;
+                        setCompactMode(next);
+                        try { localStorage.setItem('payroll.compactMode', String(next)); } catch {}
+                    }}
+                    title="Compact mode: tampilan lebih padat untuk monitor sempit"
+                    style={{
+                        marginTop: '6px', width: '100%', padding: '4px 8px', borderRadius: '4px',
+                        border: `1px solid ${compactMode ? '#3b82f6' : '#e2e8f0'}`,
+                        background: compactMode ? '#eff6ff' : 'transparent',
+                        color: compactMode ? '#1e40af' : '#64748b',
+                        cursor: 'pointer', fontSize: '0.75rem', textAlign: 'left'
+                    }}
+                >
+                    {compactMode ? '⊟ Compact ON' : '⊞ Compact OFF'}
+                </button>
             </div>
             {false && [
                 { label: 'Pajak (PPH21)', state: isTaxExpanded, toggle: () => toggleGroup('PAJAK') }
@@ -4617,7 +4637,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     return (
         <div
-            className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'}`}
+            className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'} ${compactMode ? 'compact' : ''}`}
             onMouseUp={handleMouseUp}
             style={{ 
                 height: '100%',
