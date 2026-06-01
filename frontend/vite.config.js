@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import compression from 'vite-plugin-compression'
 
 const isDev = process.env.DEV_MODE === 'true' || process.env.VITE_DEV_MODE === 'true'
 
@@ -108,7 +109,11 @@ console.log('Proxy configuration:', {
 
 export default defineConfig({
   appType: 'spa',
-  plugins: [react()],
+  plugins: [
+    react(),
+    compression({ algorithm: 'gzip', ext: '.gz' }),
+    compression({ algorithm: 'brotliCompress', ext: '.br' })
+  ],
   define: {
     // Force disable cache for development
     'process.env.VITE_DISABLE_CACHE': JSON.stringify('true'),
@@ -178,7 +183,7 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1600,
-    minify: false, // TEMPORARY: Disable minification to debug TDZ error
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
