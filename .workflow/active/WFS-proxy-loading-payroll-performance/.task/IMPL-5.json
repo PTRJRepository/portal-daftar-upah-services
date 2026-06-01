@@ -1,0 +1,23 @@
+{
+  "id": "IMPL-5",
+  "title": "Harden multi-user performance boundaries",
+  "description": "Add/verify request timing, slow request logging, timeout boundaries, cache/dedupe policy, and cancellation behavior for payroll stream/extraction under concurrent users. Keep changes conservative.",
+  "depends_on": [
+    "IMPL-2",
+    "IMPL-4"
+  ],
+  "files": [
+    "backend/src/api/payroll.ts",
+    "backend/src/db/client.ts",
+    "backend/src/services/dataExtractorService.ts",
+    "backend/src/services/cacheService.ts",
+    "frontend/src/services/payrollService.js"
+  ],
+  "convergence": "Concurrent proxy smoke has bounded latency/failure behavior; backend logs show request duration and client abort does not leave endless work where avoidable.",
+  "meta": {
+    "type": "performance-hardening",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

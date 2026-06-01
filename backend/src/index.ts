@@ -29,6 +29,88 @@ import { historyDatabaseService } from "./services/historyDatabaseService";
 import { staticPlugin } from "@elysiajs/static";
 import { debug, info, warn, error } from "./utils/logger";
 
+// ============================================================
+// Static asset serving: precompression (br/gz) + cache headers
+// ============================================================
+const DIST_DIR = "../frontend/dist";
+
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+    js: "application/javascript; charset=utf-8",
+    mjs: "application/javascript; charset=utf-8",
+    css: "text/css; charset=utf-8",
+    html: "text/html; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    svg: "image/svg+xml",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    ico: "image/x-icon",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ttf: "font/ttf",
+    map: "application/json; charset=utf-8"
+};
+
+const contentTypeFor = (filePath: string): string | undefined => {
+    const ext = filePath.split(".").pop()?.toLowerCase();
+    return ext ? CONTENT_TYPE_BY_EXT[ext] : undefined;
+};
+
+// Serve a static file from dist, preferring a precompressed (.br/.gz) variant
+// based on the client's Accept-Encoding. Applies immutable long-term caching
+// because Vite asset filenames are content-hashed.
+const serveStaticAsset = async (
+    relPath: string,
+    accept: string | null,
+    set: { status?: number; headers: Record<string, string> }
+): Promise<any> => {
+    const basePath = `${DIST_DIR}/${relPath}`;
+    const baseFile = Bun.file(basePath);
+    if (!(await baseFile.exists())) {
+        set.status = 404;
+        return "Not found";
+    }
+
+    const ct = contentTypeFor(basePath);
+    if (ct) set.headers["Content-Type"] = ct;
+    set.headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    set.headers["Vary"] = "Accept-Encoding";
+
+    const enc = accept || "";
+    if (enc.includes("br")) {
+        const br = Bun.file(`${basePath}.br`);
+        if (await br.exists()) {
+            set.headers["Content-Encoding"] = "br";
+            return br;
+        }
+    }
+    if (enc.includes("gzip")) {
+        const gz = Bun.file(`${basePath}.gz`);
+        if (await gz.exists()) {
+            set.headers["Content-Encoding"] = "gzip";
+            return gz;
+        }
+    }
+    return baseFile;
+};
+
+// Serve index.html with no-cache so new deployments (with new hashed asset
+// names) are always picked up immediately.
+const serveIndexHtml = (set: { headers: Record<string, string> }): any => {
+    set.headers["Cache-Control"] = "no-cache, must-revalidate";
+    set.headers["Content-Type"] = "text/html; charset=utf-8";
+    return Bun.file(`${DIST_DIR}/index.html`);
+};
+
+const buildHealthPayload = () => ({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    database: Config.DEFAULT_DATABASE,
+    profile: Config.DB_PROFILE
+});
+
 // Initialize Database access
 Database.getInstance();
 
@@ -96,96 +178,45 @@ const app = new Elysia()
     })
     // Root endpoints
     // Serve Frontend Static Files
-    .get("/", () => Bun.file("../frontend/dist/index.html"))
-    .get("/index.html", () => Bun.file("../frontend/dist/index.html"))
-    .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
+    .get("/", ({ set }) => serveIndexHtml(set))
+    .get("/index.html", ({ set }) => serveIndexHtml(set))
+    .get("/vite.svg", ({ set, request }) =>
+        serveStaticAsset("vite.svg", request.headers.get("accept-encoding"), set))
 
-    // Serve all static files from dist root (handles /assets, /images, etc. naturally)
-    .use(staticPlugin({
-        assets: "../frontend/dist",
-        prefix: "/"
-    }))
-
-    // Explicit fallback for /assets in case static plugin doesn't work
-    .get("/assets/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/assets/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Asset not found";
-    })
-
-    // Explicit fallback for /images in case static plugin doesn't work
-    .get("/images/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/images/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Image not found";
-    })
+    // Hashed JS/CSS bundles: immutable cache + precompressed br/gz when available.
+    .get("/assets/*", ({ params, set, request }) =>
+        serveStaticAsset(`assets/${params["*"]}`, request.headers.get("accept-encoding"), set))
+    .get("/images/*", ({ params, set, request }) =>
+        serveStaticAsset(`images/${params["*"]}`, request.headers.get("accept-encoding"), set))
 
     // ========================
     // PROXY MODE STATIC FILES
     // When frontend is built with base: '/upah/', assets are requested at /upah/assets/...
     // ========================
-    .get("/upah", () => Bun.file("../frontend/dist/index.html"))
-    .get("/upah/", () => Bun.file("../frontend/dist/index.html"))
-    .get("/upah/index.html", () => Bun.file("../frontend/dist/index.html"))
+    .get("/upah", ({ set }) => serveIndexHtml(set))
+    .get("/upah/", ({ set }) => serveIndexHtml(set))
+    .get("/upah/index.html", ({ set }) => serveIndexHtml(set))
 
-    // Serve /upah/assets/* - main chunk files, CSS, JS
-    .get("/upah/assets/*", async ({ params, set }) => {
-        const p = params["*"];
-        const filePath = `../frontend/dist/assets/${p}`;
-        const file = Bun.file(filePath);
-        const exists = await file.exists();
+    .get("/upah/assets/*", ({ params, set, request }) =>
+        serveStaticAsset(`assets/${params["*"]}`, request.headers.get("accept-encoding"), set))
+    .get("/upah/images/*", ({ params, set, request }) =>
+        serveStaticAsset(`images/${params["*"]}`, request.headers.get("accept-encoding"), set))
 
-        if (exists) {
-            // Set correct content-type based on extension
-            const ext = filePath.split('.').pop()?.toLowerCase();
-            if (ext === 'js') {
-                set.headers['Content-Type'] = 'application/javascript';
-            } else if (ext === 'css') {
-                set.headers['Content-Type'] = 'text/css';
-            }
-            return file;
-        }
-        set.status = 404;
-        return "Asset not found";
-    })
-
-    // Serve /upah/images/*
-    .get("/upah/images/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/images/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Image not found";
-    })
-
-    // Serve any other /upah/* static files (like fonts, etc)
-    .get("/upah/*", async ({ params, set, request }) => {
+    // Serve any other /upah/* static files (fonts, etc); SPA routes fall back to index.html
+    .get("/upah/*", ({ params, set, request }) => {
         const pathname = params["*"];
-
-        // If it's a SPA route (no extension), serve index.html
-        if (!pathname.includes('.')) {
-            return Bun.file("../frontend/dist/index.html");
+        if (!pathname.includes(".")) {
+            return serveIndexHtml(set);
         }
-
-        // Otherwise try to serve the static file
-        const filePath = `../frontend/dist/${pathname}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "File not found";
+        return serveStaticAsset(pathname, request.headers.get("accept-encoding"), set);
     })
+
+    // Static files from dist root (favicon, manifest, etc.) — runs after the
+    // explicit, more specific asset routes above.
+    .use(staticPlugin({
+        assets: "../frontend/dist",
+        prefix: "/"
+    }))
 
     .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
@@ -209,12 +240,8 @@ const app = new Elysia()
         cacheService.clear();
         return { cleared: true, entries_removed: before };
     })
-    .get("/health", () => ({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        database: Config.DEFAULT_DATABASE,
-        profile: Config.DB_PROFILE
-    }))
+    .get("/health", () => buildHealthPayload())
+    .get("/backend/upah/health", () => buildHealthPayload())
     // Development config routes (no prefix)
     .use(devConfigRoutes)
     // Auth routes: /auth/login, /auth/me
@@ -255,7 +282,6 @@ const app = new Elysia()
     .group("/api/mill-production", app => app.use(millProductionRoutes))
 
     // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
-    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
     // Explicitly using the string literal to ensure matching
     .group("/backend/upah", app => app
         .use(authRoutes)
@@ -266,7 +292,6 @@ const app = new Elysia()
         .use(employeeEstateRoutes)
         .use(tunjanganRoutes)
         .use(aggregationSeederRoutes)
-        .use(spreadsheetRoutes)
         .use(spreadsheetRoutes)
         .use(summaryRoutes)
         .use(dashboardRoutes)

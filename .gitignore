@@ -69,3 +69,4 @@ context_portal/
 temp_*.ps1
 test_check_*.ts
 test_seed.ts
+.pytest_cache/

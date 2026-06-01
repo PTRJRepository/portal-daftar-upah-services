@@ -1,0 +1,17 @@
+{
+  "sessionId": "WFS-dashboard-daftar-upah-v3",
+  "createdAt": "2026-06-01T00:00:00+07:00",
+  "updatedAt": "2026-06-01T13:35:00+07:00",
+  "mode": "plan",
+  "status": "replanned",
+  "title": "Perbaikan design dashboard daftar upah",
+  "objective": "Redesign dashboard payroll menjadi modern enterprise dashboard role-aware, serta stabilkan tampilan tabel daftar upah agar font, warna, tinggi, dan posisi tabel tidak berubah saat scroll.",
+  "constraints": [
+    "Planning only; jangan eksekusi implementasi dalam sesi ini",
+    "Hormati uncommitted changes existing pada file frontend dan backend",
+    "Pertahankan route existing dan akses modul yang sudah dipakai user",
+    "Gunakan role-aware visibility, bukan route removal",
+    "Hilangkan perubahan visual tabel yang dipicu scroll, terutama font/color/height shifting",
+    "Utamakan boring solution, config-driven modules, dan perubahan incremental"
+  ]
+}

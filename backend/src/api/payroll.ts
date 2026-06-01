@@ -17,6 +17,8 @@ import { AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME } from "../services/payroll/manua
 
 
 const authService = AuthService.getInstance();
+const STREAM_SLOW_LOG_MS = 30_000;
+const STREAM_MAX_RUNTIME_MS = 5 * 60_000;
 
 /**
  * [PERFORMANCE] Strip heavy per-row array fields before sending JSON to browser.
@@ -196,6 +198,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             set.status = 401;
             return { message: "Unauthorized" };
         }
+    })
+    .get("/locked/verify", ({ currentUser }) => {
+        const divisions = currentUser?.divisions || [];
+        return {
+            valid: true,
+            username: currentUser?.username,
+            role: currentUser?.role,
+            divisions,
+            division: divisions[0] || null,
+            user: currentUser
+        };
     })
     // --- Divisions ---
     .get("/divisions", async ({ currentUser }): Promise<any> => {
@@ -2724,7 +2737,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
+        const requestStartTime = Date.now();
         let cancelled = false;
+        let slowStreamLogged = false;
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -2762,6 +2777,18 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                     for await (const chunk of progressiveStream) {
                         if (cancelled) break;
+
+                        const elapsedMs = Date.now() - streamStartTime;
+                        if (!slowStreamLogged && elapsedMs >= STREAM_SLOW_LOG_MS) {
+                            slowStreamLogged = true;
+                            console.warn(`[Stream] Slow stream | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                        }
+                        if (elapsedMs >= STREAM_MAX_RUNTIME_MS) {
+                            console.error(`[Stream] Timeout boundary reached | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                            controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: "Payroll stream melewati batas waktu server. Silakan coba lagi." })}\n\n`));
+                            streamComplete = true;
+                            break;
+                        }
 
                         const { phase, gangs, current_gang, meta, dynamic_premi_headers, dynamic_potongan_headers, dynamic_premi_titles, dynamic_potongan_titles } = chunk;
 
@@ -2936,6 +2963,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             },
             cancel() {
                 cancelled = true;
+                console.warn(`[Stream] Client cancelled | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${Date.now() - requestStartTime}ms`);
             }
         });
 

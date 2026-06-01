@@ -1,0 +1,13 @@
+{
+  "id": "IMPL-3",
+  "title": "Role-aware dashboard registry and sidebar alignment",
+  "description": "Align dashboard module visibility and sidebar groups for Payroll Admin, Estate Manager, Finance, and Executive.",
+  "depends_on": ["IMPL-2"],
+  "files": ["frontend/src/pages/ProfessionalDashboard.jsx", "frontend/src/layouts/DashboardLayout.jsx"],
+  "convergence": [
+    "Role-specific modules match PRD rules.",
+    "Unavailable modules are hidden, not broken.",
+    "Sidebar group labels match dashboard groups."
+  ],
+  "meta": { "type": "frontend_role_visibility", "agent": "code_developer" }
+}

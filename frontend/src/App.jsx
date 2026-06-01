@@ -73,6 +73,7 @@ import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payr
 import { buildPayslipEmployeeRowMap, getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
+import { buildBackendUrl } from './utils/apiBase'
 import ProductivityReportPage from './pages/ProductivityReportPage'
 import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
 import MillProductionReport from './pages/MillProductionReport'
@@ -431,7 +432,7 @@ const OperationalReportWrapper = () => {
     setSeedingStatus('Extracting data from UI...')
 
     try {
-      const response = await fetch('/payroll/aggregation/seed-ui', {
+        const response = await fetch(buildBackendUrl('/payroll/aggregation/seed-ui'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

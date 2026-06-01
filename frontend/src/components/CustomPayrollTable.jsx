@@ -36,6 +36,7 @@ import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable,
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
 import { compareEmpCodeValues, sortEmployeesByEmpCode } from '../utils/employeeSort';
+import { buildBackendUrl } from '../utils/apiBase';
 import {
     buildPayrollViewportChapters,
     detectActivePayrollChapter,
@@ -560,11 +561,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Replace the old fetch/process approach with SSE streaming
     // ================================================================
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
+    const streamFallbackKeyRef = useRef(null);
     const effectiveGangPrefix = useMemo(
         () => resolveEffectiveGangPrefix(gangCode, gangPrefix, division),
         [division, gangCode, gangPrefix]
     );
     const canStartDataFlow = !!token && !!division && !!month && !!year && !currentPeriodLoading;
+    const dataRequestKey = useMemo(() => [
+        token ? 'auth' : 'no-auth',
+        division || '',
+        month || '',
+        year || '',
+        effectiveGangPrefix || '',
+        gangCode || '',
+        useHistoryDb ? 'history' : 'origin',
+        valuePriorityMode || '',
+        snapshotVersion || '',
+        refreshTrigger || 0
+    ].join('|'), [division, effectiveGangPrefix, gangCode, month, refreshTrigger, snapshotVersion, token, useHistoryDb, valuePriorityMode, year]);
 
     // Use SSE streaming for progressive data delivery
     // CRITICAL FIX: Remove gangLoading from enabled condition to allow streaming to start immediately
@@ -582,6 +596,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
     });
+
+    useEffect(() => {
+        streamFallbackKeyRef.current = null;
+        setStreamEnabled(true);
+        setError('');
+        setDataReady(false);
+    }, [dataRequestKey]);
 
     const triggerPayrollRefresh = useCallback(() => {
         if (typeof onRefresh === 'function') {
@@ -923,14 +944,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     }, [streamRows, streamActiveFields, stream.isComplete]);
 
-    // Fallback: if stream errors and we have no data, fall back to old fetch
+    // Fallback: if stream errors and we have no data, fall back to old fetch once per request.
     useEffect(() => {
-        if (stream.error && !stream.gangs?.length && streamEnabled) {
-            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch');
+        if (!stream.error || stream.gangs?.length || !streamEnabled) return;
+
+        const fallbackAlreadyUsed = streamFallbackKeyRef.current === dataRequestKey;
+        if (!fallbackAlreadyUsed) {
+            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch once', stream.error);
+            streamFallbackKeyRef.current = dataRequestKey;
             setStreamEnabled(false);
-            setError(null); // Clear stream error
+            setError('');
+            return;
         }
-    }, [stream.error, stream.gangs, streamEnabled]);
+
+        setError(stream.error);
+        setDataReady(true);
+    }, [dataRequestKey, stream.error, stream.gangs, streamEnabled]);
 
     // Update rows when streaming or legacy fetch is active
     useEffect(() => {
@@ -1732,7 +1761,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode profile override failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/profile', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/profile'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1761,7 +1790,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode value overrides failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/values', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/values'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1814,7 +1843,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode specific manual edit failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/manual-edit', {
+                const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1900,7 +1929,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         console.error('Prod Mode other income save failed:', err);
                     }
                 } else {
-                    const res = await fetch('/payroll/manual-edit', {
+                    const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1914,7 +1943,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 }
             } else {
-                const res = await fetch('/payroll/locked/pendapatan-lainnya-edit', {
+                const res = await fetch(buildBackendUrl('/payroll/locked/pendapatan-lainnya-edit'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2107,7 +2136,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (isProdMode()) {
                 responseJson = await seedLockedAutoBufferToManualAdjustment(token, payload);
             } else {
-                const response = await fetch('/payroll/manual-adjustment/seed-auto-buffer', {
+                const response = await fetch(buildBackendUrl('/payroll/manual-adjustment/seed-auto-buffer'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2389,7 +2418,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
                 if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
                 appendSnapshotVersionToSearchParams(params, snapshotVersion);
-                const url = `/payroll/report/division-raw-tree?${params.toString()}`;
+                const url = buildBackendUrl(`/payroll/report/division-raw-tree?${params.toString()}`);
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` },
                     signal: controller.signal
@@ -2444,6 +2473,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             fetchDivisionData();
         }
     }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, valuePriorityMode, snapshotVersion, fetchDivisionData, streamEnabled]);
+
+    const retryPayrollLoad = useCallback(() => {
+        streamFallbackKeyRef.current = null;
+        setError('');
+        setDataReady(false);
+        setStreamEnabled(true);
+        if (typeof onRefresh === 'function') {
+            onRefresh();
+        } else if (streamEnabled && typeof stream.startStream === 'function') {
+            void stream.startStream();
+        }
+    }, [onRefresh, stream.startStream, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -4438,7 +4479,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         <button
                             onClick={() => {
                                 console.log('[CustomPayrollTable] 🔄 Retry triggered');
-                                onRefresh?.();
+                                retryPayrollLoad();
                             }}
                             style={{
                                 padding: '10px 24px', background: '#dc2626', color: 'white',
@@ -4486,7 +4527,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <button
                         onClick={() => {
                             console.log('[CustomPayrollTable] 🔄 Refresh button clicked');
-                            onRefresh?.();
+                            retryPayrollLoad();
                         }}
                         style={{
                             padding: '10px 24px', background: '#1e3a8a', color: 'white',

@@ -321,31 +321,35 @@ const DashboardLayout = () => {
     // ─── Navigation Config ─────────────────────────────────────────────────────
     const navItems = [
         { section: 'Utama', items: [
-            { to: '/', icon: Home, label: 'Dashboard', description: 'Ringkasan & metrik', end: true },
+            { to: '/', icon: Home, label: 'Dashboard', description: 'KPI, insight, dan module role-based', end: true },
         ]},
-        { section: 'Operasional', items: [
+        { section: 'Operational', items: [
             { to: '/operational', icon: FileText, label: 'Daftar Upah', description: 'Filter upah operasional' },
-            { to: '/pendapatan-tidak-tetap', icon: DollarSign, label: 'Pendapatan Lain', description: 'Pendapatan tidak tetap' },
-            { to: '/mill-production', icon: BarChart2, label: 'Produktivitas Kebun', description: 'Tonase FFB, HK & biaya' },
+            { to: '/summary', icon: BarChart2, label: 'Summary Report', description: 'Ringkasan upah dan rekap utama' },
+            { to: '/wages-rebinmas', icon: DollarSign, label: 'Daftar Upah Rebinmas', description: 'Payroll Rebinmas saat ini' },
+            { to: '/wages-ijl', icon: DollarSign, label: 'Upah IJL', description: 'Laporan upah tenaga IJL' },
         ]},
-        { section: 'Analisis & Laporan', items: [
-            { to: '/comprehensive', icon: PieChart, label: 'Analisis Payroll', description: 'Breakdown komponen upah', parent: true },
-            { to: '/summary', icon: BarChart2, label: 'Summary Report', description: 'Rekap per divisi', indent: true },
-            { to: '/wages-rebinmas', icon: DollarSign, label: 'Wages Rebinmas', description: 'Upah Rebinmas saat ini', indent: true },
-            { to: '/wages-rebinmas?mode=comparison', icon: ShieldCheck, label: 'Wages Comparison', description: 'Perbandingan upah', indent: true },
-            { to: '/wages-ijl', icon: DollarSign, label: 'Wages IJL', description: 'Upah IJL', indent: true },
-            { to: '/wages-comparison', icon: BarChart2, label: 'Summary Comparison', description: 'Perbandingan ringkasan', indent: true },
-            { to: '/impact', icon: TrendingUp, label: 'Impact Report', description: 'Analisis dampak', indent: true },
+        { section: 'Analysis', items: [
+            { to: '/mill-production', icon: BarChart2, label: 'Produktivitas Kebun', description: 'Tonase FFB, HK & biaya' },
+            { to: '/wages-comparison', icon: ShieldCheck, label: 'Comparison', description: 'Perbandingan payroll antar periode' },
+            { to: '/impact', icon: TrendingUp, label: 'Impact Report', description: 'Analisis dampak biaya' },
+            { to: '/comprehensive', icon: PieChart, label: 'Comprehensive Analysis', description: 'Analisis payroll lintas komponen' },
             { to: '/analysis', icon: TrendingUp, label: 'Analisa Lembur & Premi', description: 'Lembur dan premi detail', indent: true },
             { to: '/tonase-analysis', icon: BarChart2, label: 'Analisis Tonase', description: 'Tonase, HK, premi panen', indent: true },
-            { to: '/executive', icon: BarChart2, label: 'Executive Analysis', description: 'Analisis eksekutif', indent: true },
-            { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak', indent: true },
-            { to: '/data-verification', icon: CheckCircle, label: 'Data Verification', description: 'Verifikasi konsistensi data', indent: true },
+        ]},
+        { section: 'Finance', items: [
+            { to: '/executive', icon: BarChart2, label: 'Executive Payroll', description: 'Ringkasan high-level payroll' },
+            { to: '/detail-upah-bersih', icon: DollarSign, label: 'Upah Bersih', description: 'Detail payroll bersih' },
+            { to: '/pendapatan-tidak-tetap', icon: DollarSign, label: 'Pendapatan Tidak Tetap', description: 'Komponen pendapatan non-rutin' },
+            { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak payroll' },
+        ]},
+        { section: 'Verification', items: [
+            { to: '/data-verification', icon: CheckCircle, label: 'Verifikasi Data', description: 'Verifikasi konsistensi data' },
         ]},
     ];
 
     const adminItems = { section: 'Admin', items: [
-        { to: '/seed', icon: Settings, label: 'Aggregation Seeder', description: 'Re-aggregation data manual' },
+        { to: '/seed', icon: Settings, label: 'Seeder', description: 'Re-aggregation data manual' },
         { to: '/spreadsheet-sync', icon: Database, label: 'Spreadsheet Sync', description: 'Sinkronisasi spreadsheet' },
         { to: '/employee-directory', icon: Users, label: 'HR Employee Directory', description: 'Database HR' },
         { to: '/test/components', icon: Settings, label: 'Lainnya', description: 'Routing sementara' },
@@ -554,3 +558,4 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
+

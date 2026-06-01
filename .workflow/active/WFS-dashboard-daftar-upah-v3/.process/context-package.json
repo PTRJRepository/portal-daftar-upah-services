@@ -1,0 +1,87 @@
+{
+  "critical_files": [
+    "frontend/src/pages/ProfessionalDashboard.jsx",
+    "frontend/src/layouts/DashboardLayout.jsx",
+    "frontend/src/App.jsx",
+    "frontend/src/pages/MainPage.jsx",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/styles/CustomPayrollTable.css",
+    "frontend/src/utils/payrollResponsiveScale.js",
+    "frontend/src/context/ReportContext.jsx",
+    "frontend/src/context/AuthContext.jsx"
+  ],
+  "patterns": [
+    {
+      "name": "dashboard_module_registry",
+      "files": ["frontend/src/pages/ProfessionalDashboard.jsx"],
+      "notes": "MODULE_GROUPS and getVisibleGroups already drive grouped, role-aware modules."
+    },
+    {
+      "name": "dashboard_filter_context",
+      "files": ["frontend/src/pages/ProfessionalDashboard.jsx", "frontend/src/context/ReportContext.jsx"],
+      "notes": "Dashboard uses shared period/division/gang context; keep this instead of adding duplicate filter state."
+    },
+    {
+      "name": "sidebar_grouping",
+      "files": ["frontend/src/layouts/DashboardLayout.jsx"],
+      "notes": "Sidebar already groups modules and should align with dashboard groups."
+    },
+    {
+      "name": "table_responsive_scale",
+      "files": ["frontend/src/components/CustomPayrollTable.jsx", "frontend/src/utils/payrollResponsiveScale.js"],
+      "notes": "tableContainerWidth drives effectiveScale, font size, padding, and rowHeight."
+    },
+    {
+      "name": "table_sticky_headers_and_focus",
+      "files": ["frontend/src/components/CustomPayrollTable.jsx", "frontend/src/styles/CustomPayrollTable.css"],
+      "notes": "Sticky top offsets, active chapter, focus lens, and gang markers combine during scroll."
+    }
+  ],
+  "dependencies": [
+    "react-router-dom navigation",
+    "lucide-react icons",
+    "ReportContext period/division/gang state",
+    "AuthContext role/user state",
+    "dashboard executive-summary API via buildBackendUrl",
+    "CustomPayrollTable scroll/chapter utilities",
+    "Vitest frontend tests"
+  ],
+  "integration_points": [
+    {
+      "module": "dashboard",
+      "files": ["frontend/src/pages/ProfessionalDashboard.jsx", "frontend/src/layouts/DashboardLayout.jsx", "frontend/src/App.jsx"]
+    },
+    {
+      "module": "payroll_table",
+      "files": ["frontend/src/components/CustomPayrollTable.jsx", "frontend/src/styles/CustomPayrollTable.css", "frontend/src/utils/payrollResponsiveScale.js", "frontend/src/pages/MainPage.jsx"]
+    },
+    {
+      "module": "tests",
+      "files": ["frontend/src/pages/ProfessionalDashboard.test.jsx", "frontend/src/layouts/DashboardLayout.test.jsx", "frontend/src/components/CustomPayrollTable.*.test.jsx", "frontend/src/utils/payrollResponsiveScale.test.js"]
+    }
+  ],
+  "table_stability_findings": [
+    "CustomPayrollTable derives --payroll-font-size-base, --payroll-header-font-size, padding, and --payroll-row-height from tableContainerWidth and fontSize.",
+    "ResizeObserver observes both container and table; table size changes can feed back into width/scale calculation.",
+    "Scroll handler updates active chapter and active gang marker using DOM measurements.",
+    "CSS data-active-group and data-focus-dim selectors alter font weight, color, shadow, and highlight during active chapter changes.",
+    "Gang sticky row top uses calc(4 * --payroll-row-height), so rowHeight changes can make gang headers move.",
+    "Table shell uses calc(100vh - 120px); this can clash with parent layout when toolbar/filter height changes."
+  ],
+  "conflict_risk": "high",
+  "conflict_areas": [
+    "frontend/src/App.jsx",
+    "frontend/src/pages/ProfessionalDashboard.jsx",
+    "frontend/src/layouts/DashboardLayout.jsx",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/styles/CustomPayrollTable.css",
+    "frontend/src/pages/MainPage.jsx"
+  ],
+  "constraints": [
+    "Planning only in this turn.",
+    "Do not overwrite existing uncommitted changes.",
+    "Keep existing routes stable.",
+    "Do not remove table features such as edit mode, focus navigation, sticky headers, or horizontal chapter navigation without replacement.",
+    "Scroll must not trigger typography/color/height changes in table body cells."
+  ]
+}

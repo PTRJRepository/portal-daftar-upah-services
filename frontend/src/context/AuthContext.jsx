@@ -110,11 +110,13 @@ export function AuthProvider({ children }) {
               return true
             } else {
               console.warn('[AuthContext] Production token verification failed (expired or invalid)')
+              setLoading(false)
               redirectToExternalLogin()
               return false
             }
           } catch (e) {
             console.error('[AuthContext] Error verifying production token:', e)
+            setLoading(false)
             redirectToExternalLogin()
             return false
           }
@@ -225,7 +227,7 @@ export function AuthProvider({ children }) {
             setUser(null)
             // Redirect to login page (relative URL for proxy compatibility)
             setTimeout(() => {
-              window.location.href = '/login'
+              redirectToExternalLogin()
             }, 1500)
             return Promise.reject(error)
           }

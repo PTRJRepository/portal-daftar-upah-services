@@ -1,0 +1,18 @@
+{
+  "id": "IMPL-1",
+  "title": "Lock API base contract with tests",
+  "description": "Add focused tests for frontend proxy URL behavior. Verify local root, /upah pathname, port 3001, VITE_PROXY_MODE, and explicit backend URL envs. Confirm httpSetup uses apiBase as canonical source.",
+  "depends_on": [],
+  "files": [
+    "frontend/src/utils/apiBase.js",
+    "frontend/src/utils/apiBase.test.js",
+    "frontend/src/utils/httpSetup.js"
+  ],
+  "convergence": "Tests prove getBackendBaseUrl/buildBackendUrl returns correct backend base for proxy and local modes.",
+  "meta": {
+    "type": "frontend-test",
+    "agent": "tdd_developer"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

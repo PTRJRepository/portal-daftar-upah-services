@@ -24,6 +24,7 @@ import { exportReportToExcelPro } from '../utils/exportReportToExcelPro'
 import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import { getEditableOtherIncomeConfig } from '../utils/otherIncomeColumns'
+import { getBackendBaseUrl } from '../utils/apiBase'
 
 // Check if running in development mode
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV_MODE === 'true'
@@ -163,7 +164,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     if (Object.keys(pendingNikEdits).length === 0) return
     setIsSavingNik(true)
     try {
-      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const backendUrl = getBackendBaseUrl()
       const promises = Object.values(pendingNikEdits).map(edit =>
         fetch(`${backendUrl}/employee-hr-data/${edit.emp_code}`, {
           method: 'PUT',
@@ -193,7 +194,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const openNikHistory = async (empcode) => {
     setHistoryModalNik({ isOpen: true, data: null, empCode: empcode, loading: true })
     try {
-      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const backendUrl = getBackendBaseUrl()
       const res = await fetch(`${backendUrl}/employee-hr-data/${empcode}/history`)
       const json = await res.json()
       if (json.success) {
@@ -256,7 +257,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     if (Object.keys(pendingPendapatanEdits).length === 0) return
     setIsSavingPendapatan(true)
     try {
-      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const backendUrl = getBackendBaseUrl()
       const promises = Object.values(pendingPendapatanEdits).map(edit =>
         fetch(`${backendUrl}/payroll/locked/pendapatan-lainnya-edit`, {
           method: 'POST',
@@ -302,7 +303,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     if (!authToken || !activeMonth || !activeYear) return;
     (async () => {
       try {
-        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+        const backendUrl = getBackendBaseUrl();
         const res = await fetch(
           `${backendUrl}/payroll/locked/pendapatan-lainnya-types?month=${activeMonth}&year=${activeYear}`,
           { headers: { 'Authorization': authToken ? `Bearer ${authToken}` : '' } }
@@ -329,7 +330,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     async function loadJobTitles() {
       try {
         // Construct dynamic backend URL based on current hostname
-        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+        const backendUrl = getBackendBaseUrl()
         const res = await fetch(`${backendUrl}/employee-estate`)
         const json = await res.json()
         if (json.success) {
@@ -360,7 +361,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     if (Object.keys(unsavedJobs).length === 0) return
     setIsSavingJobs(true)
     try {
-      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+      const backendUrl = getBackendBaseUrl()
       const payload = { jobs: Object.values(unsavedJobs) }
 
       const res = await fetch(`${backendUrl}/employee-estate/save`, {
@@ -397,7 +398,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
 
       try {
         gangFilter.setLoading(true)
-        const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`
+        const backendUrl = getBackendBaseUrl()
 
         // 1. Fetch divisions
         let divisionsList = []
@@ -1592,7 +1593,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   const handleDownloadDaftarUpahExcel = async () => {
     try {
       setIsDownloadingExcel(true);
-      const backendUrl = `${window.location.protocol}//${window.location.hostname}:8002`;
+      const backendUrl = getBackendBaseUrl();
       const params = new URLSearchParams({
         month: activeMonth,
         year: activeYear,
