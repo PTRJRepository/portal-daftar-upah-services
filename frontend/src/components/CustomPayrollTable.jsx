@@ -2,6 +2,12 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from '
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
+import {
+    formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
+    normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
+    NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
+    isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
+} from './payrollTableFormatters';
 import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment, deleteLockedManualAdjustmentColumn } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
@@ -93,42 +99,12 @@ import {
  * - HR_PAYROLL (Konfigurasi Gaji)
  */
 
-const formatNumber = (value) => {
-    if (value === null || value === undefined) return '-';
-    const n = Number(value);
-    if (isNaN(n)) return '-';
-    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
-};
+// formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
+// normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
+// NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
+// isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
+// → imported from ./payrollTableFormatters.js
 
-const formatDecimal = (value) => {
-    if (value === null || value === undefined) return '-';
-    const n = Number(value);
-    if (isNaN(n)) return '-';
-    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
-};
-
-const NEGATIVE_TOTAL_DISPLAY_FIELDS = new Set([
-    'potongan_upah_kotor_total',
-    'total_potongan',
-    'total_potongan_bersih'
-]);
-
-const formatNegativeTotalNumber = (value) => {
-    const n = Number(value) || 0;
-    if (n === 0) return '-';
-    return `-${formatNumber(Math.abs(n))}`;
-};
-
-const toFiniteNumber = toFinitePayrollNumber;
-
-const formatBytes = (bytes) => {
-    if (!bytes || bytes === 0) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 const EMPTY_CELL_STYLE = Object.freeze({});
 
 const getInitialViewportWidth = () => {
@@ -150,21 +126,9 @@ const formatHeaderLabel = (label) => {
 
 const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
 
-const normalizeValuePriorityMode = (value) => {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
-    return 'non_db_ptrj';
-};
-
-const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
-
-const formatSourceCompareValue = (value) => {
-    if (value === null || value === undefined || value === '') return '-';
-    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
-    const n = Number(value);
-    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
-    return String(value);
-};
+// normalizeValuePriorityMode → imported from ./payrollTableFormatters.js
+// normalizeFieldKey → imported from ./payrollTableFormatters.js
+// formatSourceCompareValue → imported from ./payrollTableFormatters.js
 
 const STATIC_PREMI_FIELDS = new Set(['premi_brondol']);
 const STATIC_BRONDOL_FIELD_KEYS = new Set([
@@ -189,7 +153,7 @@ const STATIC_BRONDOL_LABELS = new Set([
 ]);
 const STATIC_POTONGAN_FIELDS = new Set(['pot_spsi']);
 
-const normalizeHeaderLabel = (value) => String(value || '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+// normalizeHeaderLabel → imported from ./payrollTableFormatters.js
 
 const isBrondolFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
@@ -254,12 +218,8 @@ const getManualDetailValidation = ({ metadata, inputType, amount, adjustmentType
     return validation.isComplete ? null : validation;
 };
 
-const MANUAL_CELL_DELETE_MARKER = 'DELETE_CELL';
-
-const buildManualCellDeleteRemarks = (name) => `${name || 'MANUAL ADJUSTMENT'} | ${MANUAL_CELL_DELETE_MARKER} | 0`;
-
-const isManualCellDeleteEdit = (edit) => Boolean(edit?.delete_cell)
-    || (Number(edit?.value || 0) === 0 && String(edit?.remarks || '').toUpperCase().includes(MANUAL_CELL_DELETE_MARKER));
+// MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks, isManualCellDeleteEdit
+// → imported from ./payrollTableFormatters.js
 
 const isAutomaticPayrollKoreksiFieldKey = (value) => normalizeFieldKey(value) === 'koreksi_hk';
 
@@ -369,15 +329,7 @@ const formatFallbackPotonganLabel = (field) => {
     return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
 };
 
-const parseMetadataObjectValue = (value) => {
-    if (!value) return null;
-    try {
-        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-        return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-        return null;
-    }
-};
+// parseMetadataObjectValue → imported from ./payrollTableFormatters.js
 
 const resolveInitialValuePriorityMode = () => {
     try {
