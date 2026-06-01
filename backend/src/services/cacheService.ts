@@ -114,6 +114,40 @@ export class CacheService {
     }
 
     /**
+     * [OPTIMIZATION] Invalidate cache spesifik untuk (gang, division, month, year).
+     * Lebih efisien dari clearByPattern(":month:year") yang menghapus SEMUA gang/division.
+     * Gunakan ini setelah save manual-edit / override supaya user lain tidak kehilangan cache.
+     */
+    public invalidatePayroll(opts: {
+        month: number;
+        year: number;
+        divisionCode?: string | null;
+        gangCode?: string | null;
+    }): number {
+        const monthYearSuffix = `:${opts.month}:${opts.year}:`;
+        let count = 0;
+        for (const key of this.cache.keys()) {
+            if (!key.startsWith('payroll:')) continue;
+            if (!key.includes(monthYearSuffix)) continue;
+            // Format: payroll:{gang}:{month}:{year}:{division}:{H|L}{:Vn?}
+            if (opts.gangCode) {
+                const gangPrefix = `payroll:${opts.gangCode}:`;
+                const allPrefix = 'payroll:ALL:';
+                if (!key.startsWith(gangPrefix) && !key.startsWith(allPrefix)) continue;
+            }
+            if (opts.divisionCode) {
+                // division ada setelah year: payroll:GANG:M:Y:DIV:...
+                const afterYear = key.substring(key.indexOf(monthYearSuffix) + monthYearSuffix.length);
+                const divFromKey = afterYear.split(':')[0];
+                if (divFromKey !== opts.divisionCode && divFromKey !== 'ALL') continue;
+            }
+            this.cache.delete(key);
+            count++;
+        }
+        return count;
+    }
+
+    /**
      * Get cache statistics for monitoring
      */
     public getStats(): { size: number; hits: number; misses: number; hitRate: string } {
