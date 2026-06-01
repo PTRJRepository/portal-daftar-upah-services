@@ -44,26 +44,27 @@ import HrInfoRoute from './pages/HrInfoRoute'
 import LoginPage from './pages/LoginPage'
 import PayslipPrintPage from './pages/PayslipPrintPage'
 
-// Report Pages
+// Report Pages (komponen yang dipakai langsung di JSX — tetap statis)
 import CustomPayrollTable from './components/CustomPayrollTable'
 import DbPtrjCompareReportModal from './components/DbPtrjCompareReportModal'
 import GangAttendanceMatrix from './components/GangAttendanceMatrix'
 import GangOvertimeMatrix from './components/GangOvertimeMatrix'
 import GangEmployeeInfo from './components/GangEmployeeInfo'
-import EmployeeDirectoryPage from './pages/EmployeeDirectoryAnalytics'
-import SummaryReportPage from './pages/SummaryReportPage'
-import WagesSummaryRebinmasPage from './pages/WagesSummaryRebinmasPage'
-import WagesSummaryIJLPage from './pages/WagesSummaryIJLPage'
-import AnalysisReportPage from './pages/AnalysisReportPage'
-import AggregationSeederPage from './pages/AggregationSeederPage'
-import SpreadsheetSyncPage from './pages/SpreadsheetSyncPage'
-import PayrollAnalysisPage from './pages/PayrollAnalysisPage'
-import ExecutivePayrollPage from './pages/ExecutivePayrollPage'
-import GangComparisonReportPage from './pages/GangComparisonReportPage'
-import WagesComparisonPage from './pages/WagesComparisonPage'
-import ImpactReportPage from './pages/ImpactReportPage'
-import TaxReportPage from './pages/TaxReportPage'
-import OtherIncomesPage from './pages/OtherIncomesPage'
+// Report Pages (hanya dipakai di <Route> — lazy load)
+const EmployeeDirectoryPage = lazy(() => import('./pages/EmployeeDirectoryAnalytics'))
+const SummaryReportPage = lazy(() => import('./pages/SummaryReportPage'))
+const WagesSummaryRebinmasPage = lazy(() => import('./pages/WagesSummaryRebinmasPage'))
+const WagesSummaryIJLPage = lazy(() => import('./pages/WagesSummaryIJLPage'))
+const AnalysisReportPage = lazy(() => import('./pages/AnalysisReportPage'))
+const AggregationSeederPage = lazy(() => import('./pages/AggregationSeederPage'))
+const SpreadsheetSyncPage = lazy(() => import('./pages/SpreadsheetSyncPage'))
+const PayrollAnalysisPage = lazy(() => import('./pages/PayrollAnalysisPage'))
+const ExecutivePayrollPage = lazy(() => import('./pages/ExecutivePayrollPage'))
+const GangComparisonReportPage = lazy(() => import('./pages/GangComparisonReportPage'))
+const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
+const ImpactReportPage = lazy(() => import('./pages/ImpactReportPage'))
+const TaxReportPage = lazy(() => import('./pages/TaxReportPage'))
+const OtherIncomesPage = lazy(() => import('./pages/OtherIncomesPage'))
 import { downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
@@ -72,14 +73,16 @@ import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payr
 import { buildPayslipEmployeeRowMap, getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
-import ProductivityReportPage from './pages/ProductivityReportPage'
-import DetailedSalaryAnalysisPage from './pages/DetailedSalaryAnalysisPage'
-import MillProductionReport from './pages/MillProductionReport'
-import TonaseAnalysisReportPage from './pages/TonaseAnalysisReportPage'
-import UpahBersihDetailPage from './pages/UpahBersihDetailPage'
-import DataVerificationPage from './pages/DataVerificationPage'
-import HighEarnerReportPage from './pages/HighEarnerReportPage'
-import SalaryRangeDetailPage from './pages/SalaryRangeDetailPage'
+import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
+import { buildBackendUrl } from './utils/apiBase'
+const ProductivityReportPage = lazy(() => import('./pages/ProductivityReportPage'))
+const DetailedSalaryAnalysisPage = lazy(() => import('./pages/DetailedSalaryAnalysisPage'))
+const MillProductionReport = lazy(() => import('./pages/MillProductionReport'))
+const TonaseAnalysisReportPage = lazy(() => import('./pages/TonaseAnalysisReportPage'))
+const UpahBersihDetailPage = lazy(() => import('./pages/UpahBersihDetailPage'))
+const DataVerificationPage = lazy(() => import('./pages/DataVerificationPage'))
+const HighEarnerReportPage = lazy(() => import('./pages/HighEarnerReportPage'))
+const SalaryRangeDetailPage = lazy(() => import('./pages/SalaryRangeDetailPage'))
 import { parseSalaryRangeRouteParams } from './utils/reportRouteParams'
 
 // Development/Test Pages
