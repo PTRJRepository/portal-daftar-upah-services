@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { Config } from "../config";
 import { Elysia, t } from "elysia";
+import { takeToken } from "../utils/rateLimiter";
 import { gangService } from "../services/gangService";
 import { headerService } from "../services/headerService";
 import { payrollService } from "../services/payrollService";
@@ -563,6 +564,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Save Manual Edit ---
     .post("/manual-edit", async ({ body, currentUser, set }) => {
         try {
+            const rlKey = (currentUser as any)?.username || 'anon';
+            if (!takeToken(`write:${rlKey}`, { capacity: 60, refillPerSec: 6 })) {
+                set.status = 429;
+                return { success: false, error: "Rate limit exceeded. Coba lagi sebentar." };
+            }
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
             const { cacheService } = await import("../services/cacheService");
             const data = body as any;
@@ -613,6 +619,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Batch Manual Edit (saves multiple adjustments in one request) ---
     .post("/manual-edit/batch", async ({ body, currentUser, set }) => {
         try {
+            const rlKey = (currentUser as any)?.username || 'anon';
+            if (!takeToken(`write:${rlKey}`, { capacity: 60, refillPerSec: 6 })) {
+                set.status = 429;
+                return { success: false, error: "Rate limit exceeded. Coba lagi sebentar." };
+            }
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
             const { cacheService } = await import("../services/cacheService");
             const items = (body as any).items as any[];
