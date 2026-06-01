@@ -5,6 +5,7 @@ import '../styles/CustomPayrollTable.css';
 import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment, deleteLockedManualAdjustmentColumn } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
+import { debounce } from '../utils/debounce';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
@@ -441,6 +442,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [pendingDeletedColumns, setPendingDeletedColumns] = useState([]);
     const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null, adjustmentType: 'PREMI' });
     const [isSavingEdits, setIsSavingEdits] = useState(false);
+    const [savedCellKeys, setSavedCellKeys] = useState(new Set()); // keys yang baru saja tersimpan (untuk animasi hijau)
+
+    // Helper: return CSS class untuk cell berdasarkan edit/saving/saved state
+    const getEditCellClass = useCallback((editKey) => {
+        if (savedCellKeys.has(editKey)) return 'cell-saved';
+        if (isSavingEdits && editedCells[editKey]) return 'cell-saving cell-edited';
+        if (editedCells[editKey]) return 'cell-edited';
+        return '';
+    }, [savedCellKeys, isSavingEdits, editedCells]);
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
     // Premium detail popup state
@@ -1980,6 +1990,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     const performSaveAllEdits = async () => {
         setIsSavingEdits(true);
+        // Snapshot keys yang akan disimpan untuk animasi
+        const keysToSave = new Set([
+            ...Object.keys(editedCells),
+            ...Object.keys(editedOtherIncomeCells)
+        ]);
         try {
             let savedCount = 0;
             let deleteCount = 0;
@@ -2006,6 +2021,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 showPayrollToast('info', 'Tidak ada perubahan', 'Belum ada data edit yang perlu disimpan.');
                 return;
             }
+
+            // Animasi cell-saved: tampilkan hijau lalu fade
+            setSavedCellKeys(keysToSave);
+            setTimeout(() => setSavedCellKeys(new Set()), 2000);
 
             showPayrollToast(
                 'success',
@@ -4238,25 +4257,32 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, [displayRows.length, renderColumnDefs.length, displayMode, syncActiveGangMarker, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
-        const onResize = () => {
+        const onResize = debounce(() => {
             syncTableContainerWidth();
             syncHorizontalScrollState();
-        };
+        }, 100);
         window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
+        return () => {
+            onResize.cancel();
+            window.removeEventListener('resize', onResize);
+        };
     }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
         const container = tableContainerRef.current;
         if (!container || typeof ResizeObserver === 'undefined') return undefined;
 
-        const observer = new ResizeObserver(() => {
+        const debouncedSync = debounce(() => {
             syncTableContainerWidth(container);
             syncHorizontalScrollState(container);
-        });
+        }, 100);
+        const observer = new ResizeObserver(debouncedSync);
         observer.observe(container);
 
-        return () => observer.disconnect();
+        return () => {
+            debouncedSync.cancel();
+            observer.disconnect();
+        };
     }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
@@ -4354,8 +4380,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     };
 
+    const mouseOverRafRef = useRef(0);
     const handleMouseOver = (rowIndex, colIndex) => {
-        if (isSelecting && selection.length > 0) {
+        if (!isSelecting || selection.length === 0) return;
+        if (mouseOverRafRef.current) return; // throttle ke 1 frame
+        mouseOverRafRef.current = requestAnimationFrame(() => {
+            mouseOverRafRef.current = 0;
             // Extend selection range from first cell to current
             const start = selection[0];
             const newSelection = [];
@@ -4367,7 +4397,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 }
             }
             setSelection(newSelection);
-        }
+        }); // end RAF
     };
 
     const handleMouseUp = () => { setIsSelecting(false); calculateSelectionStats(); };
