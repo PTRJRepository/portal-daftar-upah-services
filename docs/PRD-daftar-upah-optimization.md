@@ -1,10 +1,55 @@
 # PRD — Optimasi Sistem Daftar Upah
 
-**Status:** Draft v1.0 untuk eksekusi
+**Status:** v1.1 — Eksekusi Phase 1-3 + Phase 4.4 selesai (2026-06-01)
 **Tanggal:** 2026-06-01
 **Author audit:** Kiro CLI (Opus 4.7) — handoff ke Sonnet
 **Audience:** Engineer / agent yang akan mengerjakan implementasi
 **Repo:** `D:\Gawean Rebinmas\PORTAL_ESTATE\Plantware_Auto_Report\Daftar_Upah_baru\payroll_daftar_upah\refactor_production`
+
+## Status Eksekusi (2026-06-01)
+
+### ✅ Selesai (branch: server-fix-1)
+
+| Task | Commit | Keterangan |
+|---|---|---|
+| 1.4 Cleanup file root liar | de5fd21c | patch_frontend.cjs, .pytest_cache, dev scripts dihapus |
+| 1.5 Dev scripts ke legacy_backend | de5fd21c | 25 file dipindah ke _dev_utils/scripts/legacy_backend/ |
+| 1.6 Arsip CLAUDE.md + QWEN.md | de5fd21c | Dipindah ke docs/archive/ |
+| 1.3 Cache invalidation spesifik | e90247c9 | invalidatePayroll() helper, drop clear() global |
+| 1.2 Lazy load pages | fb216212 | 21 page report dikonversi ke lazy() |
+| 1.7 Proxy route always mounted | 6085064e | /backend/upah unconditional |
+| 1.1 Minify + compression | 6e37b9a9 | esbuild minify + gzip/brotli, bundle -50% |
+| 2.1 Unique index migration | ebda5cbc | SQL di backend/sql/migrations/ (run manual) |
+| 2.3 Batch endpoint | cb5d6c1b | POST /payroll/manual-edit/batch |
+| 2.4 Frontend batch save | cb5d6c1b | 50 cell: ~10s → ~0.5s |
+| 2.5 Optimistic UI | 6abb6a84 | cell-saving (biru) + cell-saved (hijau fade) |
+| 2.6 Debounce resize | 6abb6a84 | 100ms debounce + RAF throttle drag-select |
+| 3.2 Virtual row windowing | ff18c412 | ~12k <td> → ~600 <td> di DOM |
+| 3.4 Compact mode toggle | 96a436fc | Font 10px, padding 1-3px, localStorage |
+| 4.4 Rate limiter | 4fed5f6c | 60 req/10s per user di write endpoints |
+| 3.3 Partial split | b7fdac21 | payrollTableFormatters.js extracted |
+
+### ⏳ Belum dikerjakan
+
+- **2.2** MERGE atomic upsert (test suite 130KB perlu refactor besar; unique index dari 2.1 sudah memberikan DB-level protection)
+- **3.3** Split CustomPayrollTable.jsx lebih lanjut (partial done: formatters extracted)
+- **4.1** Modularisasi dataExtractorService.ts (sudah ada extractors/ folder, tinggal facade)
+- **4.2** Modularisasi manualAdjustmentService.ts
+- **4.3** Pecah payroll.ts API (164KB, 68 endpoint)
+- **4.5** Redis cache (optional)
+- **4.6** mssql native pool (optional)
+
+### Cara lanjutkan
+
+```bash
+git checkout server-fix-1
+# Lanjut dari task yang belum selesai
+```
+
+Untuk deploy ke production:
+1. Jalankan `cd frontend && npm run build`
+2. Jalankan migration DB: `backend/sql/migrations/add_manual_adjustment_dedup_index.sql`
+3. Restart backend: `cd backend && bun run start`
 
 > **Cara pakai dokumen ini:** dokumen ini dirancang **self-contained**. Agent yang baru masuk tidak perlu membaca chat history sebelumnya. Cukup baca dokumen ini + file source code yang dirujuk per task. Setiap task punya file path + acceptance criteria + cara test + rollback.
 
