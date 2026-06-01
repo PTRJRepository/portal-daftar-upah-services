@@ -498,6 +498,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [compactMode, setCompactMode] = useState(() => {
         try { return localStorage.getItem('payroll.compactMode') === 'true'; } catch { return false; }
     });
+    // Virtual scroll state: track scroll position for row windowing
+    const [vsScrollTop, setVsScrollTop] = useState(0);
+    const [vsContainerHeight, setVsContainerHeight] = useState(600);
     const [internalValuePriorityMode, setInternalValuePriorityMode] = useState(resolveInitialValuePriorityMode);
     const valuePriorityMode = controlledValuePriorityMode === null || controlledValuePriorityMode === undefined
         ? internalValuePriorityMode
@@ -4222,6 +4225,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             scrollSyncRafRef.current = window.requestAnimationFrame(() => {
                 scrollSyncRafRef.current = 0;
                 syncActiveGangMarker(container);
+                // Update virtual scroll position
+                setVsScrollTop(container.scrollTop);
+                setVsContainerHeight(container.clientHeight);
 
                 if (didScrollHorizontally) {
                     setChapterBarVisible(true);
@@ -4986,9 +4992,25 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     ))}
                 </thead>
                 <tbody>
-                    {displayRows.map((row, rIdx) => {
-                        if (row.type === 'gang_header') {
-                            return (
+                    {(() => {
+                        // Virtual windowing: hanya render baris yang visible + buffer
+                        // Ini mengurangi DOM nodes dari ~12k ke ~600 untuk 200 employee × 60 col
+                        const BUFFER = 10; // baris buffer di atas dan bawah viewport
+                        const visibleStart = Math.max(0, Math.floor(vsScrollTop / rowHeight) - BUFFER);
+                        const visibleEnd = Math.min(displayRows.length, Math.ceil((vsScrollTop + vsContainerHeight) / rowHeight) + BUFFER);
+                        const topSpacerHeight = visibleStart * rowHeight;
+                        const bottomSpacerHeight = (displayRows.length - visibleEnd) * rowHeight;
+                        const visibleRows = displayRows.slice(visibleStart, visibleEnd);
+
+                        return (
+                            <>
+                                {topSpacerHeight > 0 && (
+                                    <tr style={{ height: topSpacerHeight, display: 'block' }} aria-hidden="true" />
+                                )}
+                                {visibleRows.map((row, localIdx) => {
+                                    const rIdx = visibleStart + localIdx;
+                                    if (row.type === 'gang_header') {
+                                        return (
                                 <tr key={row.id} className="gang-header-row" data-gang-code={row.gang_code}>
                                     <td
                                         colSpan={renderColumnDefs.length}
@@ -5087,6 +5109,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             </tr>
                         );
                     })}
+                                {bottomSpacerHeight > 0 && (
+                                    <tr style={{ height: bottomSpacerHeight, display: 'block' }} aria-hidden="true" />
+                                )}
+                            </>
+                        );
+                    })()}
                 </tbody>
                 {grandTotal && (
                     <tfoot>
