@@ -80,3 +80,11 @@ export async function importPremiumExcel(token, formData, periodMonth, periodYea
     );
     return response.data;
 }
+
+
+export async function saveManualAdjustmentBatch(token, items) {
+    const response = await axios.post('payroll/manual-edit/batch', { items }, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+}

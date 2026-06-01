@@ -10,7 +10,7 @@ import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import PremiumDetailPopup from './PremiumDetailPopup';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn, saveManualAdjustment, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment, saveManualAdjustmentBatch, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -1807,59 +1807,55 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (resOk && resJson?.success) successCount += valueItems.length;
         }
 
-        for (const edit of legacyEdits) {
-            const isDeleteEdit = isManualCellDeleteEdit(edit);
-            const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-            const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
-            const payload = {
-                period_month: month,
-                period_year: year,
-                emp_code: edit.emp_code || edit.nik,
-                nik: edit.nik,
-                emp_name: edit.emp_name || null,
-                gang_code: edit.gang_code,
-                division_code: division,
-                adjustment_type: edit.type,
-                adjustment_name: edit.name,
-                amount: isDeleteEdit ? 0 : edit.value,
-                remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode
-                    ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
-                    : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
-                ad_code: edit.ad_code,
-                task_code: edit.task_code,
-                base_task_code: edit.base_task_code,
-                task_desc: edit.task_desc,
-                metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
-            };
-
-            let resOk = false;
-            let resJson = null;
-
+        // Batch save legacy manual edits (premi, potongan, dll) — replaces serial loop
+        if (legacyEdits.length > 0) {
             if (isProdMode()) {
-                try {
-                    resJson = await saveLockedManualEdit(token, payload);
-                    resOk = true;
-                } catch (err) {
-                    console.error('Prod Mode specific manual edit failed:', err);
+                // Prod mode: fallback ke serial (locked endpoint belum punya batch)
+                for (const edit of legacyEdits) {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    const payload = {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
+                    try {
+                        const resJson = await saveLockedManualEdit(token, payload);
+                        if (resJson?.success) successCount++;
+                    } catch (err) { console.error('Prod Mode specific manual edit failed:', err); }
                 }
             } else {
-                const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(payload)
+                // Non-prod: batch endpoint
+                const batchItems = legacyEdits.map(edit => {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    return {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
                 });
-                if (res.ok) {
-                    resOk = true;
-                    resJson = await res.json();
+                try {
+                    const batchResult = await saveManualAdjustmentBatch(token, batchItems);
+                    successCount += batchResult?.successCount || 0;
+                    if (batchResult?.failedCount > 0) {
+                        console.warn(`[batch] ${batchResult.failedCount} items gagal disimpan`);
+                    }
+                } catch (err) {
+                    console.error('Batch manual edit failed:', err);
                 }
-            }
-
-            if (resOk && resJson?.success) {
-                successCount++;
-                if (isDeleteEdit) deleteCount++;
             }
         }
 
@@ -4038,7 +4034,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const nextWidth = Math.max(0, Math.round(Number(container.clientWidth) || 0));
+        const rectWidth = container.getBoundingClientRect?.().width;
+        const nextWidth = Math.max(0, Math.round(Number(rectWidth || container.offsetWidth || container.clientWidth) || 0));
         setTableContainerWidth((prev) => {
             if (Math.abs(prev - nextWidth) < 1) return prev;
             return nextWidth;
@@ -4251,7 +4248,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     useEffect(() => {
         const container = tableContainerRef.current;
-        const table = tableRef.current;
         if (!container || typeof ResizeObserver === 'undefined') return undefined;
 
         const observer = new ResizeObserver(() => {
@@ -4259,10 +4255,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             syncHorizontalScrollState(container);
         });
         observer.observe(container);
-        if (table) observer.observe(table);
 
         return () => observer.disconnect();
-    }, [syncHorizontalScrollState, syncTableContainerWidth, displayMode, renderColumnDefs.length, displayRows.length]);
+    }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -4595,8 +4590,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'}`}
             onMouseUp={handleMouseUp}
             style={{ 
-                height: 'calc(100vh - 120px)', 
-                minHeight: '400px',
+                height: '100%',
+                minHeight: 0,
                 ...payrollResponsiveVars,
                 '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
                 '--payroll-grand-total-offset': `${shellGrandTotalOffset}px`

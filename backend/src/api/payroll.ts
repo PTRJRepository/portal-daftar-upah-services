@@ -610,6 +610,81 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_desc: t.Optional(t.String())
         })
     })
+    // --- Batch Manual Edit (saves multiple adjustments in one request) ---
+    .post("/manual-edit/batch", async ({ body, currentUser, set }) => {
+        try {
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const items = (body as any).items as any[];
+            if (!Array.isArray(items) || items.length === 0) {
+                set.status = 400;
+                return { success: false, error: "items array required" };
+            }
+            if (items.length > 200) {
+                set.status = 400;
+                return { success: false, error: "Maximum 200 items per batch" };
+            }
+
+            const username = currentUser?.username || 'system';
+            const results: Array<{ index: number; success: boolean; id?: number; error?: string }> = [];
+            const affectedKeys = new Map<string, { month: number; year: number; divisionCode?: string; gangCode?: string }>();
+
+            // Process in parallel chunks of 10
+            const CONCURRENCY = 10;
+            for (let i = 0; i < items.length; i += CONCURRENCY) {
+                const chunk = items.slice(i, i + CONCURRENCY);
+                const settled = await Promise.allSettled(
+                    chunk.map(item => manualAdjustmentService.saveAdjustment(item, username))
+                );
+                settled.forEach((res, idx) => {
+                    const globalIdx = i + idx;
+                    const item = chunk[idx];
+                    if (res.status === 'fulfilled') {
+                        results.push({ index: globalIdx, success: true, id: res.value });
+                        const k = `${item.period_month}:${item.period_year}:${item.division_code || ''}:${item.gang_code || ''}`;
+                        if (!affectedKeys.has(k)) {
+                            affectedKeys.set(k, { month: item.period_month, year: item.period_year, divisionCode: item.division_code, gangCode: item.gang_code });
+                        }
+                    } else {
+                        results.push({ index: globalIdx, success: false, error: (res.reason as any)?.message || String(res.reason) });
+                    }
+                });
+            }
+
+            // Invalidate cache only for affected gang+division combinations
+            for (const k of affectedKeys.values()) {
+                cacheService.invalidatePayroll(k);
+            }
+
+            const successCount = results.filter(r => r.success).length;
+            return { success: true, total: items.length, successCount, failedCount: items.length - successCount, results };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-edit/batch error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            items: t.Array(t.Object({
+                period_month: t.Number(),
+                period_year: t.Number(),
+                emp_code: t.String(),
+                nik: t.Optional(t.String()),
+                emp_name: t.Optional(t.String()),
+                gang_code: t.String(),
+                division_code: t.Optional(t.String()),
+                adjustment_type: t.String(),
+                adjustment_name: t.String(),
+                amount: t.Number(),
+                remarks: t.Optional(t.String()),
+                metadata_json: t.Optional(t.String()),
+                ad_code: t.Optional(t.String()),
+                task_code: t.Optional(t.String()),
+                base_task_code: t.Optional(t.String()),
+                task_desc: t.Optional(t.String())
+            }))
+        })
+    })
     // --- Manual Adjustment for authenticated UI ---
     .get("/manual-adjustment", async ({ query, set }) => {
         try {
