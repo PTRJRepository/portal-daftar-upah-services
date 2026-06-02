@@ -1,0 +1,22 @@
+{
+  "_metadata": {
+    "plan_id": "upah-staging-comparison-api-2026-06-02",
+    "task_slug": "upah-staging-comparison-api",
+    "created_at": "2026-06-02T10:15:00.000Z",
+    "exploration_angles": ["patterns", "integration-points", "testing"],
+    "complexity": "Medium"
+  },
+  "summary": "Add GET /payroll/staging-comparison endpoint returning monthly brondol (loosefruit) selisih between staging and plantware per employee, with identity fields (emp_code, emp_name, gang_code, division=estate/LocCode). Reuses existing StagingComparisonService.monthlyLoosefruit() — no service refactor needed.",
+  "approach": "Append one new Elysia route to payrollRoutes in backend/src/api/payroll.ts. Handler parses ?periode=YYYY-MM (default current month) and delegates to monthlyLoosefruit(). Add 1 bun:test regression case. No new service method, no new DB queries, no cross-DB joins — the service already does it all.",
+  "complexity": "Medium",
+  "estimated_time": "30 minutes",
+  "recommended_execution": "code-developer",
+  "task_ids": ["TASK-001"],
+  "convergence_summary": [
+    "Route returns { success, data: { rows, summary } } with all identity + selisih fields",
+    "Uses SERVER_PROFILE_2 for staging and SERVER_PROFILE_1 for prod db_ptrj (no SERVER_PROFILE_3)",
+    "Defaults to current month when periode query omitted",
+    "Service regression test passes",
+    "No regression in existing /api/staging/compare/brondol-missing or other payroll endpoints"
+  ]
+}

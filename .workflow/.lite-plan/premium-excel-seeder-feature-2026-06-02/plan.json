@@ -1,0 +1,100 @@
+{
+  "summary": "Phase 1 premium Excel seeder feature: generalize hardcoded 2-premium-type importer to support all 7 active blok input_type premiums from premium_definitions.json. Build header-name-based column mapping engine, dry-run preview pipeline, template generator, API routes, and frontend seeder workflow page. Import writes to payroll_manual_adjustments via saveAdjustment() with existing UPSERT support.",
+  "approach": "Phase 1 targets blok input_type premiums only (PREMI PRUNING, RAKING, KINERJA, INSENTIF PANEN, TBS, JAGA, BANTU BRONDOL). Build column mapping engine first (TASK-001), then dry-run preview (TASK-002), generalize import function with progress tracking (TASK-003), template generator (TASK-004, parallel after TASK-001), API routes (TASK-005, after TASK-003+004), and frontend seeder page (TASK-006). Engine design supports extension to exp/kendaraan/blok+exp/amount input_types in later phases.",
+  "task_ids": [
+    "TASK-001",
+    "TASK-002",
+    "TASK-003",
+    "TASK-004",
+    "TASK-005",
+    "TASK-006"
+  ],
+  "task_count": 6,
+  "complexity": "Medium",
+  "estimated_time": "3 hours",
+  "recommended_execution": "Codex",
+  "design_decisions": [
+    {
+      "decision": "Header-name-based column mapping with alias registry per input_type",
+      "rationale": "More flexible than positional; handles varying column orders across divisions. Row 1 always treated as header row.",
+      "tradeoff": "Requires header row always present. Slightly more complex parsing but eliminates position-dependency bugs.",
+      "alternatives": [
+        "Fixed positional columns per premium type",
+        "Hybrid: core positional + premium-specific header-mapped"
+      ]
+    },
+    {
+      "decision": "Dry-run preview mandatory before commit (no direct import without preview)",
+      "rationale": "Reduces risk of bad data; follows ptkpExcelDryRunService precedent. Operators see what will change before committing.",
+      "tradeoff": "Adds one extra API round-trip. Acceptable latency for data safety.",
+      "alternatives": [
+        "Optional preview",
+        "No preview"
+      ]
+    },
+    {
+      "decision": "UPSERT via existing saveAdjustment() rather than DELETE-then-INSERT",
+      "rationale": "saveAdjustment already implements UPSERT for payroll_manual_adjustments. Re-import-safe without destructive deletes.",
+      "tradeoff": "Cannot detect deleted rows (rows present before but absent in new file). Acceptable for premium seeding where files are complete snapshots."
+    },
+    {
+      "decision": "Phase 1 scope: blok input_type only (7 types). Non-blok types deferred.",
+      "rationale": "10 of 22 definitions use blok. Most common and most requested. Establishes patterns for other input_types.",
+      "tradeoff": "kendaraan, exp, amount types not covered until later phases."
+    },
+    {
+      "decision": "Per-sheet premium type designation (sheet name = premium definition name)",
+      "rationale": "Clean separation. One workbook can carry multiple premium types. Easy to validate against premium_definitions.json.",
+      "tradeoff": "Requires sheet naming convention. Misnamed sheet rejected early with clear error."
+    }
+  ],
+  "shared_context": {
+    "tech_stack": [
+      "Bun runtime",
+      "ElysiaJS (backend HTTP framework)",
+      "ExcelJS ^4.4.0 (Excel read/write)",
+      "React + Vite (frontend)",
+      "MSSQL via mssql driver",
+      "TypeScript"
+    ],
+    "conventions": [
+      "Singleton service pattern (private static instance + getInstance)",
+      "ElysiaJS route groups with t.Object() body validation",
+      "Dynamic import for services in API routes",
+      "normalizeStoredAdjustmentName: trim + uppercase + single-space",
+      "adjustment_name must match premium_definitions.json entries",
+      "metadata_json structure must match input_type"
+    ],
+    "auth_strategy": "Existing auth middleware (Bearer token) applied to route group"
+  },
+  "_metadata": {
+    "timestamp": "2026-06-02T00:00:00.000Z",
+    "source": "cli-lite-planning-agent",
+    "planning_mode": "agent-based",
+    "plan_type": "feature",
+    "schema_version": "2.0",
+    "exploration_angles": [
+      "patterns",
+      "integration-points"
+    ],
+    "duration_seconds": 300,
+    "quality_check": {
+      "executed": true,
+      "timestamp": "2026-06-02T00:00:00.000Z",
+      "cli_execution_id": "gem-110636-vjvi",
+      "result": "PASS",
+      "summary": {
+        "critical_issues": 0,
+        "minor_issues": 0
+      },
+      "dimensions": {
+        "completeness": "PASS",
+        "task_granularity": "PASS",
+        "dependencies": "PASS",
+        "convergence_criteria": "PASS",
+        "implementation_steps": "PASS",
+        "constraint_compliance": "PASS"
+      }
+    }
+  }
+}

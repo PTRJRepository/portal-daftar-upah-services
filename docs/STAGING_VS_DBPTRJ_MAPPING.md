@@ -230,6 +230,59 @@ Setiap record di staging harus ditemukan di db_ptrj — baik sebagai record lang
 
 ---
 
+---
+## API Endpoints — Staging Comparison Service
+
+Base path: `/api/staging`
+
+Semua endpoint return `{ success: true/false, data: ... }` atau `{ success: false, error: string }`.
+
+### Explore
+
+| Method | Path | Query | Description |
+|--------|------|-------|-------------|
+| GET | `/api/staging/explore/tables` | — | Full discovery: 30 tables with row counts + column schemas |
+| GET | `/api/staging/explore/table/:name` | `?sample=10` | Single table: columns + sample rows |
+
+### Compare — Row-Level
+
+| Method | Path | Query | Default | Description |
+|--------|------|-------|---------|-------------|
+| GET | `/api/staging/compare/attendance` | `?date=&limit=` | 2026-05-28, 50 | Match GWS rows → PR_TASKREGLN by EmpCode+Date+JobCode |
+| GET | `/api/staging/compare/overtime` | `?date=&limit=` | 2026-05-28, 50 | Match OT rows → PR_TASKREGLN(OT=1) or PR_MTHRATEDOTLN |
+| GET | `/api/staging/compare/loosefruit` | `?date=&limit=&missing_only=` | 2026-05-28, 50, false | Match FFB LOOSEFRUIT → PR_LOOSEFRUITLN (set missing_only=true for only missing) |
+| GET | `/api/staging/compare/brondol-missing` | `?date=&limit=` | 2026-05-28, 50 | Returns brondol items in staging but NOT in plantware (staging > prod) |
+
+Masing-masing return `{ rows: [...], summary: { match_count, staging_only, staging_total, prod_total, pct_match } }`. Endpoint `brondol-missing` returns simplified format:
+
+```json
+{
+  "success": true,
+  "count": 5,
+  "data": [
+    {
+      "nama": "WORKER NAME",
+      "divisi": "A1",      // Gang code (first 2 chars)
+      "blok": "OC001",     // FromOcCode (fieldno)
+      "estate": "Estate1", // Division/location
+      "jumlah_selisih": 25, // Number of missing brondol
+      "emp_code": "P001",
+      "trans_date": "2026-05-28"
+    }
+  ]
+}
+```
+
+### Compare — Daily Summary (aggregate per day)
+
+| Method | Path | Query | Default | Description |
+|--------|------|-------|---------|-------------|
+| GET | `/api/staging/compare/daily-attendance` | `?month=&year=&top=` | 5, 2026, 15 | Per-day GWS count vs TASKREGLN vs ARC |
+| GET | `/api/staging/compare/daily-overtime` | `?month=&year=&top=` | 5, 2026, 15 | Per-day OT rows+hours vs TASKREGLN(OT=1) vs MTHRATEDOTLN |
+| GET | `/api/staging/compare/daily-loosefruit` | `?month=&year=&top=` | 5, 2026, 15 | Per-day LF workers+quantity vs PR_LOOSEFRUITLN |
+
+---
+
 ## Catatan untuk Implementasi
 
 1. **PR_HARVESTERLN_ACC** (79K rows) hanya menyimpan subset data — schema berbeda (akuntansi), gunakan ARC untuk full data

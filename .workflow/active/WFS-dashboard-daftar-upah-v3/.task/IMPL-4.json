@@ -2,12 +2,29 @@
   "id": "IMPL-4",
   "title": "KPI and analytics data wiring",
   "description": "Wire KPI cards and analytics widgets to existing data with stable fallback states.",
-  "depends_on": ["IMPL-2"],
-  "files": ["frontend/src/pages/ProfessionalDashboard.jsx", "frontend/src/components/dashboard/*"],
+  "depends_on": [
+    "IMPL-2"
+  ],
+  "files": [
+    "frontend/src/pages/ProfessionalDashboard.jsx",
+    "frontend/src/components/dashboard/*"
+  ],
   "convergence": [
     "KPI cards render total upah, total HK, jumlah karyawan, and cost/HK.",
     "Analytics widgets render without layout collapse when data is missing.",
     "Error/empty states are clear and restrained."
   ],
-  "meta": { "type": "frontend_data_ui", "agent": "code_developer" }
+  "meta": {
+    "type": "frontend_data_ui",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

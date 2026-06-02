@@ -2,12 +2,28 @@
   "id": "IMPL-10",
   "title": "Build and browser verification",
   "description": "Run focused tests, frontend build, and browser checks after execution.",
-  "depends_on": ["IMPL-5", "IMPL-8", "IMPL-9"],
+  "depends_on": [
+    "IMPL-5",
+    "IMPL-8",
+    "IMPL-9"
+  ],
   "files": [],
   "convergence": [
     "Focused frontend tests pass.",
     "frontend npm build passes.",
     "Browser verification confirms dashboard design and table scroll stability."
   ],
-  "meta": { "type": "validation", "agent": "validation_archivist" }
+  "meta": {
+    "type": "validation",
+    "agent": "validation_archivist"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

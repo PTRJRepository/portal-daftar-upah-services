@@ -1,0 +1,75 @@
+{
+  "_metadata": {
+    "exploration_angle": "testing",
+    "exploration_index": 3,
+    "task_summary": "Test patterns for /payroll/staging-comparison — bun:test, regression-style live DB tests (no mocks)"
+  },
+  "relevant_files": [
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "lines": "1-39",
+      "relevance": 0.95,
+      "role": "reference",
+      "rationale": "Existing tests for StagingComparisonService — uses bun:test, calls live service via getInstance() (no mocks), validates response shape (rows, summary, pct_match)."
+    },
+    {
+      "path": "backend/package.json",
+      "lines": "5-10",
+      "relevance": 0.7,
+      "role": "context",
+      "rationale": "Test script: 'bun test'. Framework: bun:test (import { describe, it, expect } from 'bun:test')."
+    },
+    {
+      "path": "backend/src/api/payroll.manualAdjustmentByApiKey.test.ts",
+      "lines": "1-30",
+      "relevance": 0.6,
+      "role": "reference",
+      "rationale": "Example of API-level test file naming convention (payroll.<feature>.test.ts in api/). Tests import the service directly — no supertest in this codebase."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "lines": "6-38",
+      "relevance": 0.85,
+      "role": "reference",
+      "rationale": "Tests are regression-style: call method with default args, expect shape. No mocking of DB — assumes live DB connection."
+    }
+  ],
+  "patterns": {
+    "test_framework": "bun:test",
+    "test_runner": "bun test (no vitest, no jest)",
+    "mock_strategy": "No mocking — tests assume live DB connection. Service singleton instantiated once at top of file.",
+    "http_testing": "None observed for staging endpoints. Service is tested directly, not via HTTP. For new endpoint, no separate HTTP test needed unless explicitly requested.",
+    "naming_convention": "<service-or-feature>.test.ts colocated with source",
+    "coverage_threshold": "None configured in package.json"
+  },
+  "integration_points": [
+    {
+      "file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "lines": "1+",
+      "significance": "Add new test case for the new method (e.g., monthlyStagingComparison or extend monthlyLoosefruit test). Use same pattern: getInstance().methodName(...), expect shape."
+    },
+    {
+      "file": "backend/src/api/payroll.ts",
+      "lines": "1+",
+      "significance": "No existing test file for payroll.ts. Skip HTTP test unless required."
+    }
+  ],
+  "constraints": [
+    "Use bun:test (not vitest/jest)",
+    "Live DB tests — no mocks for this codebase pattern",
+    "Test file colocated with service: backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+    "Test for new method: shape, types, and basic numerical sanity"
+  ],
+  "clarification_needs": [
+    {
+      "id": "test-scope",
+      "question": "Test scope — add a single regression test for the new method, or also add HTTP-level test for the new route?",
+      "context": "Existing convention tests the service method directly. No HTTP tests exist for staging endpoints. User did not specify test requirements.",
+      "options": [
+        "Service regression test only (matches existing pattern, fastest)",
+        "Service test + HTTP route test (full coverage, adds supertest-style harness)"
+      ],
+      "recommended": 0
+    }
+  ]
+}

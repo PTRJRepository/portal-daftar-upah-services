@@ -2,13 +2,30 @@
   "id": "IMPL-6",
   "title": "Table visual calm-down",
   "description": "Remove scroll-triggered table font/color shifts from active group, focus dim, and sticky column styling.",
-  "depends_on": ["IMPL-1"],
-  "files": ["frontend/src/styles/CustomPayrollTable.css", "frontend/src/components/CustomPayrollTable.jsx"],
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "files": [
+    "frontend/src/styles/CustomPayrollTable.css",
+    "frontend/src/components/CustomPayrollTable.jsx"
+  ],
   "convergence": [
     "Scrolling does not change body cell font size or font weight.",
     "Scrolling does not flip body/sticky cell colors.",
     "Active group and focus dim styles are subtle and do not cause visual dizziness.",
     "Row highlight remains intentional and click-driven."
   ],
-  "meta": { "type": "frontend_table_visual", "agent": "code_developer" }
+  "meta": {
+    "type": "frontend_table_visual",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

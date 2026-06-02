@@ -16,5 +16,14 @@ describe('DashboardLayout sidebar IA alignment', () => {
     expect(source).toContain("label: 'Executive Payroll'");
     expect(source).toContain("label: 'Verifikasi Data'");
     expect(source).toContain("label: 'Seeder'");
+    expect(source).toContain("label: 'Koreksi'");
+    expect(source).toContain("label: 'Produktivitas'");
+  });
+
+  it('defaults to collapsed, role-aware navigation', () => {
+    expect(source).toContain('useState(true)');
+    expect(source).toContain('const roleKey = (() => {');
+    expect(source).toContain('itemForRole');
+    expect(source).toContain("roles: ['payroll_admin']");
   });
 });

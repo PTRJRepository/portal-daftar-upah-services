@@ -1,0 +1,29 @@
+{
+  "id": "TASK-001",
+  "title": "Config DISABLE_STAGING_DB + startup banner + conditional staging mount",
+  "description": "1) Tambahkan Config.DISABLE_STAGING_DB baca dari env. 2) Ganti startup logging di index.ts jadi comprehensive banner yang menampilkan semua 5 database profile + status disabled/enabled. 3) Bungkus stagingRoutes mount dengan guard if (!Config.DISABLE_STAGING_DB).",
+  "scope": "config-startup-staging-guard",
+  "priority": "high",
+  "estimated_minutes": 20,
+  "files": [
+    {
+      "path": "backend/src/config.ts",
+      "change": "Tambahkan public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === \"true\") setelah DB_STAGING_PROFILE (sekitar L53)"
+    },
+    {
+      "path": "backend/src/index.ts",
+      "change": "1) Ganti startup console.log L347-351 dengan comprehensive banner menampilkan: PORT, HOST, RUN_MODE, AUTH_MODE, semua 5 database (DB_PROFILE/DB_DATABASE, DB_EXTEND_PROFILE/DB_EXTEND_DATABASE, DB_STAGING_PROFILE/DB_STAGING_DATABASE [+ disabled status], DB_VENUS_PROFILE/DB_VENUS_DATABASE, DB_MILL_PROFILE/DB_MILL_DATABASE). 2) Wrap stagingRoutes mount L285 dan L310 dengan if (!Config.DISABLE_STAGING_DB)"
+    }
+  ],
+  "depends_on": [],
+  "convergence": {
+    "criteria": [
+      "Config.DISABLE_STAGING_DB ada dan nilainya true saat .env set DISABLE_STAGING_DB=true",
+      "Saat DISABLE_STAGING_DB=true, server start tanpa mount staging routes — tidak ada /api/staging/* endpoint",
+      "Saat DISABLE_STAGING_DB=false (atau tidak diset), staging routes normal mounted",
+      "Startup banner menampilkan semua 5 database profile dengan format readable",
+      "Startup banner menampilkan \"STAGING: DISABLED\" saat DISABLE_STAGING_DB=true"
+    ],
+    "verification": "Start backend dengan DISABLE_STAGING_DB=true, cek output startup banner. Verifikasi /api/staging/tables return 404 (route not found), bukan 500 timeout."
+  }
+}

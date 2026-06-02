@@ -2586,65 +2586,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     );
                 }
             },
-            {
-                field: 'alamat',
-                headers: ['IDENTITAS', null, 'ALAMAT'],
-                w: displayMode === 'detail' ? 200 : 130,
-                className: 'text-left cell-wrap cell-wrap-address',
-                render: (row) => row.alamat || row.res_address || '-'
-            },
-            {
-                field: 'join_date',
-                headers: ['IDENTITAS', null, 'TGL MASUK'],
-                w: 100,
-                className: 'text-center',
-                render: (row) => {
-                    if (row.type !== 'employee') {
-                        const jd = row.join_date || row.tanggal_masuk;
-                        if (!jd) return '-';
-                        try {
-                            const d = new Date(jd);
-                            if (isNaN(d.getTime())) return jd;
-                            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                        } catch {
-                            return jd;
-                        }
-                    }
-                    const jd = row.join_date || row.tanggal_masuk;
-                    // Edit mode: use effective_start_date for editing
-                    const editKey = `${row.emp_code || row.nik}-effective_start_date`;
-                    const isEdited = !!editedCells[editKey];
-
-                    if (isEditMode) {
-                        const displayDate = jd ? (() => {
-                            try {
-                                const d = new Date(jd);
-                                if (isNaN(d.getTime())) return '';
-                                return d.toISOString().split('T')[0]; // YYYY-MM-DD for input
-                            } catch { return ''; }
-                        })() : '';
-                        return (
-                            <input
-                                type="date"
-                                className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                value={editedCells[editKey]?.value ?? displayDate}
-                                onChange={(e) => handleProfileEdit(row, 'effective_start_date', e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                            />
-                        );
-                    }
-
-                    if (!jd) return '-';
-                    try {
-                        const d = new Date(jd);
-                        if (isNaN(d.getTime())) return jd;
-                        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                    } catch {
-                        return jd;
-                    }
-                }
-            },
-
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
                 {

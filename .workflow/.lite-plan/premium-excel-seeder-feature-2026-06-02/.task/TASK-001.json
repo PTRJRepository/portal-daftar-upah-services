@@ -1,0 +1,87 @@
+{
+  "id": "TASK-001",
+  "title": "Build header-name-based column mapping engine for premium Excel parsing",
+  "scope": "backend/src/services/premiumImportService.ts",
+  "action": "Implement",
+  "description": "Replace hardcoded positional column access (values[1]-[5]) with a header-name-based column mapping engine that reads Excel row 1 headers and maps them to internal fields. Create a column configuration registry per input_type so that each premium type knows its required and optional columns. Support blok input_type columns: empcode, gang_code, subblok, jumlah, jenis as Phase 1 scope.",
+  "files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "refactor",
+      "target": "L21-L74",
+      "change": "Replace ALLOWED_JENIS constant and positional row parsing with header-name-based mapping engine. Add ColumnMappingConfig interface and buildColumnMapping() function. Add parseRowByHeaders() replacing eachRow callback that reads column names from row 1."
+    },
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "add",
+      "target": "new interfaces",
+      "change": "Add PremiumColumnMapping, PremiumImportRow (generalized with optional fields per input_type), ColumnMappingRegistry types. Define blok column config: required=[empcode,subblok,jumlah], optional=[gang_code,jenis]."
+    }
+  ],
+  "implementation": [
+    "Define ColumnMappingConfig interface with required_cols, optional_cols, and header_aliases per input_type",
+    "Create input_type_column_configs registry mapping blok/exp/kendaraan/blok+exp/amount to their column sets",
+    "Implement buildColumnMapping(): read row 1 values, match header names (case-insensitive, trimmed) to config fields, return Map<fieldName, columnIndex>",
+    "Implement parseRowByHeaders(): accepts row values + column mapping, returns typed PremiumImportRow with all mapped fields",
+    "Add resolveHeaderName() helper for fuzzy matching (trim, uppercase, collapse spaces, strip prefixes)",
+    "Validate that all required columns are present; collect missing column errors",
+    "Handle blok-specific fields: subblok maps from ['subblok', 'blok', 'block'], gang_code from ['gang_code', 'gang', 'regu'], jumlah from ['jumlah', 'amount', 'total', 'nominal']"
+  ],
+  "reference": {
+    "pattern": "Header-name-based mapping with alias support, similar to DynamicColumnDetector.ts L64-L73 header normalization pattern",
+    "files": [
+      "backend/src/services/premiumImportService.ts",
+      "backend/src/services/premiumDefinitionService.ts",
+      "backend/src/services/payroll/manualAdjustments/manualAdjustmentNaming.ts"
+    ],
+    "examples": "Existing premiumImportService.ts L48-L75 shows current positional parsing that must be replaced. premiumDefinitionService.ts L21 defines PremiumInputType union. manualAdjustmentNaming.ts L15-L20 shows normalization pattern for name matching."
+  },
+  "convergence": {
+    "criteria": [
+      "Column mapping correctly resolves all 5 blok columns (empcode, gang_code, subblok, jumlah, jenis) from header row regardless of column order",
+      "Missing required columns produce clear error messages listing which columns are absent",
+      "Fuzzy header matching handles variants: 'Emp Code'/'empcode'/'EMP_CODE' all map to empcode field",
+      "parseRowByHeaders() returns PremiumImportRow objects with all fields populated from correct columns",
+      "Unit test with 3 different column orderings produces identical PremiumImportRow arrays"
+    ]
+  },
+  "depends_on": [],
+  "rationale": {
+    "chosen_approach": "Header-name-based mapping with alias registry per input_type. Row 1 treated as header row, column names matched against known aliases for each field. Resolves fragility of positional access and supports varying column layouts across divisions.",
+    "alternatives_considered": [
+      "Fixed positional columns per premium type in premium_definitions.json",
+      "Hybrid: core columns positional, premium-specific columns header-mapped"
+    ],
+    "decision_factors": [
+      "Flexibility: different divisions may have different column orders",
+      "Maintainability: single mapping engine vs per-type position configs",
+      "User experience: field operators should not need to reorder columns"
+    ],
+    "tradeoffs": "Slightly more complex row parsing logic. Requires header row always present in row 1. Must handle empty/missing optional columns gracefully."
+  },
+  "test": {
+    "manual_checks": [
+      "Parse Excel with reordered columns (empcode in col E, jumlah in col A) and verify correct mapping",
+      "Parse Excel with extra unrecognized columns and verify no errors on extra columns",
+      "Parse Excel missing 'subblok' column and verify clear error message"
+    ],
+    "success_metrics": [
+      "100% of required columns detected when present in any column position",
+      "0 false positives on column name matching",
+      "Clear error messages for all 5 required columns when missing"
+    ],
+    "unit": [
+      "test_column_mapping_header_detection",
+      "test_column_mapping_fuzzy_match_aliases",
+      "test_column_mapping_missing_required_columns",
+      "test_parse_row_by_headers_blok_input_type"
+    ],
+    "integration": [
+      "test_column_mapping_with_real_excel_file_blok_layout"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-001",
+  "cli_execution": {
+    "strategy": "new"
+  }
+}

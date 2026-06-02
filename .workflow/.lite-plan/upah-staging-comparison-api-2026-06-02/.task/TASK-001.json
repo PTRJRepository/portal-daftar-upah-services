@@ -1,0 +1,48 @@
+{
+  "id": "TASK-001",
+  "title": "Add GET /payroll/staging-comparison endpoint with monthly brondol selisih per employee",
+  "description": "Add a new GET endpoint at `/payroll/staging-comparison` (Elysia prefix) that returns monthly brondol (loosefruit) selisih between staging and plantware aggregated per employee per periode. Reuse existing StagingComparisonService.monthlyLoosefruit() — already produces the exact required shape (signed delta, status, identity fields).",
+  "scope": "Add 1 route to payrollRoutes Elysia chain; add 1 service regression test.",
+  "files": [
+    {
+      "path": "backend/src/api/payroll.ts",
+      "change": "Append `.get('/staging-comparison', ...)` to the payrollRoutes Elysia chain. Add import for StagingComparisonService at top of file. Handler parses ?periode=YYYY-MM (default: current month), calls service.monthlyLoosefruit(month, year, gang, division), returns { success: true, data: { rows, summary } }. Add Elysia t.Object query schema: { periode: t.Optional(t.String()), gang: t.Optional(t.String()), division: t.Optional(t.String()) }."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "change": "Add 1 new `it` case in existing describe block: 'monthlyLoosefruit — monthly staging comparison shape'. Calls svc.monthlyLoosefruit(5, 2026), expects result.rows array, result.summary with total/match/diff/pct_match, and each row has emp_code, emp_name, gang_code, division, staging_bunches, prod_mt, delta, status."
+    }
+  ],
+  "dependencies": [],
+  "convergence": {
+    "criteria": [
+      "Route GET /payroll/staging-comparison exists and returns 200 with { success: true, data: { rows, summary } } when called with valid ?periode=YYYY-MM",
+      "Each row includes: emp_code, emp_name, gang_code, division (estate/LocCode), staging_bunches, staging_trx, prod_mt, prod_days, delta (signed), status",
+      "summary includes: total, match, diff, pct_match",
+      "When periode query is omitted, defaults to current month YYYY-MM",
+      "When periode is invalid format (e.g. '2026-13'), handler returns 400 or sensible error",
+      "Route uses Database.getStagingInstance() (SERVER_PROFILE_2) for Ffbscannerdata and Database.getInstance() (SERVER_PROFILE_1) for PR_LOOSEFRUITLN + HR_EMPLOYEE",
+      "No calls to getVenusInstance() (SERVER_PROFILE_3) — not needed for this endpoint",
+      "Service test `monthlyLoosefruit` shape test passes via bun test",
+      "Existing routes in payroll.ts (e.g. /payroll/premium-seeder/template) still work — no regression",
+      "Existing /api/staging/compare/brondol-missing still works (per-day endpoint unchanged)"
+    ],
+    "verification": "Run `bun test backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts` and manually curl `http://localhost:3001/backend/upah/payroll/staging-comparison?periode=2026-05` (with proxy) or `http://localhost:8002/payroll/staging-comparison?periode=2026-05` (direct). Verify response shape matches criteria. Verify invalid periode returns error.",
+    "definition_of_done": "All convergence criteria met. Service test added and passes. Route is mounted in payrollRoutes. No regressions in existing /api/staging/compare/brondol-missing or other payroll endpoints."
+  },
+  "estimated_minutes": 30,
+  "executor_suggestion": "code-developer",
+  "context": {
+    "reuses": [
+      "StagingComparisonService.getInstance()",
+      "StagingComparisonService.monthlyLoosefruit(month, year, gang?, division?)",
+      "Existing Elysia chain pattern in payroll.ts (try/catch + set.status + logError + { success, data, error })"
+    ],
+    "db_profiles": {
+      "staging": "SERVER_PROFILE_2 via Database.getStagingInstance()",
+      "prod": "SERVER_PROFILE_1 via Database.getInstance() (default db_ptrj)"
+    },
+    "real_url_via_proxy": "http://localhost:3001/backend/upah/payroll/staging-comparison",
+    "direct_url": "http://localhost:8002/payroll/staging-comparison"
+  }
+}

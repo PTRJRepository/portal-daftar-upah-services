@@ -1,0 +1,438 @@
+{
+  "task": "env-profile-switching",
+  "branch": "server-fix-1",
+  "date": "2026-06-02",
+  "mode": "dependency-map",
+  "status": "complete",
+  "summary": "DISABLE_STAGING_DB defined in backend/.env:42 but ZERO code references exist. Config class has DB_STAGING_DATABASE + DB_STAGING_PROFILE but no DISABLE_STAGING_DB field. stagingRoutes registered unconditionally in both root (L285) and /backend/upah (L310) groups. 3 frontend pages + 1 service module consume /api/staging/* endpoints. Startup logging prints only default DB profile, missing extended/venus/mill/staging profiles. Eager singleton creation at import time bypasses any route-level guard.",
+  "findings": [
+    {
+      "id": "F1",
+      "category": "dead_env_var",
+      "severity": "critical",
+      "title": "DISABLE_STAGING_DB defined but never read",
+      "detail": "backend/.env L42: DISABLE_STAGING_DB=true. Grep across entire repo returns ZERO code matches. Config class has no DISABLE_STAGING_DB field.",
+      "source": "bash-scan",
+      "files": [
+        "backend/.env:42",
+        "backend/src/config.ts"
+      ],
+      "action": "Add DISABLE_STAGING_DB boolean to Config class"
+    },
+    {
+      "id": "F2",
+      "category": "missing_config_field",
+      "severity": "critical",
+      "title": "Config class missing DISABLE_STAGING_DB stanza",
+      "detail": "Config defines DB_STAGING_DATABASE (L52) and DB_STAGING_PROFILE (L53) but no DISABLE_STAGING_DB. All other DB profiles have config entries.",
+      "source": "bash-scan",
+      "files": [
+        "backend/src/config.ts:51-53"
+      ],
+      "action": "Add: public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === \"true\");"
+    },
+    {
+      "id": "F3",
+      "category": "unconditional_route_registration",
+      "severity": "high",
+      "title": "stagingRoutes registered unconditionally in 2 places",
+      "detail": "index.ts:285 mounts at root. index.ts:310 mounts under /backend/upah. No DISABLE_STAGING_DB guard. All /api/staging/* endpoints 500 when SERVER_PROFILE_2 unreachable.",
+      "source": "bash-scan",
+      "files": [
+        "backend/src/index.ts:284-285",
+        "backend/src/index.ts:310"
+      ],
+      "action": "Wrap with: if (!Config.DISABLE_STAGING_DB) { ... }"
+    },
+    {
+      "id": "F4",
+      "category": "incomplete_startup_banner",
+      "severity": "medium",
+      "title": "Startup logging shows only default DB profile",
+      "detail": "index.ts:347-350 logs Port, RunMode, AuthMode, DEFAULT_DATABASE@DB_PROFILE. Missing: EXTEND, VENUS, MILL, STAGING profiles plus DISABLE_STAGING_DB status.",
+      "source": "bash-scan",
+      "files": [
+        "backend/src/index.ts:347-350"
+      ],
+      "action": "Add comprehensive startup banner logging all profile configs"
+    },
+    {
+      "id": "F5",
+      "category": "eager_singleton_creation",
+      "severity": "high",
+      "title": "StagingExplorerService and StagingComparisonService singletons created at module import time",
+      "detail": "stagingRoutes.ts:6-7 creates singletons at module scope. Both constructors call Database.getStagingInstance() targeting SERVER_PROFILE_2. Import-triggered side-effect occurs even if route not mounted.",
+      "source": "bash-scan",
+      "files": [
+        "backend/src/api/stagingRoutes.ts:6-7",
+        "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts:33-36",
+        "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts:62-64"
+      ],
+      "action": "Move singleton creation behind lazy-init function guarded by DISABLE_STAGING_DB"
+    },
+    {
+      "id": "F6",
+      "category": "no_env_example",
+      "severity": "low",
+      "title": "No .env.example documentation file",
+      "detail": "No .env.example found. backend/.env has 106 lines with undocumented variables.",
+      "source": "bash-scan",
+      "files": [],
+      "action": "Create backend/.env.example with all Config-referenced env vars documented"
+    },
+    {
+      "id": "F7",
+      "category": "db_profile_config_source",
+      "severity": "medium",
+      "title": "DB_PROFILE defaults to SERVER_PROFILE_2 which IS the staging profile",
+      "detail": "backend/.env:19 sets DB_PROFILE=SERVER_PROFILE_2. DB_STAGING_PROFILE also defaults to SERVER_PROFILE_2. If staging server unreachable, does default DB also break?",
+      "source": "bash-scan",
+      "files": [
+        "backend/.env:19",
+        "backend/.env:42",
+        "backend/src/config.ts:36",
+        "backend/src/config.ts:53"
+      ],
+      "action": "Verify SERVER_PROFILE_2 is correct default. Check if staging DB shares server with default DB."
+    }
+  ],
+  "relevant_files": [
+    {
+      "path": "backend/src/index.ts",
+      "relevance": 1,
+      "rationale": "Entry point. Must conditionally register stagingRoutes.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Primary target: add DISABLE_STAGING_DB guard."
+    },
+    {
+      "path": "backend/src/config.ts",
+      "relevance": 1,
+      "rationale": "Config source. DB_STAGING_DATABASE+PROFILE exist, DISABLE_STAGING_DB missing.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Must add DISABLE_STAGING_DB boolean."
+    },
+    {
+      "path": "backend/.env",
+      "relevance": 0.95,
+      "rationale": "Env source. DISABLE_STAGING_DB=true L42 never consumed.",
+      "role": "config",
+      "discovery_source": "bash-scan",
+      "topic_relation": "DISABLE_STAGING_DB=true needs code support."
+    },
+    {
+      "path": "backend/src/api/stagingRoutes.ts",
+      "relevance": 0.9,
+      "rationale": "20 endpoints. Singletons L6-7 import side-effect.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Singletons bypass route guard."
+    },
+    {
+      "path": "backend/src/db/client.ts",
+      "relevance": 0.85,
+      "rationale": "DB factory. getStagingInstance L87-89 no DISABLE guard.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Defense-in-depth location."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+      "relevance": 0.8,
+      "rationale": "Explorer service. Constructor creates stagingDb.",
+      "role": "dependency",
+      "discovery_source": "dependency-trace",
+      "topic_relation": "Dependency leaf."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "relevance": 0.8,
+      "rationale": "Largest staging consumer (15+ methods).",
+      "role": "dependency",
+      "discovery_source": "dependency-trace",
+      "topic_relation": "All comparison endpoints depend on staging."
+    },
+    {
+      "path": "frontend/src/services/stagingComparisonService.js",
+      "relevance": 0.7,
+      "rationale": "Frontend client (8 fetch functions).",
+      "role": "integration_point",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Needs clear error when staging disabled."
+    },
+    {
+      "path": "frontend/src/pages/StagingComparisonPage.jsx",
+      "relevance": 0.7,
+      "rationale": "Pivot matrix page.",
+      "role": "integration_point",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Needs graceful degraded state."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "relevance": 0.65,
+      "rationale": "4 test cases hitting staging DB.",
+      "role": "test_target",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Needs skip guard when DISABLE_STAGING_DB=true."
+    },
+    {
+      "path": "frontend/src/pages/StagingDaftarUpahPage.jsx",
+      "relevance": 0.6,
+      "rationale": "Daftar Upah staging page.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Lower priority consumer."
+    },
+    {
+      "path": "frontend/src/pages/StagingEmployeeDetailModal.jsx",
+      "relevance": 0.55,
+      "rationale": "Employee detail modal.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Leaf consumer."
+    },
+    {
+      "path": "docs/STAGING_VS_DBPTRJ_MAPPING.md",
+      "relevance": 0.45,
+      "rationale": "Docs confirming SERVER_PROFILE_2 is staging.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "topic_relation": "Confirms staging profile."
+    }
+  ],
+  "dependency_graph": {
+    "description": "Full chain from index.ts startup to staging DB via getStagingInstance()",
+    "nodes": [
+      {
+        "id": "index.ts",
+        "role": "entry_point",
+        "file": "backend/src/index.ts",
+        "detail": "Server bootstrap. DB.getInstance() L116. stagingRoutes unconditional L285+L310."
+      },
+      {
+        "id": "config.ts",
+        "role": "config_source",
+        "file": "backend/src/config.ts",
+        "detail": "Loads .env. HAS DB_STAGING_*. MISSING DISABLE_STAGING_DB."
+      },
+      {
+        "id": ".env",
+        "role": "env_file",
+        "file": "backend/.env",
+        "detail": "106 lines. DISABLE_STAGING_DB=true L42 dead."
+      },
+      {
+        "id": "db/client.ts",
+        "role": "database_factory",
+        "file": "backend/src/db/client.ts",
+        "detail": "getStagingInstance() L87-89 without DISABLE guard."
+      },
+      {
+        "id": "stagingRoutes.ts",
+        "role": "route_registrar",
+        "file": "backend/src/api/stagingRoutes.ts",
+        "detail": "20 endpoints. Module-scope singletons L6-7."
+      },
+      {
+        "id": "stagingExplorerService.ts",
+        "role": "service",
+        "file": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+        "detail": "Table discovery. Constructor creates stagingDb."
+      },
+      {
+        "id": "stagingComparisonService.ts",
+        "role": "service",
+        "file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+        "detail": "15+ methods. Constructor creates stagingDb+prodDb."
+      },
+      {
+        "id": "stagingComparisonService.js",
+        "role": "frontend_client",
+        "file": "frontend/src/services/stagingComparisonService.js",
+        "detail": "8 fetch functions via axios."
+      },
+      {
+        "id": "StagingComparisonPage.jsx",
+        "role": "frontend_page",
+        "file": "frontend/src/pages/StagingComparisonPage.jsx",
+        "detail": "Pivot matrix 3 modules."
+      },
+      {
+        "id": "StagingDaftarUpahPage.jsx",
+        "role": "frontend_page",
+        "file": "frontend/src/pages/StagingDaftarUpahPage.jsx",
+        "detail": "Daftar Upah comparison."
+      },
+      {
+        "id": "StagingEmployeeDetailModal.jsx",
+        "role": "frontend_modal",
+        "file": "frontend/src/pages/StagingEmployeeDetailModal.jsx",
+        "detail": "Per-employee detail."
+      },
+      {
+        "id": "stagingComparisonService.test.ts",
+        "role": "backend_test",
+        "file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+        "detail": "4 bun:test cases."
+      }
+    ],
+    "edges": [
+      {
+        "from": "index.ts",
+        "to": "config.ts",
+        "type": "imports"
+      },
+      {
+        "from": "index.ts",
+        "to": "stagingRoutes.ts",
+        "type": "route_registration",
+        "detail": "L285+L310 unconditional"
+      },
+      {
+        "from": "index.ts",
+        "to": "db/client.ts",
+        "type": "initialization"
+      },
+      {
+        "from": "config.ts",
+        "to": ".env",
+        "type": "env_reader"
+      },
+      {
+        "from": "stagingRoutes.ts",
+        "to": "stagingExplorerService.ts",
+        "type": "instantiate",
+        "detail": "L6 import side-effect"
+      },
+      {
+        "from": "stagingRoutes.ts",
+        "to": "stagingComparisonService.ts",
+        "type": "instantiate",
+        "detail": "L7 import side-effect"
+      },
+      {
+        "from": "stagingExplorerService.ts",
+        "to": "db/client.ts",
+        "type": "db_connection"
+      },
+      {
+        "from": "stagingComparisonService.ts",
+        "to": "db/client.ts",
+        "type": "db_connection"
+      },
+      {
+        "from": "db/client.ts",
+        "to": "config.ts",
+        "type": "config_dependency"
+      },
+      {
+        "from": "stagingComparisonService.js",
+        "to": "stagingRoutes.ts",
+        "type": "api_consumer"
+      },
+      {
+        "from": "StagingComparisonPage.jsx",
+        "to": "stagingRoutes.ts",
+        "type": "api_consumer"
+      },
+      {
+        "from": "StagingDaftarUpahPage.jsx",
+        "to": "stagingRoutes.ts",
+        "type": "api_consumer"
+      }
+    ]
+  },
+  "implicit_dependencies": [
+    {
+      "type": "dynamic_lookup",
+      "source_file": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+      "key_or_pattern": "STAGING_CATALOG = staging_PTRJ_iFES_Plantware (L26)",
+      "resolved_by": "Hardcoded constant. Same as Config.DB_STAGING_DATABASE default but NOT from Config.",
+      "risk_note": "If DB_STAGING_DATABASE changes in .env, hardcoded catalog mismatches Config."
+    },
+    {
+      "type": "dynamic_lookup",
+      "source_file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "key_or_pattern": "STAGING_CATALOG = staging_PTRJ_iFES_Plantware (L5)",
+      "resolved_by": "Hardcoded constant. Duplicate of stagingExplorerService.ts.",
+      "risk_note": "Catalog string duplicated in 2 files, both hardcoded instead of reading Config."
+    },
+    {
+      "type": "template_ref",
+      "source_file": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+      "key_or_pattern": "[STAGING_CATALOG].[dbo].[tableName] (L58, L108)",
+      "resolved_by": "Runtime SQL string interpolation.",
+      "risk_note": "3-part SQL names resolved at query time. Catalog change breaks all queries."
+    },
+    {
+      "type": "template_ref",
+      "source_file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "key_or_pattern": "[STAGING_CATALOG].[dbo].[Gwscannerdata/Overtime/Ffbscannerdata] (15+ queries)",
+      "resolved_by": "Runtime SQL interpolation in every staging query.",
+      "risk_note": "Every staging query uses template interpolation. Table name change requires updating hardcoded constant."
+    }
+  ],
+  "implementation_plan": {
+    "title": "DISABLE_STAGING_DB implementation + startup logging",
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Config: Add DISABLE_STAGING_DB",
+        "description": "Add: public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === \"true\");",
+        "files": [
+          "backend/src/config.ts"
+        ],
+        "estimated_lines": 1
+      },
+      {
+        "phase": 2,
+        "name": "Index: Conditional route registration",
+        "description": "Wrap .use(stagingRoutes) L285+L310 with if (!Config.DISABLE_STAGING_DB). Use dynamic import() to avoid module side-effect.",
+        "files": [
+          "backend/src/index.ts"
+        ],
+        "estimated_lines": 14
+      },
+      {
+        "phase": 3,
+        "name": "Services: Lazy singleton creation",
+        "description": "Remove module-scope getInstance() L6-7. Replace with lazy getter functions checking DISABLE_STAGING_DB.",
+        "files": [
+          "backend/src/api/stagingRoutes.ts",
+          "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+          "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts"
+        ],
+        "estimated_lines": 35
+      },
+      {
+        "phase": 4,
+        "name": "Startup logging: Full DB profile banner",
+        "description": "Expand L347-350 to show all 5 DB profiles: DEFAULT, EXTEND, VENUS, MILL, STAGING with enabled/disabled status.",
+        "files": [
+          "backend/src/index.ts"
+        ],
+        "estimated_lines": 12
+      },
+      {
+        "phase": 5,
+        "name": "Tests: DISABLE_STAGING_DB guard",
+        "description": "Add skip logic in stagingComparisonService.test.ts when DISABLE_STAGING_DB=true.",
+        "files": [
+          "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts"
+        ],
+        "estimated_lines": 8
+      },
+      {
+        "phase": 6,
+        "name": "Docs: Create .env.example",
+        "description": "Create backend/.env.example with all Config-referenced env vars. Document DISABLE_STAGING_DB.",
+        "files": [
+          "backend/.env.example"
+        ],
+        "estimated_lines": 80
+      }
+    ]
+  }
+}

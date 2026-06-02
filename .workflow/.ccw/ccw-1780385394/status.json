@@ -1,0 +1,19 @@
+{
+  "session_id": "ccw-1780385394",
+  "workflow": "rapid",
+  "status": "running",
+  "created_at": "2026-06-02T00:00:00Z",
+  "updated_at": "2026-06-02T00:00:00Z",
+  "analysis": {
+    "goal": "Fix CustomPayrollTable UI: add h-scroll, remove MANUAL col, add BAGIAN col (name+empcode), fix row jitter",
+    "scope": ["frontend/src/components/CustomPayrollTable.jsx", "frontend/src/styles/CustomPayrollTable.css"],
+    "task_type": "feature",
+    "complexity": "medium",
+    "clarity_score": 3
+  },
+  "command_chain": [
+    { "index": 0, "command": "workflow-lite-plan", "status": "completed" },
+    { "index": 1, "command": "workflow-test-fix", "status": "running" }
+  ],
+  "current_index": 1
+}

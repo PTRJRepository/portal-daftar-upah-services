@@ -1,0 +1,91 @@
+{
+  "id": "TASK-002",
+  "title": "Implement dry-run preview pipeline for premium Excel import",
+  "scope": "backend/src/services/premiumImportService.ts",
+  "action": "Implement",
+  "description": "Build a dry-run/preview pipeline that parses the Excel file, validates all rows, resolves employee identities, detects duplicates and conflicts, and returns a detailed preview summary without writing to the database. Follows ptkpExcelDryRunService pattern: parse, validate each row against DB, classify actions, build summary breakdown.",
+  "files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "add",
+      "target": "dryRunPremiumExcel() function",
+      "change": "Add new function dryRunPremiumExcel() that parses all rows using column mapping from TASK-001, validates each row (empcode exists in DB, premium type valid, amounts non-zero), checks for existing records in payroll_manual_adjustments, classifies each row as READY_INSERT/WOULD_UPDATE/DUPLICATE/ERROR, and returns PremiumDryRunResult with row-by-row breakdown."
+    },
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "add",
+      "target": "new types",
+      "change": "Add PremiumDryRunRow, PremiumDryRunSummary, PremiumDryRunAction types. PremiumDryRunSummary includes total_rows, total_amount, action_breakdown by type, errors list."
+    }
+  ],
+  "implementation": [
+    "Define PremiumDryRunAction enum: READY_INSERT, WOULD_UPDATE, DUPLICATE_SAME, DUPLICATE_DIFFERENT, SKIP_INVALID_EMPCODE, SKIP_INVALID_PREMIUM_TYPE, SKIP_ZERO_AMOUNT",
+    "Define PremiumDryRunRow: empcode, premium_type, gang_code, amount, item_count, existing_id, existing_amount, action, reason",
+    "Define PremiumDryRunSummary: dry_run (true), total_rows, total_amount, action_breakdown (count per action), errors[]",
+    "Implement dryRunPremiumExcel(): parse rows via column mapping, validate empcode against DB employee table, validate premium type via PremiumDefinitionService.validatePremiumName(), check existing records via query",
+    "Classify each row: new record -> READY_INSERT, existing same amount -> DUPLICATE_SAME, existing different amount -> WOULD_UPDATE, invalid -> appropriate SKIP",
+    "Return PremiumDryRunSummary with full row-by-row detail array",
+    "Add employee identity resolution (empcode -> nik, emp_name) for richer preview"
+  ],
+  "reference": {
+    "pattern": "ptkpExcelDryRunService.ts dry-run pattern: parse, validate, classify, return preview with action breakdown",
+    "files": [
+      "backend/src/services/ptkpExcelDryRunService.ts",
+      "backend/src/services/premiumImportService.ts",
+      "backend/src/services/premiumDefinitionService.ts"
+    ],
+    "examples": "ptkpExcelDryRunService.ts L52-L77 defines ExcelPtkpDryRunAction and ExcelPtkpDryRunRow with action/can_execute/reason pattern. Follow same structure for premium types."
+  },
+  "convergence": {
+    "criteria": [
+      "dryRunPremiumExcel() returns PremiumDryRunSummary with dry_run=true and no database writes",
+      "Each row classified into exactly one action category with clear reason string",
+      "action_breakdown counts sum to total_rows",
+      "Duplicate detection correctly identifies existing records by emp_code + period + adjustment_name",
+      "Errors from invalid empcodes or unknown premium types appear in errors array with row number context"
+    ]
+  },
+  "depends_on": [
+    "TASK-001"
+  ],
+  "rationale": {
+    "chosen_approach": "Full dry-run pipeline that parses all rows, validates against DB, and classifies each. No partial writes. User sees complete picture before committing. Follows ptkpExcelDryRunService established pattern.",
+    "alternatives_considered": [
+      "No dry-run, direct import with post-import error report",
+      "Dry-run as optional flag, not mandatory"
+    ],
+    "decision_factors": [
+      "Risk reduction: operators see what will change before it happens",
+      "Pattern consistency: ptkpExcelDryRunService already uses this pattern",
+      "Data quality: prevents bad data from reaching payroll_manual_adjustments"
+    ],
+    "tradeoffs": "Adds one round-trip to API (dry-run then commit). For large files >1000 rows, DB identity resolution adds latency, but acceptable within 180s timeout."
+  },
+  "test": {
+    "manual_checks": [
+      "Upload Excel with mix of new and existing records, verify correct action classification",
+      "Upload Excel with invalid empcode, verify SKIP_INVALID_EMPCODE",
+      "Upload Excel with duplicate rows for same employee, verify both detected"
+    ],
+    "success_metrics": [
+      "100% of rows classified with non-empty action and reason",
+      "0 database writes during dry-run (verified via row count unchanged)",
+      "Duplicate detection accuracy 100% for existing payroll_manual_adjustments records"
+    ],
+    "unit": [
+      "test_dry_run_action_classification_new_record",
+      "test_dry_run_action_classification_duplicate_same",
+      "test_dry_run_action_classification_would_update",
+      "test_dry_run_action_classification_invalid_empcode",
+      "test_dry_run_summary_breakdown_matches_total"
+    ],
+    "integration": [
+      "test_dry_run_with_real_excel_and_db_identity_resolution"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-002",
+  "cli_execution": {
+    "strategy": "resume",
+    "resume_from": "premium-excel-seeder-feature-2026-06-02-TASK-001"
+  }
+}

@@ -25,8 +25,20 @@ const MONTHS = [
  * - Quarter breakdown labels
  * - Quick navigation buttons (prev/next month, prev/next year)
  */
-export default function MonthSelector({ month, year, onChange }) {
+export default function MonthSelector({ month, year, selectedMonth: selectedMonthProp, selectedYear: selectedYearProp, onChange, setMonth, setYear, compact = false, disabled = false }) {
     const [hoveredMonth, setHoveredMonth] = useState(null)
+    const selectedMonth = Number(month ?? selectedMonthProp) || 1
+    const selectedYear = Number(year ?? selectedYearProp) || new Date().getFullYear()
+
+    const emitChange = (nextMonth, nextYear) => {
+        if (disabled) return
+        if (typeof onChange === 'function') {
+            onChange(nextMonth, nextYear)
+            return
+        }
+        if (typeof setMonth === 'function') setMonth(nextMonth)
+        if (typeof setYear === 'function') setYear(nextYear)
+    }
 
     // Determine which quarter each month belongs to
     const getQuarter = (m) => Math.ceil(m / 3)
@@ -47,17 +59,30 @@ export default function MonthSelector({ month, year, onChange }) {
         return false
     }
 
-    const handlePrevYear = () => onChange(month, year - 1)
-    const handleNextYear = () => onChange(month, year + 1)
+    const handlePrevYear = () => emitChange(selectedMonth, selectedYear - 1)
+    const handleNextYear = () => emitChange(selectedMonth, selectedYear + 1)
     const handlePrevMonth = () => {
-        if (month === 1) onChange(12, year - 1)
-        else onChange(month - 1, year)
+        if (selectedMonth === 1) emitChange(12, selectedYear - 1)
+        else emitChange(selectedMonth - 1, selectedYear)
     }
     const handleNextMonth = () => {
-        if (month === 12) onChange(1, year + 1)
-        else onChange(month + 1, year)
+        if (selectedMonth === 12) emitChange(1, selectedYear + 1)
+        else emitChange(selectedMonth + 1, selectedYear)
     }
-    const handleMonthClick = (m) => onChange(m, year)
+    const handleMonthClick = (m) => emitChange(m, selectedYear)
+
+    if (compact) {
+        return (
+            <div style={{ display: 'grid', gridTemplateColumns: '32px minmax(92px, 1fr) 72px 32px', gap: '0.35rem', alignItems: 'center', width: '100%', minWidth: 0 }}>
+                <button type="button" onClick={handlePrevMonth} disabled={disabled} aria-label="Bulan sebelumnya" title="Bulan sebelumnya" style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', color: '#475569', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer' }}>‹</button>
+                <select value={selectedMonth} disabled={disabled} onChange={(event) => emitChange(Number(event.target.value), selectedYear)} aria-label="Pilih bulan" style={{ minWidth: 0, width: '100%', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', color: '#0f172a', fontSize: '0.82rem', fontWeight: 700, padding: '0 0.45rem', outline: 'none' }}>
+                    {MONTHS.map((item) => <option key={item.value} value={item.value}>{item.full}</option>)}
+                </select>
+                <input value={selectedYear} disabled={disabled} onChange={(event) => emitChange(selectedMonth, Number(event.target.value) || selectedYear)} aria-label="Tahun" inputMode="numeric" style={{ width: '100%', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', color: '#0f172a', fontSize: '0.82rem', fontWeight: 700, padding: '0 0.45rem', outline: 'none', boxSizing: 'border-box' }} />
+                <button type="button" onClick={handleNextMonth} disabled={disabled} aria-label="Bulan berikutnya" title="Bulan berikutnya" style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: disabled ? '#f1f5f9' : '#fff', color: '#475569', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer' }}>›</button>
+            </div>
+        )
+    }
 
     // Group months by quarter
     const quarters = [
@@ -87,7 +112,7 @@ export default function MonthSelector({ month, year, onChange }) {
             }}>
                 <button
                     onClick={handlePrevYear}
-                    title={`Tahun ${year - 1}`}
+                    title={`Tahun ${selectedYear - 1}`}
                     style={{
                         background: 'none',
                         border: '1px solid #e2e8f0',
@@ -122,7 +147,7 @@ export default function MonthSelector({ month, year, onChange }) {
                         letterSpacing: '0.1em',
                         lineHeight: 1
                     }}>
-                        {year}
+                        {selectedYear}
                     </div>
                     <div style={{
                         fontSize: '0.7rem',
@@ -131,13 +156,13 @@ export default function MonthSelector({ month, year, onChange }) {
                         textTransform: 'uppercase',
                         letterSpacing: '0.05em'
                     }}>
-                        {MONTHS[month - 1]?.full} {year}
+                        {MONTHS[selectedMonth - 1]?.full} {selectedYear}
                     </div>
                 </div>
 
                 <button
                     onClick={handleNextYear}
-                    title={`Tahun ${year + 1}`}
+                    title={`Tahun ${selectedYear + 1}`}
                     style={{
                         background: 'none',
                         border: '1px solid #e2e8f0',
@@ -186,7 +211,7 @@ export default function MonthSelector({ month, year, onChange }) {
                     onMouseOver={(e) => { e.target.style.color = '#1e3a8a'; e.target.style.backgroundColor = '#eff6ff' }}
                     onMouseOut={(e) => { e.target.style.color = '#64748b'; e.target.style.backgroundColor = 'transparent' }}
                 >
-                    ← {MONTHS[month === 1 ? 11 : month - 2]?.full}
+                    ← {MONTHS[selectedMonth === 1 ? 11 : selectedMonth - 2]?.full}
                 </button>
 
                 <div style={{
@@ -216,7 +241,7 @@ export default function MonthSelector({ month, year, onChange }) {
                     onMouseOver={(e) => { e.target.style.color = '#1e3a8a'; e.target.style.backgroundColor = '#eff6ff' }}
                     onMouseOut={(e) => { e.target.style.color = '#64748b'; e.target.style.backgroundColor = 'transparent' }}
                 >
-                    {MONTHS[month === 12 ? 0 : month]?.full} →
+                    {MONTHS[selectedMonth === 12 ? 0 : selectedMonth]?.full} →
                 </button>
             </div>
 
@@ -254,10 +279,10 @@ export default function MonthSelector({ month, year, onChange }) {
                             gap: '4px'
                         }}>
                             {q.months.map(m => {
-                                const isSelected = m.value === month
-                                const isCurrent = isCurrentMonth(m.value, year)
+                                const isSelected = m.value === selectedMonth
+                                const isCurrent = isCurrentMonth(m.value, selectedYear)
                                 const isHovered = hoveredMonth === m.value
-                                const future = isFutureMonth(m.value, year)
+                                const future = isFutureMonth(m.value, selectedYear)
 
                                 return (
                                     <button

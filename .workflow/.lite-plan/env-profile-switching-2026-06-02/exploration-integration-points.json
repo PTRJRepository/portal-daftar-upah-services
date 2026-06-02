@@ -1,0 +1,343 @@
+{
+  "project_structure": "Monorepo: backend (Bun/Elysia + SQL Gateway), frontend (React/Vite). Backend uses Database class with named-instance pattern (getInstance, getExtendedInstance, getVenusInstance, getMillInstance, getStagingInstance) pointing to different SQL Server profiles. Staging database (staging_PTRJ_iFES_Plantware) is a separate catalog on SERVER_PROFILE_2, used by staging comparison services. Main db_ptrj lives on DB_PROFILE (currently SERVER_PROFILE_2). env var DISABLE_STAGING_DB is dead -- never read by code.",
+  "relevant_files": [
+    {
+      "path": "backend/src/db/client.ts",
+      "relevance": 1.0,
+      "rationale": "Database class definition with all named instance factories: getInstance, getStagingInstance, getExtendedInstance, getVenusInstance, getMillInstance. Central integration point for profile switching.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "Database",
+        "getInstance",
+        "getStagingInstance",
+        "getExtendedInstance",
+        "getVenusInstance",
+        "getMillInstance"
+      ],
+      "key_code": [
+        {
+          "symbol": "Database.getStagingInstance()",
+          "location": "L87-L89",
+          "description": "Returns cached Database singleton for staging_PTRJ_iFES_Plantware on DB_STAGING_PROFILE (SERVER_PROFILE_2). Used only by StagingExplorerService and StagingComparisonService."
+        },
+        {
+          "symbol": "Database.getInstance()",
+          "location": "L52-L59",
+          "description": "Generic singleton factory keyed by database:profile string. Defaults to DB_PROFILE and DB_DATABASE (db_ptrj). Used by 44+ call sites across backend."
+        },
+        {
+          "symbol": "Database.getExtendedInstance()",
+          "location": "L71-L73",
+          "description": "Returns Database singleton for extend_db_ptrj on SERVER_PROFILE_1. Used by EmployeeHrDataRepository, EmployeeEstateRepository, historyDatabaseService, aggregationSeederRoutes."
+        }
+      ],
+      "topic_relation": "Profile switching task requires understanding all Database factory methods and their profile assignments. getStagingInstance() is the primary target -- its DB_STAGING_PROFILE needs to match what SERVER_PROFILE_2 can reach."
+    },
+    {
+      "path": "backend/src/config.ts",
+      "relevance": 1.0,
+      "rationale": "All DB profile env var definitions: DB_PROFILE, DB_STAGING_PROFILE, DB_EXTEND_PROFILE, DB_VENUS_PROFILE, DB_MILL_PROFILE. Also DB_STAGING_DATABASE default. Missing DISABLE_STAGING_DB config constant -- env exists but code never reads it.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "Config.DB_PROFILE",
+        "Config.DB_STAGING_PROFILE",
+        "Config.DB_STAGING_DATABASE",
+        "Config.DB_EXTEND_PROFILE",
+        "Config.DB_VENUS_PROFILE",
+        "Config.DB_MILL_PROFILE"
+      ],
+      "key_code": [
+        {
+          "symbol": "Config.DB_PROFILE",
+          "location": "L36",
+          "description": "Default server profile for db_ptrj. Reads env.DB_PROFILE, falls back to SERVER_PROFILE_1. Currently SERVER_PROFILE_2 in backend/.env."
+        },
+        {
+          "symbol": "Config.DB_STAGING_PROFILE",
+          "location": "L53",
+          "description": "Server profile for staging_PTRJ_iFES_Plantware. Reads env.DB_STAGING_PROFILE, falls back to SERVER_PROFILE_2. Consumed by Database.getStagingInstance() and harvesterService."
+        },
+        {
+          "symbol": "Config.DB_STAGING_DATABASE",
+          "location": "L52",
+          "description": "Staging database name: staging_PTRJ_iFES_Plantware. Hardcoded as STAGING_CATALOG in staging services -- duplicate source of truth."
+        }
+      ],
+      "topic_relation": "DISABLE_STAGING_DB=true in .env is dead config -- no Config constant reads it. Profile switching must manage staging enable/disable through DB_STAGING_PROFILE reachability, not through this unused flag."
+    },
+    {
+      "path": "backend/src/api/stagingRoutes.ts",
+      "relevance": 1.0,
+      "rationale": "API route definitions for all staging comparison endpoints under /api/staging prefix. All routes depend on StagingExplorerService and StagingComparisonService singletons which use getStagingInstance().",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "stagingRoutes",
+        "StagingExplorerService",
+        "StagingComparisonService"
+      ],
+      "key_code": [
+        {
+          "symbol": "stagingRoutes",
+          "location": "L9",
+          "description": "Elysia router with prefix /api/staging. Exposes 16 endpoints: explore/tables, explore/table/:name, compare/attendance, overtime, brondol-missing, loosefruit, daily-*, monthly-*, pivot-*, summary-all, employee-detail, loosefruit-anomaly."
+        },
+        {
+          "symbol": "StagingExplorerService.getInstance()",
+          "location": "L6",
+          "description": "Singleton call at module load -- connects to staging DB immediately when routes module is imported. No lazy initialization."
+        },
+        {
+          "symbol": "StagingComparisonService.getInstance()",
+          "location": "L7",
+          "description": "Singleton call at module load -- connects to staging DB immediately when routes module is imported. No lazy initialization."
+        }
+      ],
+      "topic_relation": "All staging API endpoints depend on Database.getStagingInstance() reaching staging_PTRJ_iFES_Plantware. If profile switching makes staging unreachable, these endpoints fail at singleton init time during module import."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+      "relevance": 0.95,
+      "rationale": "Service that discovers staging tables and compares schema against db_ptrj. Uses Database.getStagingInstance() at L34 and Database.getInstance() at L35 in constructor. Direct staging DB consumer.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "StagingExplorerService",
+        "getStagingInstance",
+        "discoverAll",
+        "probeProdTable"
+      ],
+      "key_code": [
+        {
+          "symbol": "StagingExplorerService constructor",
+          "location": "L33-L36",
+          "description": "Initializes this.stagingDb via Database.getStagingInstance() and this.prodDb via Database.getInstance(). Both connections permanent for service lifetime."
+        },
+        {
+          "symbol": "STAGING_CATALOG constant",
+          "location": "L26",
+          "description": "Hardcoded string staging_PTRJ_iFES_Plantware. Duplicate of Config.DB_STAGING_DATABASE. Used in SQL queries with 3-part names."
+        }
+      ],
+      "topic_relation": "Profile switching must ensure stagingExplorerService stagingDb connection resolves after profile change. Currently bound to DB_STAGING_PROFILE=SERVER_PROFILE_2. Local STAGING_CATALOG hardcodes database name instead of using Config.DB_STAGING_DATABASE."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "relevance": 0.95,
+      "rationale": "Core comparison service: attendance, overtime, loosefruit comparisons between staging (Gwscannerdata, Overtime, Ffbscannerdata) and db_ptrj (PR_TASKREGLN, PR_LOOSEFRUITLN). Uses both getStagingInstance() and getInstance() in constructor.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "StagingComparisonService",
+        "compareAttendance",
+        "compareOvertime",
+        "compareLoosefruit",
+        "summaryAll",
+        "employeeDetail"
+      ],
+      "key_code": [
+        {
+          "symbol": "StagingComparisonService constructor",
+          "location": "L62-L65",
+          "description": "Initializes this.stagingDb via Database.getStagingInstance() and this.prodDb via Database.getInstance(). All 16 comparison methods query both staging and prod tables."
+        },
+        {
+          "symbol": "STAGING_CATALOG constant",
+          "location": "L5",
+          "description": "Hardcoded string staging_PTRJ_iFES_Plantware. Used in all staging SQL queries. Duplicate of stagingExplorerService L26 and Config.DB_STAGING_DATABASE."
+        },
+        {
+          "symbol": "compareAttendance()",
+          "location": "L118-L197",
+          "description": "Compares Gwscannerdata (staging) vs PR_TASKREGLN (db_ptrj) for attendance on given date. Filters by gang/division. Returns match_count and staging_only counts."
+        }
+      ],
+      "topic_relation": "All 16 staging comparison endpoints route through this service. If DB_STAGING_PROFILE changes, all staging queries must reach correct server. STAGING_CATALOG constant duplicated in 3 places."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "relevance": 0.85,
+      "rationale": "Integration test file for StagingComparisonService. Tests dailyLoosefruitSummary, loosefruitAnomalies, compareLoosefruit, compareAttendance with real staging DB calls. Will break if staging DB unreachable.",
+      "role": "test_target",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "dailyLoosefruitSummary",
+        "loosefruitAnomalies",
+        "compareLoosefruit",
+        "compareAttendance"
+      ],
+      "key_code": [
+        {
+          "symbol": "dailyLoosefruitSummary test",
+          "location": "L7-L15",
+          "description": "Integration test calling svc.dailyLoosefruitSummary(5,2026,3). Validates response shape has date, staging_workers, prod_workers properties. Hits real staging DB."
+        },
+        {
+          "symbol": "compareAttendance test",
+          "location": "L33-L37",
+          "description": "Integration test calling svc.compareAttendance(2026-05-28,5). Asserts rows array has entries. Hits real staging DB."
+        }
+      ],
+      "topic_relation": "Tests call real staging DB at runtime. If profile switching breaks staging connectivity, these tests fail with connection/timeout errors."
+    },
+    {
+      "path": "backend/src/services/harvesterService.ts",
+      "relevance": 0.85,
+      "rationale": "Uses staging DB (Ffbscannerdata) as optional bunches data source with fallback to PR_HARVESTERLN_ARC legacy. Does NOT use getStagingInstance() -- calls Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE) directly at L419 and L494.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "HarvesterService",
+        "getEmployeeBunchesFromStaging",
+        "getBatchEmployeeBunchesFromStaging",
+        "stagingAvailable"
+      ],
+      "key_code": [
+        {
+          "symbol": "stagingAvailable flag",
+          "location": "L17",
+          "description": "Hardcoded to false in constructor. Never re-enabled. getEmployeeBunchesFromStaging and getBatchEmployeeBunchesFromStaging are dead code."
+        },
+        {
+          "symbol": "getEmployeeBunchesFromStaging()",
+          "location": "L403-L467",
+          "description": "Queries Ffbscannerdata staging table for employee bunches (RIPE, UNRIPE, UNDERRIPE, OVERRIPE, ROTTEN, ABNORMAL, LOOSEFRUIT). Uses direct Database.getInstance() -- bypasses getStagingInstance()."
+        },
+        {
+          "symbol": "getBatchEmployeeBunchesFromStaging()",
+          "location": "L472-L550",
+          "description": "Batch variant with chunking (STAGING_CHUNK=1800). Same direct Database.getInstance() pattern. Currently dead code."
+        }
+      ],
+      "topic_relation": "HarvesterService uses staging DB through a DIFFERENT path than staging services (direct getInstance instead of getStagingInstance). This is the ONLY other service accessing staging DB outside explore_staging module. Code path is dead (stagingAvailable=false). Profile switching must account for this secondary staging access pattern."
+    },
+    {
+      "path": "backend/src/index.ts",
+      "relevance": 0.9,
+      "rationale": "Server entry point that mounts stagingRoutes at L285 (root) and L310 (under /backend/upah group). Also calls Database.getInstance() at L116 for initial DB connection. stagingRoutes import at L25 triggers staging service singleton construction.",
+      "role": "integration_point",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "stagingRoutes",
+        "Database.getInstance"
+      ],
+      "key_code": [
+        {
+          "symbol": "stagingRoutes import",
+          "location": "L25",
+          "description": "import { stagingRoutes } from ./api/stagingRoutes -- triggers StagingExplorerService and StagingComparisonService singleton construction at import time. Staging DB connection attempt before server.listen()."
+        },
+        {
+          "symbol": "stagingRoutes mount (root)",
+          "location": "L285",
+          "description": ".use(stagingRoutes) -- mounts staging API at root level under /api/staging prefix."
+        },
+        {
+          "symbol": "stagingRoutes mount (/backend/upah)",
+          "location": "L310",
+          "description": ".use(stagingRoutes) -- duplicate mount under /backend/upah group for proxy path prefix stripping."
+        },
+        {
+          "symbol": "Database.getInstance() init",
+          "location": "L116",
+          "description": "Initializes main Database singleton at startup using Config.DB_PROFILE (SERVER_PROFILE_2). Uses same profile as staging."
+        }
+      ],
+      "topic_relation": "Server startup imports staging routes module at L25, which immediately constructs staging service singletons connecting to DB_STAGING_PROFILE. If profile change makes staging unreachable, server must handle this gracefully at import time. Staging routes mounted twice (root + proxy prefix)."
+    },
+    {
+      "path": "frontend/src/services/stagingComparisonService.js",
+      "relevance": 0.7,
+      "rationale": "Frontend API service calling all staging backend endpoints (/api/staging/compare/*). Documents frontend dependency surface on staging APIs.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "fetchAttendance",
+        "fetchOvertime",
+        "fetchLoosefruit",
+        "fetchDailyAttendance",
+        "fetchDailyOvertime",
+        "fetchDailyLoosefruit",
+        "fetchLoosefruitAnomalies"
+      ],
+      "key_code": [
+        {
+          "symbol": "fetchComparisonData helper",
+          "location": "L12-L32",
+          "description": "Generic GET helper hitting 7 staging endpoints: compare/attendance, overtime, loosefruit, daily-attendance, daily-overtime, daily-loosefruit, loosefruit-anomaly. All pass token for auth."
+        }
+      ],
+      "topic_relation": "Frontend makes 7 different API calls to /api/staging/* endpoints. If staging routes are disabled/moved, StagingComparisonPage, StagingDaftarUpahPage, and StagingEmployeeDetailModal components break."
+    },
+    {
+      "path": "backend/.env",
+      "relevance": 0.9,
+      "rationale": "Backend .env with current profile assignments. DISABLE_STAGING_DB=true is dead config. DB_PROFILE=SERVER_PROFILE_2 and DB_STAGING_PROFILE defaults to SERVER_PROFILE_2 sharing same value. No DB_STAGING_DATABASE entry defined.",
+      "role": "config",
+      "discovery_source": "manual",
+      "key_symbols": [
+        "DISABLE_STAGING_DB",
+        "DB_PROFILE",
+        "DB_EXTEND_PROFILE",
+        "DB_VENUS_PROFILE",
+        "DB_MILL_PROFILE"
+      ],
+      "key_code": [
+        {
+          "symbol": "DISABLE_STAGING_DB",
+          "location": "L42",
+          "description": "Dead config flag -- no code in backend/src reads this env var. Config class has no DISABLE_STAGING_DB property. Staging controlled by reachability, not this flag."
+        },
+        {
+          "symbol": "DB_PROFILE",
+          "location": "L19",
+          "description": "Set to SERVER_PROFILE_2. Used as default for Database.getInstance(). Shares same server as DB_STAGING_PROFILE."
+        },
+        {
+          "symbol": "DB_STAGING_PROFILE (missing from .env)",
+          "location": "n/a",
+          "description": "Not defined in backend/.env. Falls back to config.ts default SERVER_PROFILE_2. Should be explicit to enable profile switching."
+        }
+      ],
+      "topic_relation": "DISABLE_STAGING_DB=true is misleading -- implies staging disabled when actually active through stagingRoutes API. DB_STAGING_PROFILE not explicitly set so profile switch needs this added first. DB_PROFILE and DB_STAGING_PROFILE currently share same SERVER_PROFILE_2."
+    }
+  ],
+  "patterns": "Database class uses singleton factory pattern keyed by database:profile combination string. Each profile gets a named accessor method (getStagingInstance, getExtendedInstance, etc). Services construct Database instances in their constructors and hold them for lifetime. stagingExplorerService and stagingComparisonService both call getStagingInstance() in singleton constructors -- staging DB connection is attempted at module import time, not lazily. harvesterService uses a different staging access pattern: direct Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE) instead of getStagingInstance(). harvesterService implements self-disabling with stagingAvailable=false flag that starts false and permanently disables on first error. No other service follows this self-disable pattern.",
+  "dependencies": "Staging subsystem chain: stagingRoutes.ts -> StagingExplorerService -> Database.getStagingInstance() -> Config.DB_STAGING_PROFILE (SERVER_PROFILE_2) -> SQL Gateway -> staging_PTRJ_iFES_Plantware. stagingRoutes.ts -> StagingComparisonService -> both getStagingInstance() + Database.getInstance(). harvesterService -> Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE) for Ffbscannerdata (dead path, stagingAvailable=false). Frontend: StagingComparisonPage, StagingDaftarUpahPage, StagingEmployeeDetailModal call /api/staging/* via stagingComparisonService.js.",
+  "integration_points": "1. Database.getStagingInstance() at db/client.ts:87-L89 -- primary staging access factory. 2. stagingRoutes.ts imports at index.ts:25 -- triggers staging service singleton construction at import time. stagingRoutes mounted at index.ts:285 (root) and index.ts:310 (proxy prefix). 3. HarvesterService at harvesterService.ts:419 and :494 -- direct Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE), bypassing getStagingInstance(). Dead code (stagingAvailable=false). 4. stagingComparisonService.test.ts -- integration tests connecting to real staging DB. 5. Frontend API calls through stagingComparisonService.js hitting /api/staging/* endpoints.",
+  "constraints": "1. DB_PROFILE and DB_STAGING_PROFILE both SERVER_PROFILE_2 -- staging and main db_ptrj share same server. 2. No DB_STAGING_DATABASE in backend/.env -- relies on config.ts default staging_PTRJ_iFES_Plantware. 3. DISABLE_STAGING_DB=true is dead config -- never parsed. Staging routes always active. 4. Staging service singletons constructed at import time (index.ts:25), not lazily -- connection failure blocks startup. 5. HarvesterService staging path disabled by in-memory flag stagingAvailable=false, not config. 6. STAGING_CATALOG constant duplicated in 3 files instead of using Config.DB_STAGING_DATABASE.",
+  "clarification_needs": [
+    {
+      "question": "Should DISABLE_STAGING_DB env var be wired up to actually gate staging API routes? Currently it exists in .env but is never read by any code.",
+      "context": "DISABLE_STAGING_DB=true is in backend/.env but Config class has no corresponding constant. Staging routes are always active regardless of this flag. If staging server is unreachable from current network, the staging API endpoints will fail at runtime.",
+      "options": [
+        "Yes, wire DISABLE_STAGING_DB to conditionally skip mounting stagingRoutes in index.ts",
+        "No, keep staging routes always available and let them fail naturally if unreachable",
+        "Remove DISABLE_STAGING_DB from .env since it does nothing",
+        "Add staging health check that gates route mounting at startup"
+      ],
+      "recommended": 0
+    },
+    {
+      "question": "Does the staging database need explicit DB_STAGING_DATABASE in backend/.env, or is the Config.ts default sufficient?",
+      "context": "backend/.env defines DB_STAGING_PROFILE=SERVER_PROFILE_2 but not DB_STAGING_DATABASE. config.ts defaults to staging_PTRJ_iFES_Plantware. Both staging services hardcode catalog name as STAGING_CATALOG constant.",
+      "options": [
+        "Add DB_STAGING_DATABASE=staging_PTRJ_iFES_Plantware to backend/.env",
+        "Keep using Config.ts default -- no .env entry needed",
+        "Remove local STAGING_CATALOG constants and use Config.DB_STAGING_DATABASE everywhere"
+      ],
+      "recommended": 2
+    }
+  ],
+  "_metadata": {
+    "timestamp": "2026-06-02T00:00:00.000Z",
+    "task_description": ".env profile switching untuk db_ptrj dan staging database. Di .env saat ini: DISABLE_STAGING_DB=true (dead config), DB_PROFILE=SERVER_PROFILE_2, DB_STAGING_PROFILE=SERVER_PROFILE_2, DB_EXTEND_PROFILE=SERVER_PROFILE_1, DB_VENUS_PROFILE=SERVER_PROFILE_3, DB_MILL_PROFILE=SERVER_PROFILE_3.",
+    "source": "cli-explore-agent",
+    "exploration_angle": "integration-points",
+    "exploration_index": 1,
+    "total_explorations": 1,
+    "duration_seconds": 120
+  }
+}

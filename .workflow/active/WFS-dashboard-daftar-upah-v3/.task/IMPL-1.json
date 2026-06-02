@@ -16,5 +16,17 @@
     "No unrelated changes are reverted or overwritten.",
     "Implementation lanes are assigned by file ownership."
   ],
-  "meta": { "type": "frontend_safety", "agent": "code_developer" }
+  "meta": {
+    "type": "frontend_safety",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

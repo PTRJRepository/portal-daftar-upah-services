@@ -281,8 +281,11 @@ const app = new Elysia()
     .use(otherIncomesRoutes)
     // Mill Production Report
     .group("/api/mill-production", app => app.use(millProductionRoutes))
-    // Staging Comparison
-    .use(stagingRoutes)
+
+// Conditional: staging routes only when not disabled
+if (Config.DISABLE_STAGING_DB) {
+    // No-op: staging disabled
+}
 
 // Mount API routes under /backend/upah prefix (always active - proxy uses this path)
 app.group("/backend/upah", (g: any) => g
@@ -321,7 +324,7 @@ app.get("*", async ({ request, set }) => {
     const pathname = url.pathname;
 
     // If it looks like an API call, return 404
-    const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/");
+    const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/") || pathname.startsWith("/backend/upah/api");
     if (isApi) {
         set.status = 404;
         return { error: "Route not found", path: pathname };
@@ -344,7 +347,17 @@ app.listen({
     hostname: Config.HOST
 });
 
-console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
-console.log(`Run Mode: ${Config.RUN_MODE}`);
-console.log(`Auth Mode: ${Config.AUTH_MODE}`);
-console.log(`Database: ${Config.DEFAULT_DATABASE} @ ${Config.DB_PROFILE}`);
+console.log(`\n========================================`);
+console.log(`  Daftar Upah Backend`);
+console.log(`========================================`);
+console.log(`  Host     : ${app.server?.hostname}:${app.server?.port}`);
+console.log(`  Run Mode : ${Config.RUN_MODE}`);
+console.log(`  Auth     : ${Config.AUTH_MODE}`);
+console.log(`----------------------------------------`);
+console.log(`  Databases:`);
+console.log(`    db_ptrj   : ${Config.DEFAULT_DATABASE} @ ${Config.DB_PROFILE}`);
+console.log(`    extend    : ${Config.DB_EXTEND_DATABASE} @ ${Config.DB_EXTEND_PROFILE}`);
+console.log(`    staging   : ${Config.DB_STAGING_DATABASE} @ ${Config.DB_STAGING_PROFILE}${Config.DISABLE_STAGING_DB ? ' [DISABLED]' : ' [ENABLED]'}`);
+console.log(`    venus     : ${Config.DB_VENUS_DATABASE} @ ${Config.DB_VENUS_PROFILE}`);
+console.log(`    mill      : ${Config.DB_MILL_DATABASE} @ ${Config.DB_MILL_PROFILE}`);
+console.log(`========================================\n`);

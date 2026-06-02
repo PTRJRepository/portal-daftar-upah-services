@@ -1,0 +1,90 @@
+{
+  "id": "TASK-004",
+  "title": "Build Excel template generator for premium seeder",
+  "scope": "backend/src/services/premiumImportService.ts (new function)",
+  "action": "Implement",
+  "description": "Create a function that generates downloadable blank Excel templates (.xlsx) for each blok premium type. Templates include formatted header row with correct column names, a helper row with field descriptions, and pre-set column widths. Follows otherIncomesExcelService ExcelJS workbook generation pattern: title rows, header formatting (black bg, white fg), column width configuration.",
+  "files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "add",
+      "target": "generatePremiumTemplate() function",
+      "change": "Add new function generatePremiumTemplate(premiumType, inputType) that creates an ExcelJS workbook with one worksheet per premium type. Worksheet has: title row (merged cells) with premium name + period hint, formatted header row (bold, black bg, white fg) with correct column names from column mapping config, helper row (row 3) with field descriptions in gray italic, pre-set column widths, frozen header row, and data validation hints in comments."
+    }
+  ],
+  "implementation": [
+    "Define PremiumTemplateOptions: premium_type, input_type (defaults from definition lookup), period_month, period_year (optional, for title)",
+    "Create generatePremiumTemplate(): init ExcelJS Workbook, addWorksheet with premium type name as sheet name",
+    "Add title row (row 1): merge cells A1-E1, set value to 'TEMPLATE PREMI {premium_type_name} - Periode: {month}/{year}', bold, font size 14, centered",
+    "Add header row (row 2): get column names from ColumnMappingConfig for this input_type, set each cell with border, black fill, white bold font",
+    "Add helper row (row 3): gray italic text describing each column (e.g., 'Masukkan kode karyawan (EmpCode)', 'Masukkan kode subblok'), row height 30",
+    "Set column widths: empcode=15, gang_code=12, subblok=15, jumlah=15, jenis=25",
+    "Freeze header row (freeze panes at row 3 so headers always visible)",
+    "Add data rows 4-100 with thin borders and number formatting (jumlah column as #,##0)",
+    "Add footer with generation date and 'Didukung oleh Sistem Daftar Upah PT Rebinmas'",
+    "Return workbook buffer via workbook.xlsx.writeBuffer()",
+    "Support multi-sheet generation: if premium_types array provided, each type gets its own sheet"
+  ],
+  "reference": {
+    "pattern": "otherIncomesExcelService.ts ExcelJS workbook generation: title merge, header black bg/white fg, borders, column widths, signatures",
+    "files": [
+      "backend/src/services/otherIncomesExcelService.ts",
+      "backend/src/services/premiumImportService.ts",
+      "backend/src/services/premiumDefinitionService.ts"
+    ],
+    "examples": "otherIncomesExcelService.ts demonstrates addWorksheet, mergeCells for title, header row formatting with fill (black) + font (white bold), set column widths, row iteration with borders. Follow this pattern for template generation."
+  },
+  "convergence": {
+    "criteria": [
+      "generatePremiumTemplate('PREMI PRUNING', 'blok') produces valid .xlsx buffer",
+      "Generated template header row contains correct columns: EmpCode, Gang Code, Subblok, Jumlah, Jenis",
+      "Helper row (row 3) shows field descriptions in gray italic",
+      "Header row frozen so it remains visible during scroll",
+      "Multi-sheet generation produces one sheet per premium type with correct sheet names",
+      "Template opens correctly in Microsoft Excel and Google Sheets"
+    ]
+  },
+  "depends_on": [
+    "TASK-001"
+  ],
+  "rationale": {
+    "chosen_approach": "Generate blank Excel templates with pre-filled headers and helper rows. Downloadable from API. Field operators fill data rows and re-upload. Reduces column order errors and eliminates guesswork about required columns.",
+    "alternatives_considered": [
+      "Free-form upload only with validation",
+      "Template as static file committed to repo",
+      "No template generation, documentation-only approach"
+    ],
+    "decision_factors": [
+      "User experience: field operators need clear template, not documentation",
+      "Flexibility: dynamic generation ensures templates always match current column config",
+      "Error reduction: pre-filled headers eliminate column naming mistakes"
+    ],
+    "tradeoffs": "Adds maintenance burden if column config changes. Template format must stay in sync with column mapping config. Generating on-the-fly adds API latency (~50ms for single sheet, ~200ms for 7 sheets)."
+  },
+  "test": {
+    "manual_checks": [
+      "Download generated template for PREMI PRUNING and verify header columns match expected set",
+      "Open generated template in Excel, verify header frozen, helper row visible, formatting correct",
+      "Generate multi-sheet template for all 7 blok types, verify each sheet correct"
+    ],
+    "success_metrics": [
+      "Template .xlsx valid and opens in Excel without corruption warnings",
+      "All required columns present in header row with correct names",
+      "File size under 50KB for 7-sheet template"
+    ],
+    "unit": [
+      "test_generate_template_single_premium_type",
+      "test_generate_template_header_frozen",
+      "test_generate_template_multi_sheet",
+      "test_generate_template_helper_row_content"
+    ],
+    "integration": [
+      "test_template_download_and_reimport_roundtrip"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-004",
+  "cli_execution": {
+    "strategy": "fork",
+    "resume_from": "premium-excel-seeder-feature-2026-06-02-TASK-001"
+  }
+}

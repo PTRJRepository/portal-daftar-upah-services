@@ -1,0 +1,32 @@
+{
+  "session_id": "WFS-excel-premium-parser",
+  "topic": "Excel Premium Parser & Seeder",
+  "topic_slug": "excel-premium-parser",
+  "description": "Build Excel parser + seeder for all premium input types: understand each premium format (amount/blok/exp/kendaraan/blok+exp), then create seeder feature for parsing Excel and reading column mappings into premium tables",
+  "created_at": "2026-06-02T00:00:00Z",
+  "updated_at": "2026-06-02T00:00:00Z",
+  "execution_mode": "auto",
+  "selected_roles": ["data-architect", "subject-matter-expert", "system-architect", "test-strategist"],
+  "phase": "auto-mode-init",
+  "count": 4,
+  "auto_yes": true,
+  "status": "in_progress",
+  "terminology": [
+    { "term": "PREMI", "definition": "Pendapatan tambahan diluar gaji pokok dan tunjangan tetap, berdasarkan kegiatan/prestasi работника", "aliases": ["bonus", "insentif"], "category": "income" },
+    { "term": "input_type::amount", "definition": "Premi dengan satu nilai numerik per karyawan, tanpa breakdown lokasi", "aliases": [], "category": "premi-input" },
+    { "term": "input_type::blok", "definition": "Premi dengan multiple baris per karyawan: subblok + gang_code + jumlah", "aliases": ["block-type"], "category": "premi-input" },
+    { "term": "input_type::exp", "definition": "Single expense entry per karyawan: expense_code + jumlah", "aliases": ["expense-type"], "category": "premi-input" },
+    { "term": "input_type::kendaraan", "definition": "Premi kendaraan dengan multiple baris: nomor_kendaraan + expense_code + jumlah", "aliases": ["vehicle-type"], "category": "premi-input" },
+    { "term": "input_type::blok,exp", "definition": "Combo type: blok_items[] + single expense_code entry", "aliases": ["combo-type"], "category": "premi-input" },
+    { "term": "dynamic_premi_data", "definition": "JSON array dari header premi dinamis dengan total per kategori", "aliases": ["dynamic-premi-json"], "category": "data-structure" },
+    { "term": "manual_adjustment", "definition": "Entry premium/koreksi yang diinput manual via Excel upload", "aliases": ["seeder-entry"], "category": "process" },
+    { "term": "ADTRANS", "definition": "Tabel Plantware untuk transaksi adjustment karyawan (source dynamic premi)", "aliases": ["PR_ADTRANS"], "category": "database" },
+    { "term": "KOREKSI", "definition": "Potongan yang langsung mengurangi upah_kotor (bukan pot_bersih)", "aliases": ["koreksi-hk"], "category": "deduction" }
+  ],
+  "non_goals": [
+    "UI/Frontend baru — tidak bikin halaman baru, CLI/API saja",
+    "Modifikasi logic payroll existing — seeder hanya write ke tabel adjustment",
+    "Bulk import dari HR system — fokus Excel manual upload",
+    "Real-time sync — seeder batch/process-based"
+  ]
+}

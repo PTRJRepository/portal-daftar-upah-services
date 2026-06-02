@@ -1402,6 +1402,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * @route POST /payroll/manual-adjustment/compare-adtrans/by-api-key
      * @description Compare PR_ADTRANS (db_ptrj) values with payroll_manual_adjustments (extend_db_ptrj).
      *              Returns per-employee per-category comparison showing source vs stored amount.
+     *              Use status=MISSING,MISMATCH to filter results.
      * @access Public (with X-API-Key)
      */
     .post("/manual-adjustment/compare-adtrans/by-api-key", async ({ body, headers, set }) => {
@@ -1413,7 +1414,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             const data = body as any;
-            const { period_month, period_year, division_code, filters } = data;
+            const { period_month, period_year, division_code, filters, status } = data;
 
             if (!period_month || !period_year) {
                 set.status = 400;
@@ -1433,10 +1434,31 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 filters || ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']
             );
 
+            // Filter by status if provided (e.g., status="MISSING" or "MISSING,MISMATCH")
+            let comparisons = result.comparisons;
+            if (status) {
+                const allowedStatuses = status.split(',').map((s: string) => s.trim().toUpperCase());
+                const validStatuses = ['MATCH', 'MISMATCH', 'MISSING'];
+                const filteredStatuses = allowedStatuses.filter((s: string) => validStatuses.includes(s));
+                if (filteredStatuses.length > 0) {
+                    comparisons = comparisons.filter((item: AdtransComparisonItem) => filteredStatuses.includes(item.status));
+                }
+            }
+
+            // Build simplified response
+            const summary = {
+                sync_status: result.match_count > 0 ? 'SYNC' : 'NOT_SYNC',
+                total_compared: result.total_employees,
+                match_count: result.match_count,
+                mismatch_count: result.mismatch_count,
+                missing_count: result.missing_in_adjustments,
+            };
+
             return {
                 success: true,
                 message: "Comparison completed successfully",
-                data: result
+                summary,
+                data: comparisons
             };
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment/compare-adtrans error:", e);
@@ -1448,7 +1470,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_month: t.Number(),
             period_year: t.Number(),
             division_code: t.String(),
-            filters: t.Optional(t.Array(t.String()))
+            filters: t.Optional(t.Array(t.String())),
+            status: t.Optional(t.String())  // e.g., "MISSING" or "MISSING,MISMATCH"
         })
     })
 
@@ -3478,8 +3501,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 set.status = 400;
                 return { success: false, error: "period_month dan period_year wajib diisi." };
             }
+            const premiumType = (query as any)?.premium_type as string | undefined;
             const service = ManualAdjustmentService.getInstance();
-            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
+            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service, premiumType);
             if (!result.success) set.status = 400;
             return { success: result.success, ...result };
         } catch (e: any) {
@@ -3488,30 +3512,89 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { success: false, error: e.message || "Gagal mengimpor Excel." };
         }
     })
-    .post("/premium-import-excel", async ({ body, query, set }) => {
-        try {
-            const { importPremiumExcel } = await import("../services/premiumImportService");
-            const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
-            const file = (body as any)?.file;
-            if (!file || !file.data) {
-                set.status = 400;
-                return { success: false, error: "File Excel wajib diunggah." };
+    // ── Premium Seeder Routes ──
+    .group("/premium-seeder", (app: any) => app
+        .post("/dry-run", async ({ body, set }: any) => {
+            try {
+                const { dryRunPremiumExcel } = await import("../services/premiumImportService");
+                const file = body?.file;
+                if (!file || !file.data) {
+                    set.status = 400;
+                    return { success: false, error: "File Excel wajib diunggah." };
+                }
+                const buffer = Buffer.from(file.data);
+                const periodMonth = Number(body?.period_month);
+                const periodYear = Number(body?.period_year);
+                const divisionCode = String(body?.division_code || 'ALL');
+                const premiumType = body?.premium_type as string | undefined;
+                if (!periodMonth || !periodYear) {
+                    set.status = 400;
+                    return { success: false, error: "period_month dan period_year wajib diisi." };
+                }
+                const result = await dryRunPremiumExcel(buffer, periodMonth, periodYear, divisionCode, premiumType);
+                return { success: true, ...result };
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/dry-run error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal melakukan dry-run." };
             }
-            const buffer = Buffer.from(file.data);
-            const periodMonth = Number((query as any)?.period_month);
-            const periodYear = Number((query as any)?.period_year);
-            const divisionCode = String((query as any)?.division_code || 'ALL');
-            if (!periodMonth || !periodYear) {
-                set.status = 400;
-                return { success: false, error: "period_month dan period_year wajib diisi." };
+        })
+        .post("/import", async ({ body, set }: any) => {
+            try {
+                const { importPremiumExcel, getPremiumImportProgress } = await import("../services/premiumImportService");
+                const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
+                const file = body?.file;
+                if (!file || !file.data) {
+                    set.status = 400;
+                    return { success: false, error: "File Excel wajib diunggah." };
+                }
+                const buffer = Buffer.from(file.data);
+                const periodMonth = Number(body?.period_month);
+                const periodYear = Number(body?.period_year);
+                const divisionCode = String(body?.division_code || 'ALL');
+                const premiumType = body?.premium_type as string | undefined;
+                const dryRunConfirmationId = body?.dry_run_confirmation_id as string | undefined;
+                if (!periodMonth || !periodYear) {
+                    set.status = 400;
+                    return { success: false, error: "period_month dan period_year wajib diisi." };
+                }
+                const service = ManualAdjustmentService.getInstance();
+                const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service, premiumType, dryRunConfirmationId);
+                if (!result.success) set.status = 400;
+                return { success: result.success, ...result };
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/import error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal mengimpor Excel." };
             }
-            const service = ManualAdjustmentService.getInstance();
-            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
-            if (!result.success) set.status = 400;
-            return { success: result.success, ...result };
-        } catch (e: any) {
-            console.error("[PayrollRoutes] premium-import-excel error:", e);
-            set.status = 500;
-            return { success: false, error: e.message || "Gagal mengimpor Excel." };
-        }
-    })
+        })
+        .get("/progress", async ({ set }: any) => {
+            try {
+                const { getPremiumImportProgress } = await import("../services/premiumImportService");
+                const progress = getPremiumImportProgress();
+                if (!progress) {
+                    set.status = 404;
+                    return { success: false, error: "Tidak ada proses import berjalan." };
+                }
+                return { success: true, ...progress };
+            } catch (e: any) {
+                set.status = 500;
+                return { success: false, error: e.message };
+            }
+        })
+        .get("/template", async ({ query, set }: any) => {
+            try {
+                const { generatePremiumTemplate } = await import("../services/premiumImportService");
+                const premiumType = query?.premium_type as string | undefined;
+                const types = premiumType ? [premiumType] : undefined;
+                const buffer = await generatePremiumTemplate(types);
+                set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                set.headers["Content-Disposition"] = `attachment; filename="template_premi_${premiumType || 'semua'}.xlsx"`;
+                return buffer;
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/template error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal membuat template." };
+            }
+        })
+    )

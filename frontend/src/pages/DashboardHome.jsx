@@ -20,13 +20,13 @@ export default function DashboardHome() {
 
   // Role check: show report_pajak for kerani and non-admin users
   const userRole = (user?.role || '').toLowerCase();
-  const canSeeReportPajak = userRole === 'kerani' || (userRole !== 'admin');
+  const canSeeReportPajak = userRole !== 'kerani' && userRole !== 'admin';
 
   const navigate = useNavigate();
 
   // Determine report access (simplified, similar to previous MainPage)
   const inProdMode = isProdMode();
-  const canAccessReports = isAdminUser || !inProdMode;
+  const canAccessReports = userRole === 'kerani' || isAdminUser || !inProdMode;
 
   const handleGenerateOperational = () => {
     if (division && gang) {
@@ -178,6 +178,7 @@ export default function DashboardHome() {
                 month={month}
                 year={year}
                 onChange={(m, y) => { setMonth(m); setYear(y); }}
+                compact
               />
             </div>
 
@@ -314,7 +315,7 @@ export default function DashboardHome() {
                 boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(14, 165, 233, 0.3)'
               }}
             >
-              {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
+              {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DAFTAR UPAH'}
               <ArrowRight size={18} />
             </button>
           </div>

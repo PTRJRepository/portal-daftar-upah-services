@@ -7,7 +7,7 @@ import {
     Home, FileText, BarChart2, DollarSign, TrendingUp, Users,
     Settings, ChevronRight, LogOut, ShieldCheck,
     PieChart, Menu, X, Database, CalendarDays, ChevronDown, ChevronUp,
-    CheckCircle
+    CheckCircle, Upload
 } from 'lucide-react';
 
 // ─── Design System: Corporate Utility ────────────────────────────────────────
@@ -262,7 +262,7 @@ const DashboardLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(true);
     const [reportsOpen, setReportsOpen] = useState(false);
 
     const basePath = getBasePath();
@@ -317,6 +317,17 @@ const DashboardLayout = () => {
     }, [location.pathname]);
 
     const sidebarWidth = collapsed ? '72px' : '248px';
+    const roleKey = (() => {
+        const rawRole = String(user?.role || '').toLowerCase();
+        const username = String(user?.username || '').toLowerCase();
+        if (rawRole === 'kerani' || username.includes('kerani')) return 'kerani';
+        if (isAdminUser || rawRole === 'admin') return 'payroll_admin';
+        if (rawRole.includes('finance') || rawRole.includes('akunting') || username.includes('finance')) return 'finance';
+        if (rawRole.includes('director') || rawRole.includes('direktur') || rawRole.includes('executive')) return 'executive';
+        if (rawRole.includes('manager') || rawRole.includes('estate') || username.includes('manager')) return 'estate_manager';
+        return 'payroll_admin';
+    })();
+    const itemForRole = (item) => !item.roles || item.roles.includes(roleKey);
 
     // ─── Navigation Config ─────────────────────────────────────────────────────
     const navItems = [
@@ -324,32 +335,38 @@ const DashboardLayout = () => {
             { to: '/', icon: Home, label: 'Dashboard', description: 'KPI, insight, dan module role-based', end: true },
         ]},
         { section: 'Operational', items: [
-            { to: '/operational', icon: FileText, label: 'Daftar Upah', description: 'Filter upah operasional' },
-            { to: '/summary', icon: BarChart2, label: 'Summary Report', description: 'Ringkasan upah dan rekap utama' },
-            { to: '/wages-rebinmas', icon: DollarSign, label: 'Daftar Upah Rebinmas', description: 'Payroll Rebinmas saat ini' },
-            { to: '/wages-ijl', icon: DollarSign, label: 'Upah IJL', description: 'Laporan upah tenaga IJL' },
+            { to: '/operational', icon: FileText, label: 'Daftar Upah', description: 'Isi daftar upah sesuai divisi akses', roles: ['payroll_admin', 'kerani'] },
+            { to: '/summary', icon: BarChart2, label: 'Summary Report', description: 'Ringkasan upah dan rekap utama', roles: ['payroll_admin', 'estate_manager', 'finance', 'executive'] },
+            { to: '/wages-rebinmas', icon: DollarSign, label: 'Daftar Upah Rebinmas', description: 'Payroll Rebinmas saat ini', roles: ['payroll_admin', 'finance'] },
+            { to: '/wages-ijl', icon: DollarSign, label: 'Upah IJL', description: 'Laporan upah tenaga IJL', roles: ['payroll_admin', 'finance'] },
         ]},
         { section: 'Analysis', items: [
-            { to: '/mill-production', icon: BarChart2, label: 'Produktivitas Kebun', description: 'Tonase FFB, HK & biaya' },
-            { to: '/wages-comparison', icon: ShieldCheck, label: 'Comparison', description: 'Perbandingan payroll antar periode' },
-            { to: '/impact', icon: TrendingUp, label: 'Impact Report', description: 'Analisis dampak biaya' },
-            { to: '/comprehensive', icon: PieChart, label: 'Comprehensive Analysis', description: 'Analisis payroll lintas komponen' },
-            { to: '/analysis', icon: TrendingUp, label: 'Analisa Lembur & Premi', description: 'Lembur dan premi detail', indent: true },
-            { to: '/tonase-analysis', icon: BarChart2, label: 'Analisis Tonase', description: 'Tonase, HK, premi panen', indent: true },
+            { to: '/productivity', icon: TrendingUp, label: 'Produktivitas', description: 'Tonase, HK, dan biaya per performa', roles: ['estate_manager', 'executive'] },
+            { to: '/mill-production', icon: BarChart2, label: 'Produktivitas Kebun', description: 'Tonase FFB, HK & biaya', roles: ['estate_manager', 'executive'] },
+            { to: '/wages-comparison', icon: ShieldCheck, label: 'Comparison', description: 'Perbandingan payroll antar periode', roles: ['estate_manager', 'finance', 'executive'] },
+            { to: '/impact', icon: TrendingUp, label: 'Impact Report', description: 'Analisis dampak biaya', roles: ['estate_manager', 'executive'] },
+            { to: '/comprehensive', icon: PieChart, label: 'Comprehensive Analysis', description: 'Analisis payroll lintas komponen', roles: ['estate_manager', 'finance', 'executive'] },
+            { to: '/analysis', icon: TrendingUp, label: 'Analisa Lembur & Premi', description: 'Lembur dan premi detail', indent: true, roles: ['estate_manager', 'finance'] },
+            { to: '/tonase-analysis', icon: BarChart2, label: 'Analisis Tonase', description: 'Tonase, HK, premi panen', indent: true, roles: ['estate_manager', 'executive'] },
         ]},
         { section: 'Finance', items: [
-            { to: '/executive', icon: BarChart2, label: 'Executive Payroll', description: 'Ringkasan high-level payroll' },
-            { to: '/detail-upah-bersih', icon: DollarSign, label: 'Upah Bersih', description: 'Detail payroll bersih' },
-            { to: '/pendapatan-tidak-tetap', icon: DollarSign, label: 'Pendapatan Tidak Tetap', description: 'Komponen pendapatan non-rutin' },
-            { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak payroll' },
+            { to: '/executive', icon: BarChart2, label: 'Executive Payroll', description: 'Ringkasan high-level payroll', roles: ['finance', 'executive'] },
+            { to: '/detailed-salary', icon: DollarSign, label: 'Detail Gaji', description: 'Rincian gaji dan kompensasi', roles: ['finance'] },
+            { to: '/detail-upah-bersih', icon: DollarSign, label: 'Upah Bersih', description: 'Detail payroll bersih', roles: ['finance'] },
+            { to: '/pendapatan-tidak-tetap', icon: DollarSign, label: 'Pendapatan Tidak Tetap', description: 'Komponen pendapatan non-rutin', roles: ['finance'] },
+            { to: '/report-pajak', icon: FileText, label: 'Report Pajak (PPh21)', description: 'Laporan pajak payroll', roles: ['payroll_admin', 'finance'] },
         ]},
         { section: 'Verification', items: [
-            { to: '/data-verification', icon: CheckCircle, label: 'Verifikasi Data', description: 'Verifikasi konsistensi data' },
+            { to: '/data-verification', icon: CheckCircle, label: 'Verifikasi Data', description: 'Verifikasi konsistensi data', roles: ['payroll_admin'] },
+            { to: '/staging-daftar-upah', icon: FileText, label: 'Daftar Upah Staging', description: 'HK, lembur, brondol staging vs Plantware', roles: ['payroll_admin', 'finance'] },
+            { to: '/staging-comparison', icon: Database, label: 'Matriks Pivot Staging', description: 'Pivot per-tanggal staging vs Plantware', roles: ['payroll_admin', 'finance'] },
+            { to: '/operational', icon: Settings, label: 'Koreksi', description: 'Koreksi dan validasi manual', roles: ['payroll_admin'] },
         ]},
-    ];
+    ].map(section => ({ ...section, items: section.items.filter(itemForRole) })).filter(section => section.items.length > 0);
 
     const adminItems = { section: 'Admin', items: [
         { to: '/seed', icon: Settings, label: 'Seeder', description: 'Re-aggregation data manual' },
+        { to: '/premium-seeder', icon: Upload, label: 'Seeder Premi', description: 'Import premi dari Excel' },
         { to: '/spreadsheet-sync', icon: Database, label: 'Spreadsheet Sync', description: 'Sinkronisasi spreadsheet' },
         { to: '/employee-directory', icon: Users, label: 'HR Employee Directory', description: 'Database HR' },
         { to: '/test/components', icon: Settings, label: 'Lainnya', description: 'Routing sementara' },

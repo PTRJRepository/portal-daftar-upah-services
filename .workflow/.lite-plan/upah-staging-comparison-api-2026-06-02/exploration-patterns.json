@@ -1,0 +1,78 @@
+{
+  "_metadata": {
+    "exploration_angle": "patterns",
+    "exploration_index": 1,
+    "task_summary": "GET /upah/staging-comparison patterns in payroll.ts and stagingRoutes.ts"
+  },
+  "relevant_files": [
+    {
+      "path": "backend/src/api/payroll.ts",
+      "lines": "1-50",
+      "relevance": 0.95,
+      "role": "primary-target",
+      "rationale": "Target file for new /upah/staging-comparison route; existing /upah/* routes establish response envelope, middleware order, and rate-limit setup."
+    },
+    {
+      "path": "backend/src/api/stagingRoutes.ts",
+      "lines": "1-200",
+      "relevance": 0.9,
+      "role": "reference",
+      "rationale": "Sibling route group using Elysia prefix /api/staging; defines response envelope { success, data } pattern and try/catch + logError + set.status=500 convention."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "lines": "932-980",
+      "relevance": 0.95,
+      "role": "reference",
+      "rationale": "monthlyLoosefruit method already computes per-employee staging_bunches vs prod_mt with delta and status — direct pattern to reuse, just rename brondol context and return as /upah/staging-comparison response."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.test.ts",
+      "lines": "1-39",
+      "relevance": 0.7,
+      "role": "reference",
+      "rationale": "Bun:test style; describe/it/expect; integration-style against live DB. Use same style for new endpoint test."
+    }
+  ],
+  "patterns": {
+    "framework": "Elysia + Bun",
+    "response_envelope": "{ success: true, data: { rows, summary } } for /api/staging/* ; /upah/* uses raw results or similar shape — check payroll.ts existing routes",
+    "periode_parsing": "month/year integer params typically; date strings YYYY-MM-DD for daily",
+    "error_handling": "try/catch with logError(\"StagingAPI\", msg, e); set.status = 500; return { success: false, error: e.message }",
+    "rate_limiting": "write endpoints have rate limiter (per Phase 4.4 commit); GET endpoints are unrate-limited",
+    "validation_approach": "Elysia t.Object schema on query/params; t.Optional for optional fields; t.String for strings, t.Numeric for numbers"
+  },
+  "integration_points": [
+    {"file": "backend/src/api/payroll.ts", "lines": "end-of-file or near other /upah/* routes", "significance": "Add new GET /upah/staging-comparison route here"},
+    {"file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts", "lines": "932-980", "significance": "Reuse monthlyLoosefruit pattern or wrap it; ensure brondol selisih is computed"}
+  ],
+  "constraints": [
+    "User asked for /upah/staging-comparison (port 3001, no /api prefix — payroll.ts mounted at /upah)",
+    "Query param: periode=YYYY-MM (string, parsed to year+month ints)",
+    "Response: per-employee rows with identity + staging_brondol + plantware_brondol + selisih",
+    "Staging and Plantware are different DBs in this codebase (stagingDb = Database.getStagingInstance, prodDb = Database.getInstance)"
+  ],
+  "clarification_needs": [
+    {
+      "id": "response-shape",
+      "question": "Response shape: which envelope?",
+      "context": "/api/staging/* uses { success, data: { rows, summary } }; /upah/* routes in payroll.ts may differ. Need to confirm consistency.",
+      "options": ["{ success: true, data: { rows, summary } }", "{ success: true, data: { rows, total_selisih } }", "raw array"],
+      "recommended": 0
+    },
+    {
+      "id": "include-zero-selisih",
+      "question": "Include employees with zero selisih (staging == plantware) in response?",
+      "context": "Some use cases want only diffs (staging != plantware); others want full reconciliation including matches.",
+      "options": ["only non-zero selisih (diff only)", "all employees (matches + diffs)", "all employees + flag match/diff"],
+      "recommended": 2
+    },
+    {
+      "id": "brondol-unit",
+      "question": "Brondol unit: bunches (staging.LOOSEFRUIT count) vs MT (prod PR_LOOSEFRUITLN.MT)?",
+      "context": "These are different units. Staging scannerdata stores LOOSEFRUIT as bunch count; prod table stores MT. The selisih is unit-incompatible. Options: (a) keep both, no subtraction; (b) only compare employee presence; (c) sum staging_bunches - prod_mt and document unit warning.",
+      "options": ["keep both fields, no selisih (staging_brondol_bunches, plantware_brondol_mt)", "presence-only (employee exists in both? yes/no)", "compute staging_bunches - prod_mt with unit-warning field"],
+      "recommended": 0
+    }
+  ]
+}

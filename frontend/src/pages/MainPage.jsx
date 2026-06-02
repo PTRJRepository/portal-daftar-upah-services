@@ -798,7 +798,7 @@ export default function MainPage({ lockedDiv = null }) {
                 Selamat Datang, {user?.username}
               </h1>
               <p style={{ margin: '0.5rem 0 0', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '400' }}>
-                Sistem Manajemen Data Upah dan Laporan Operasional
+                Sistem Daftar Upah Karyawan dan Laporan Operasional
               </p>
             </div>
           </div>
@@ -834,7 +834,7 @@ export default function MainPage({ lockedDiv = null }) {
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', alignItems: 'flex-start' }}>
                 {/* Left Column: Calendar (Fixed Width) */}
-                <div style={{ flex: '0 0 320px', minWidth: '280px' }}>
+                <div style={{ flex: '0 0 280px', minWidth: '260px' }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#475569', marginBottom: '0.75rem', letterSpacing: '0.025em' }}>
                     PERIODE LAPORAN
                   </label>
@@ -842,6 +842,7 @@ export default function MainPage({ lockedDiv = null }) {
                     month={month}
                     year={year}
                     onChange={(m, y) => { setMonth(m); setYear(y); }}
+                    compact
                   />
                 </div>
 
@@ -1022,10 +1023,10 @@ export default function MainPage({ lockedDiv = null }) {
               >
                 <div>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#0ea5e9' }}>📋</span> Laporan Operasional
+                    <span style={{ color: '#0ea5e9' }}>📋</span> Daftar Upah Karyawan
                   </h3>
                   <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '2rem' }}>
-                    Akses detail upah harian, perhitungan premi, lembur, dan potongan per karyawan. Data ditampilkan dalam format grid interaktif.
+                    Tampilkan isi daftar upah per karyawan: HK, premi, lembur, potongan, dan upah bersih dalam grid interaktif.
                   </p>
                 </div>
                 <button
@@ -1047,7 +1048,7 @@ export default function MainPage({ lockedDiv = null }) {
                     boxShadow: (!division || !gang || gangLoading) ? 'none' : '0 4px 6px -1px rgba(30, 58, 138, 0.3)'
                   }}
                 >
-                  {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DATA UPAH'}
+                  {gangLoading ? 'Memuat Data...' : 'TAMPILKAN DAFTAR UPAH'}
                 </button>
               </div>
 

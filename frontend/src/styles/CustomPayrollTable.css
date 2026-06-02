@@ -1,9 +1,9 @@
 /* CustomPayrollTable.css - Solid Multi-Level Headers */
 
 .payroll-table-container {
-    overflow: auto;
-    overscroll-behavior: contain;
-    overflow-anchor: none;
+    overflow-x: auto;
+    overflow-y: scroll;
+    overscroll-behavior-y: none;
     position: relative;
     height: 100%;
     padding-bottom: var(--payroll-bottom-safe-area, 56px);

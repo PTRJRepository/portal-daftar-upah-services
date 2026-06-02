@@ -51,6 +51,7 @@ export class Config {
     // Staging Database (for FFB scanner data)
     public static readonly DB_STAGING_DATABASE: string = env.DB_STAGING_DATABASE || "staging_PTRJ_iFES_Plantware";
     public static readonly DB_STAGING_PROFILE: string = env.DB_STAGING_PROFILE || "SERVER_PROFILE_2";
+    public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === "true");
 
     // Extended Transaction Database (for history detail - Taskreg, ADTrans)
     public static readonly DB_EXTEND_TRANS_DATABASE: string = env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi";

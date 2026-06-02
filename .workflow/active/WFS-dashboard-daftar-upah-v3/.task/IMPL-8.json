@@ -2,12 +2,30 @@
   "id": "IMPL-8",
   "title": "Table scroll controls and animations cleanup",
   "description": "Keep chapter navigation useful while reducing motion and preventing row/gang animations during normal scroll.",
-  "depends_on": ["IMPL-7"],
-  "files": ["frontend/src/components/PayrollScrollChapterBar.jsx", "frontend/src/components/CustomPayrollTable.jsx", "frontend/src/styles/CustomPayrollTable.css"],
+  "depends_on": [
+    "IMPL-7"
+  ],
+  "files": [
+    "frontend/src/components/PayrollScrollChapterBar.jsx",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/styles/CustomPayrollTable.css"
+  ],
   "convergence": [
     "Scroll chapter indicator can update without restyling table cells.",
     "Streaming animations do not run on normal scroll.",
     "Reduced-motion preference is respected."
   ],
-  "meta": { "type": "frontend_motion", "agent": "code_developer" }
+  "meta": {
+    "type": "frontend_motion",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

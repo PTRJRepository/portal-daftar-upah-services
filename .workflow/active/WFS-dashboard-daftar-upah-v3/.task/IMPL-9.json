@@ -2,7 +2,11 @@
   "id": "IMPL-9",
   "title": "Focused tests for dashboard and table stability",
   "description": "Add or update focused tests for role visibility, dashboard routes, responsive scale stability, and table visual-stability guardrails.",
-  "depends_on": ["IMPL-3", "IMPL-6", "IMPL-7"],
+  "depends_on": [
+    "IMPL-3",
+    "IMPL-6",
+    "IMPL-7"
+  ],
   "files": [
     "frontend/src/pages/ProfessionalDashboard.test.jsx",
     "frontend/src/layouts/DashboardLayout.test.jsx",
@@ -15,5 +19,17 @@
     "Table scale/row-height stability has regression coverage where practical.",
     "Scroll-driven active-group visual shifts are guarded by tests or source assertions."
   ],
-  "meta": { "type": "frontend_tests", "agent": "tdd_developer" }
+  "meta": {
+    "type": "frontend_tests",
+    "agent": "tdd_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
 }

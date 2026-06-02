@@ -126,6 +126,7 @@ const SalaryRangeDetailPage = ({
                             month={month}
                             year={year}
                             onChange={(m, y) => { setMonth(m); setYear(y); }}
+                            compact
                         />
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

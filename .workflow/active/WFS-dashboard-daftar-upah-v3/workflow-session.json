@@ -3,7 +3,6 @@
   "createdAt": "2026-06-01T00:00:00+07:00",
   "updatedAt": "2026-06-01T13:35:00+07:00",
   "mode": "plan",
-  "status": "replanned",
   "title": "Perbaikan design dashboard daftar upah",
   "objective": "Redesign dashboard payroll menjadi modern enterprise dashboard role-aware, serta stabilkan tampilan tabel daftar upah agar font, warna, tinggi, dan posisi tabel tidak berubah saat scroll.",
   "constraints": [
@@ -13,5 +12,14 @@
     "Gunakan role-aware visibility, bukan route removal",
     "Hilangkan perubahan visual tabel yang dipicu scroll, terutama font/color/height shifting",
     "Utamakan boring solution, config-driven modules, dan perubahan incremental"
-  ]
+  ],
+  "status": "completed",
+  "execution_started_at": "2026-06-01T08:38:22.4330223Z",
+  "completed_at": "2026-06-01T08:38:22.4330223Z",
+  "validation": {
+    "focused_tests": "passed",
+    "build": "passed",
+    "http_smoke": "passed",
+    "browser_visual": "unavailable_iab"
+  }
 }

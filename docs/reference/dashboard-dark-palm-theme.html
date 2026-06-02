@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payroll Dashboard - Dark Palm Theme</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg: #08111f;
+      --bg-soft: #0d1727;
+      --panel: #101c2e;
+      --card: #111d2e;
+      --card-2: #15243a;
+      --border: rgba(255,255,255,.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --blue: #3b82f6;
+      --cyan: #22d3ee;
+      --green: #22c55e;
+      --orange: #f97316;
+      --purple: #8b5cf6;
+      --red: #ef4444;
+      --shadow: 0 20px 60px rgba(0,0,0,.36);
+      --radius-xl: 24px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(34,197,94,.11), transparent 25%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 76px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: 76px;
+      background: #07101d;
+      border-right: 1px solid var(--border);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 10px;
+      gap: 16px;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: #fff;
+      display: grid;
+      place-items: center;
+      color: #dc2626;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .nav-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: #91a4c4;
+      cursor: pointer;
+      transition: .2s;
+      font-size: 19px;
+    }
+
+    .nav-icon.active,
+    .nav-icon:hover {
+      color: white;
+      background: rgba(59,130,246,.18);
+      box-shadow: inset 3px 0 0 var(--blue);
+    }
+
+    .logout { margin-top: auto; }
+
+    .main {
+      grid-column: 2;
+      min-width: 0;
+    }
+
+    .topbar {
+      height: 64px;
+      background: rgba(13,23,39,.92);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+    }
+
+    .top-left,
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .hamburger,
+    .top-btn,
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+    }
+
+    .avatar {
+      background: var(--blue);
+      color: white;
+      font-weight: 800;
+      border: 0;
+    }
+
+    .container {
+      max-width: 1680px;
+      margin: 0 auto;
+      padding: 28px 34px 70px;
+    }
+
+    .hero {
+      height: 250px;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      position: relative;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      background-image:
+        linear-gradient(90deg, rgba(8,17,31,.95) 0%, rgba(8,17,31,.68) 48%, rgba(8,17,31,.35) 100%),
+        url("https://images.unsplash.com/photo-1599220144359-d4b10121e439?auto=format&fit=crop&w=1800&q=80");
+      background-size: cover;
+      background-position: center;
+      padding: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .hero h1 {
+      font-size: 44px;
+      margin: 0 0 8px;
+      letter-spacing: -1.4px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 16px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .badge {
+      padding: 9px 13px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.72);
+      border: 1px solid var(--border);
+      color: #dbeafe;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .period-box {
+      min-width: 190px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(8,17,31,.72);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+
+    .period-box small {
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .period-box strong {
+      font-size: 22px;
+    }
+
+    .filter-card {
+      position: relative;
+      margin: -48px 22px 34px;
+      background: rgba(16,28,46,.92);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 26px;
+      z-index: 5;
+    }
+
+    .filter-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -.7px;
+    }
+
+    .section-subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1.6fr 1.1fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .field label {
+      display: block;
+      color: #8fa3c4;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .input {
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .btn {
+      height: 52px;
+      padding: 0 24px;
+      border: 0;
+      border-radius: 14px;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(37,99,235,.3);
+      white-space: nowrap;
+    }
+
+    .section {
+      margin-bottom: 34px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .floating-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: rgba(59,130,246,.13);
+      color: var(--blue);
+      font-size: 23px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+
+    .kpi-card,
+    .chart-card,
+    .module-card,
+    .insight-card {
+      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 12px 34px rgba(0,0,0,.16);
+    }
+
+    .kpi-card {
+      min-height: 146px;
+      padding: 23px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card:after {
+      content: "";
+      position: absolute;
+      inset: auto -20px -35px auto;
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: var(--glow);
+      opacity: .17;
+      filter: blur(2px);
+    }
+
+    .kpi-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-label {
+      color: #aab7cf;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .trend {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(34,197,94,.12);
+      color: #86efac;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .kpi-value {
+      font-size: 31px;
+      line-height: 1.05;
+      font-weight: 800;
+      margin: 18px 0 8px;
+      letter-spacing: -.9px;
+    }
+
+    .kpi-note {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 20px;
+    }
+
+    .chart-card {
+      padding: 24px;
+      min-height: 390px;
+    }
+
+    .chart-head,
+    .module-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .select {
+      color: #dbeafe;
+      background: rgba(59,130,246,.10);
+      border: 1px solid rgba(59,130,246,.22);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .insights {
+      display: grid;
+      gap: 14px;
+    }
+
+    .insight-card {
+      min-height: 87px;
+      padding: 17px;
+      display: grid;
+      grid-template-columns: 46px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .insight-icon,
+    .module-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      font-size: 21px;
+      background: rgba(139,92,246,.14);
+      color: #c4b5fd;
+    }
+
+    .insight-card strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .insight-card span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .module-section {
+      background: rgba(16,28,46,.55);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      margin-bottom: 22px;
+    }
+
+    .module-count {
+      color: var(--green);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+
+    .module-card {
+      min-height: 168px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      transition: .2s ease;
+    }
+
+    .module-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(59,130,246,.35);
+      background: linear-gradient(180deg, rgba(59,130,246,.12), rgba(255,255,255,.02));
+    }
+
+    .module-card h3 {
+      margin: 20px 0 8px;
+      font-size: 18px;
+    }
+
+    .module-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .module-card a {
+      margin-top: auto;
+      color: #60a5fa;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .activity-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .status-box {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 17px;
+      margin-bottom: 12px;
+    }
+
+    .status-box small {
+      display: block;
+      color: #90a4c6;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .status-box strong {
+      font-size: 18px;
+    }
+
+    @media (max-width: 1200px) {
+      .filter-grid,
+      .kpi-grid,
+      .module-grid,
+      .analytics-grid,
+      .activity-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .hero { height: auto; min-height: 230px; }
+    }
+
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .main { grid-column: 1; }
+      .container { padding: 18px; }
+      .hero { padding: 24px; display: block; }
+      .hero h1 { font-size: 32px; }
+      .period-box { margin-top: 20px; }
+      .filter-card { margin: -24px 0 28px; }
+      .filter-grid,
+      .kpi-grid,
+      .module-grid,
+      .analytics-grid,
+      .activity-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">RJ</div>
+      <div class="nav-icon active">⌂</div>
+      <div class="nav-icon">▤</div>
+      <div class="nav-icon">▥</div>
+      <div class="nav-icon">$</div>
+      <div class="nav-icon">◌</div>
+      <div class="nav-icon">✓</div>
+      <div class="nav-icon">◎</div>
+      <div class="nav-icon">⚙</div>
+      <div class="nav-icon logout">↪</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="top-left">
+          <div class="hamburger">☰</div>
+          <strong>PT REBINMAS JAYA</strong>
+        </div>
+        <div class="top-right">
+          <div class="top-btn">🔔</div>
+          <span style="color:#94a3b8;font-size:13px;font-weight:700;">ADMIN</span>
+          <div class="avatar">U</div>
+        </div>
+      </header>
+
+      <div class="container">
+        <section class="hero">
+          <div>
+            <h1>Dashboard Payroll</h1>
+            <p>Sistem Manajemen Data Upah - PT Rebinmas Jaya</p>
+            <div class="badge-row">
+              <div class="badge">Role: Payroll Admin</div>
+              <div class="badge">Estate: PG1A</div>
+              <div class="badge">Gang: A1T - Transport Air Batu</div>
+            </div>
+          </div>
+          <div class="period-box">
+            <small>Periode Aktif</small>
+            <strong>Mei 2026</strong>
+          </div>
+        </section>
+
+        <section class="filter-card">
+          <div class="filter-head">
+            <div>
+              <div class="eyebrow">Filter Bar</div>
+              <h2 class="section-title">Filter Payroll</h2>
+              <p class="section-subtitle">Sticky filter untuk periode, divisi, gang/kemandoran, lalu tampilkan Daftar Upah lebih cepat.</p>
+            </div>
+            <div class="floating-icon">⌁</div>
+          </div>
+
+          <div class="filter-grid">
+            <div class="field">
+              <label>Periode</label>
+              <div class="input">Mei 2026 <span>⌄</span></div>
+            </div>
+            <div class="field">
+              <label>Divisi</label>
+              <div class="input">PG1A <span>⌄</span></div>
+            </div>
+            <div class="field">
+              <label>Gang / Kemandoran</label>
+              <div class="input">A1T - TRANSPORT AIR BATU <span>⌄</span></div>
+            </div>
+            <div class="field">
+              <label>Estate</label>
+              <div class="input">PG1A</div>
+            </div>
+            <button class="btn">Tampilkan Daftar Upah</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <div>
+              <div class="eyebrow" style="color:var(--green)">KPI</div>
+              <h2 class="section-title">Payroll Snapshot</h2>
+              <p class="section-subtitle">Empat kartu utama untuk scan cepat kondisi payroll dan efisiensi biaya.</p>
+            </div>
+            <div class="floating-icon" style="color:var(--green);background:rgba(34,197,94,.13)">$</div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card" style="--glow:#3b82f6">
+              <div class="kpi-top"><span class="kpi-label">Total Upah</span><span class="trend">+8%</span></div>
+              <div class="kpi-value">Rp 9.207.706.703</div>
+              <div class="kpi-note">vs bulan lalu · PG1A · A1T</div>
+            </div>
+            <div class="kpi-card" style="--glow:#22c55e">
+              <div class="kpi-top"><span class="kpi-label">Total HK</span><span class="trend">+3%</span></div>
+              <div class="kpi-value">336</div>
+              <div class="kpi-note">produktivitas stabil</div>
+            </div>
+            <div class="kpi-card" style="--glow:#8b5cf6">
+              <div class="kpi-top"><span class="kpi-label">Jumlah Karyawan</span><span class="trend">±0%</span></div>
+              <div class="kpi-value">1.823</div>
+              <div class="kpi-note">headcount aktif</div>
+            </div>
+            <div class="kpi-card" style="--glow:#f97316">
+              <div class="kpi-top"><span class="kpi-label">Cost / HK</span><span class="trend" style="background:rgba(249,115,22,.13);color:#fdba74">+2%</span></div>
+              <div class="kpi-value">Rp 27.403</div>
+              <div class="kpi-note">efisiensi perlu review</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <div>
+              <div class="eyebrow" style="color:var(--purple)">Analytics</div>
+              <h2 class="section-title">Insight Payroll</h2>
+              <p class="section-subtitle">Gabungan grafik A3 dan struktur modular D2.</p>
+            </div>
+            <div class="floating-icon" style="color:var(--purple);background:rgba(139,92,246,.14)">〽</div>
+          </div>
+
+          <div class="analytics-grid">
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3 class="card-title">Payroll Trend & Cost / HK</h3>
+                <div class="select">6 Bulan Terakhir ▾</div>
+              </div>
+              <canvas id="payrollChart" height="130"></canvas>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-head">
+                <h3 class="card-title">Top Divisi Payroll</h3>
+                <div class="select">Mei 2026</div>
+              </div>
+              <canvas id="donutChart" height="170"></canvas>
+            </div>
+          </div>
+
+          <div class="insights" style="grid-template-columns:repeat(4,1fr);display:grid;margin-top:20px;">
+            <div class="insight-card"><div class="insight-icon">✓</div><div><strong>Validasi siap</strong><span>Filter lengkap, data dapat dibuka.</span></div></div>
+            <div class="insight-card"><div class="insight-icon">↗</div><div><strong>Total upah naik</strong><span>Naik 8% dari periode sebelumnya.</span></div></div>
+            <div class="insight-card"><div class="insight-icon">$</div><div><strong>Cost / HK review</strong><span>Ada kenaikan 2% bulan ini.</span></div></div>
+            <div class="insight-card"><div class="insight-icon">◎</div><div><strong>PG1A dominan</strong><span>Kontribusi payroll terbesar.</span></div></div>
+          </div>
+        </section>
+
+        <section class="module-section">
+          <div class="module-head">
+            <div>
+              <div class="eyebrow" style="color:var(--orange)">Modules</div>
+              <h2 class="section-title">Role Specific Modules</h2>
+              <p class="section-subtitle">Bento modules sesuai role aktif: Payroll Admin.</p>
+            </div>
+            <span class="module-count">7 modules</span>
+          </div>
+
+          <div class="module-grid">
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(59,130,246,.14);color:#93c5fd">▤</div>
+              <h3>Daftar Upah</h3>
+              <p>Tampilkan isi daftar upah karyawan sesuai divisi akses.</p>
+              <a href="#">Open module →</a>
+            </div>
+            <div class="module-card">
+              <div class="module-icon">▥</div>
+              <h3>Summary Report</h3>
+              <p>Ringkasan upah dan rekap utama.</p>
+              <a href="#">Open module →</a>
+            </div>
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(34,197,94,.14);color:#86efac">☘</div>
+              <h3>Upah IJL</h3>
+              <p>Laporan upah tenaga IJL.</p>
+              <a href="#">Open module →</a>
+            </div>
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(249,115,22,.14);color:#fdba74">$</div>
+              <h3>Report Pajak</h3>
+              <p>Unduh dan audit laporan pajak.</p>
+              <a href="#">Open module →</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="module-section">
+          <div class="module-head">
+            <div>
+              <div class="eyebrow" style="color:var(--red)">Verification</div>
+              <h2 class="section-title">Validasi & Koreksi</h2>
+              <p class="section-subtitle">Akses cepat khusus Payroll Admin.</p>
+            </div>
+            <span class="module-count" style="color:#fb7185">3 modules</span>
+          </div>
+
+          <div class="module-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(239,68,68,.14);color:#fca5a5">⌕</div>
+              <h3>Verifikasi Data</h3>
+              <p>Verifikasi konsistensi data payroll.</p>
+              <a href="#">Open module →</a>
+            </div>
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(249,115,22,.14);color:#fdba74">◎</div>
+              <h3>Seeder</h3>
+              <p>Re-aggregation data manual.</p>
+              <a href="#">Open module →</a>
+            </div>
+            <div class="module-card">
+              <div class="module-icon" style="background:rgba(239,68,68,.14);color:#fca5a5">⚙</div>
+              <h3>Koreksi</h3>
+              <p>Buka daftar upah untuk koreksi dan validasi manual.</p>
+              <a href="#">Open module →</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="activity-grid">
+          <div class="chart-card">
+            <div class="eyebrow">Reports</div>
+            <h2 class="section-title">Quick Access</h2>
+            <p class="section-subtitle">Shortcut tambahan ke laporan pendukung yang masih relevan.</p>
+            <div class="status-box"><small>Daftar Upah</small><strong>Siap ditampilkan →</strong></div>
+            <div class="status-box"><small>Summary Report</small><strong>Rekap Mei 2026 tersedia →</strong></div>
+          </div>
+
+          <div class="chart-card">
+            <div class="eyebrow" style="color:var(--green)">Activity & Status</div>
+            <h2 class="section-title">Dashboard Context</h2>
+            <p class="section-subtitle">Ringkas konteks kerja dashboard.</p>
+            <div class="status-box"><small>Periode Aktif</small><strong>Mei 2026</strong></div>
+            <div class="status-box"><small>Role Aktif</small><strong>Payroll Admin</strong></div>
+            <div class="status-box" style="background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.25);"><small>Status</small><strong style="color:#86efac">Filter siap dipakai</strong></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const lineCtx = document.getElementById('payrollChart');
+    new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels: ['Des', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei'],
+        datasets: [
+          {
+            label: 'Total Upah',
+            data: [4.8, 6.2, 5.6, 7.2, 7.8, 9.2],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,.18)',
+            fill: true,
+            tension: .4,
+            pointRadius: 4
+          },
+          {
+            label: 'Cost / HK',
+            data: [3.1, 3.4, 3.2, 4.1, 4.4, 4.9],
+            borderColor: '#f97316',
+            backgroundColor: 'rgba(249,115,22,.08)',
+            fill: true,
+            tension: .4,
+            pointRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        }
+      }
+    });
+
+    const donutCtx = document.getElementById('donutChart');
+    new Chart(donutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['PG1A', 'PG1B', 'PG2A', 'PG2B', 'Lainnya'],
+        datasets: [{
+          data: [38, 24, 20, 12, 6],
+          backgroundColor: ['#3b82f6', '#22c55e', '#8b5cf6', '#f97316', '#64748b'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        cutout: '64%',
+        plugins: { legend: { position: 'right', labels: { color: '#cbd5e1', boxWidth: 12 } } }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+{
+  "id": "TASK-001",
+  "title": "Remove kehadiran fallback in tunjangan_jabatan multiplier",
+  "scope": "backend/src/services/payroll/payrollAutoBufferService.ts",
+  "action": "Fix",
+  "description": "Replace attendanceDays fallback (hariKerja ?? kehadiran) with strict hariKerja usage. Apply formula tunjangan_jabatan = (tunjangan / 25) * hari_kerja by setting jabatanAmount = jabatanRateResolved * hariKerja. When hari_kerja=0, tunjangan_jabatan must be 0 (no silent inflation from kehadiran).",
+  "files": [
+    {
+      "path": "backend/src/services/payroll/payrollAutoBufferService.ts",
+      "action": "modify",
+      "target": "calculateAutomaticValues body (lines 255-288)",
+      "change": "Remove attendanceDays variable and the kehadiran fallback. Use hariKerja directly at the 3 use sites (jabatanAmount, jabatanRate, masaKerjaRate). Apply (tunjangan/25)*hari_kerja = jabatanRateResolved * hariKerja. Guard remains: hariKerja > 0 before multiplication so null/zero yields 0."
+    }
+  ],
+  "implementation": [
+    "Delete the kehadiran normalization and attendanceDays ternary at lines 255-257; keep only `const hariKerja = Math.max(0, toNumber(input.hariKerja));`",
+    "At line 268, replace `attendanceDays` with `hariKerja` in the jabatanAmountAuto multiplication: `(jabatanRateResolved as number) * hariKerja`",
+    "At line 281, replace `attendanceDays` with `hariKerja` in the jabatanRate divisor",
+    "At line 284, replace `attendanceDays` with `hariKerja` in the masaKerjaRate divisor (masaKerjaAmount is config-driven, only the rate denominator changes)",
+    "Verify null/undefined hariKerja resolves to 0 via Math.max(0, toNumber(...)) so no NaN leaks into the result",
+    "Confirm forced-zero path (shouldForceZeroJabatanRate) still short-circuits to 0 before reaching multiplication"
+  ],
+  "reference": {
+    "pattern": "Service-internal math refactor with strict input contract; preserve public API shape",
+    "files": [
+      "backend/src/services/payroll/payrollAutoBufferService.ts",
+      "backend/src/services/payroll/payrollAutoBufferService.test.ts"
+    ],
+    "examples": "Use existing toNumber + Math.max(0, ...) defensive pattern; keep result object structure identical"
+  },
+  "convergence": {
+    "criteria": [
+      "Variable `attendanceDays` is removed from payrollAutoBufferService.ts (no occurrences remaining)",
+      "Variable `kehadiran` no longer participates in tunjangan_jabatan calculation (only read via input, never used as multiplier)",
+      "When hari_kerja=0 and kehadiran>0, calculateAutomaticValues returns jabatanAmount=0 (not silently inflated by kehadiran)",
+      "When hari_kerja>0, jabatanAmount = jabatanRateResolved * hari_kerja (equivalent to (tunjangan/25)*hari_kerja since rate is daily)",
+      "Public API surface unchanged: PayrollAutoBufferInput and PayrollAutoBufferResult field names/types identical",
+      "calculateVerificationValues still works for db_ptrj comparison path (uses hariKerja only, no kehadiran)",
+      "No new TypeScript errors; no regression in masaKerjaAmount (still config-driven lookup)"
+    ]
+  },
+  "depends_on": [],
+  "rationale": {
+    "chosen_approach": "Remove attendanceDays fallback entirely and use hariKerja at all 3 use sites",
+    "alternatives_considered": [
+      "Keep attendanceDays but rename to clarify (rejected: still hides the bug if someone later adds another fallback)",
+      "Add a boolean flag to disable fallback per call (rejected: adds API surface, callers would need to know to set it)",
+      "Use hariKerja only in jabatanAmount, keep attendanceDays for rate display (rejected: rate denominator must match multiplier to be meaningful)"
+    ],
+    "decision_factors": [
+      "User explicitly confirmed strict hari_kerja with no fallback",
+      "Public API contract preservation (no caller changes needed)",
+      "Minimal diff (1 file modified, ~5 line changes)",
+      "Removes entire class of fallback bugs going forward"
+    ],
+    "tradeoffs": "Behavior change: callers that previously relied on the silent fallback (hari_kerja=0, kehadiran>0 yielding non-zero) will now see 0. Per user confirmation, this is the intended fix."
+  },
+  "test": {
+    "manual_checks": [
+      "Run existing 6 tests in payrollAutoBufferService.test.ts — all must pass (they use hariKerja===kehadiran so unaffected)",
+      "Inspect calculateAutomaticValues output for sample input {jabatanText:'mandor panen', hariKerja:0, kehadiran:25, ...}: expect jabatanAmount=0 (was: 3500*25=87500 before fix)",
+      "Inspect calculateAutomaticValues output for {jabatanText:'mandor panen', hariKerja:20, kehadiran:25, ...}: expect jabatanAmount=3500*20=70000 (uses hariKerja, not the larger kehadiran)"
+    ],
+    "success_metrics": [
+      "Zero TypeScript compile errors after change",
+      "All 6 existing bun:test cases pass",
+      "TASK-002 new test cases pass (2+ new edge-case tests)"
+    ],
+    "unit": [
+      "test_calculateAutomaticValues_zero_hariKerja_with_positive_kehadiran_returns_zero_jabatan",
+      "test_calculateAutomaticValues_hariKerja_strict_no_kehadiran_fallback"
+    ],
+    "integration": []
+  },
+  "risks": [
+    {
+      "description": "Caller services may have downstream code that depended on inflated values (e.g. aggregation_history seeded with old values)",
+      "probability": "Low",
+      "impact": "Medium",
+      "mitigation": "Search callers (dataExtractorService, autoBufferManualAdjustmentSeederService) for hard-coded expectations; both consume the service result without further multiplication",
+      "fallback": "Re-run aggregation_history seeder after fix to refresh cached values"
+    },
+    {
+      "description": "Excel/HTML exports that recompute on-the-fly will see new values, but cached/stored exports (if any) retain old values",
+      "probability": "Low",
+      "impact": "Low",
+      "mitigation": "Per exploration findings, exports recompute live from the service; no cache layer identified",
+      "fallback": "Invalidate export cache or regenerate affected periods"
+    }
+  ],
+  "code_skeleton": {
+    "interfaces": [],
+    "key_functions": [
+      {
+        "signature": "calculateAutomaticValues(input: PayrollAutoBufferInput): PayrollAutoBufferResult",
+        "purpose": "Compute auto-buffer values with strict hariKerja multiplier (no kehadiran fallback)",
+        "returns": "PayrollAutoBufferResult with jabatanAmount = jabatanRateResolved * hariKerja (or 0 when hariKerja=0)"
+      }
+    ],
+    "classes": []
+  }
+}

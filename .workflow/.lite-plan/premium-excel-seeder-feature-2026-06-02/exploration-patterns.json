@@ -1,0 +1,344 @@
+{
+  "test": true,
+  "project_structure": "Full-stack TypeScript monorepo (backend/frontend). Backend is ElysiaJS HTTP server with MSSQL database integration via mssql driver. Service layer organized by domain: payroll components (PremiService, PotonganService), extractors (PremiumExtractor, DeductionExtractor, etc), Excel services (premiumImportService, otherIncomesExcelService, ptkpExcelDryRunService, daftarUpahExcelService, taxReportExcelService), manual adjustments (manualAdjustmentService, manualAdjustmentApplier, manualAdjustmentNaming). Data flows: PR_ADTRANS tables (live + ARC archive) -> PremiumExtractor/PayrollPremiPotonganRepository -> PremiService -> payroll totals. Manual adjustments override/add to extracted premiums via manualAdjustmentApplier. Premium definitions stored as JSON file (backend/data/premium_definitions.json) managed by PremiumDefinitionService. Seeders follow progress-tracked pattern (HistorySeederService). API routes in backend/src/api/ are grouped by ElysiaJS route files (payroll.ts, aggregationSeederRoutes.ts, etc).",
+  "patterns": "## Existing Patterns Relevant to Premium Excel Seeder\n\n### 1. Excel Import Pattern (premiumImportService.ts)\nStructure: Load ExcelJS workbook, validate each row (empcode, subblok, jumlah, jenis), group by empcode+jenis, resolve premium definition, build metadata_json, saveAdjustment(). Current implementation hardcodes columns 1-5 and only supports PREMI PRUNING + PREMI RAKING. New seeder must generalize to all premium types from premium_definitions.json.\n\n### 2. Premium Definition Registry Pattern (premiumDefinitionService.ts)\nJSON file to singleton service with fingerprint-based cache invalidation. getActiveDefinitions() returns all active entries. Each definition carries input_type that determines UI behavior and database structure. The input_type enum (amount, blok, exp, kendaraan, blok,exp) is the key driver for column mapping.\n\n### 3. Metadata JSON Pattern (PremiumMetadata types)\nFour metadata shapes based on input_type: MetadataBlok ({input_type:blok, items:BlokItem[], total_amount}), MetadataExp ({input_type:exp, expense_code, jumlah, total_amount}), MetadataKendaraan ({input_type:kendaraan, items:KendaraanItem[], total_amount}), MetadataBlokExp ({input_type:blok,exp, blok_items, expense, total_amount}).\n\n### 4. Manual Adjustment Save Pattern (manualAdjustmentService.ts)\nsaveAdjustment(input) writes to payroll_manual_adjustments table with fields: period_month, period_year, emp_code, nik, gang_code, division_code, adjustment_type, adjustment_name, amount, ad_code, task_desc, remarks (pipe-delimited with sync:MANUAL and match:MANUAL markers), metadata_json.\n\n### 5. ExcelJS Generation Pattern (otherIncomesExcelService.ts)\nCreate workbook, addWorksheet, mergeCells for title, headerRow with font/fill/border formatting (black bg with white fg), set column widths, iterate data rows with borders and number formatting, subtotal rows, grand total, signature section, writeBuffer.\n\n### 6. Dry-Run Preview Pattern (ptkpExcelDryRunService.ts)\nParse Excel, validate each row against DB, classify action (READY_UPDATE, WOULD_INSERT, ALREADY_SAME, SKIP_CONFLICT, etc), build summary, return dry_run:true result with action breakdown.\n\n### 7. Seeder Progress Pattern (historySeederService.ts, aggregationSeederRoutes.ts)\nGlobal progress object with is_running, current_step, counts. updateProgress(), getProgress(), forceReset() on timeout. Result interface: success, imported/skipped counts, errors array.\n\n### 8. Service Singleton Pattern\nEvery service class uses private static instance + getInstance() pattern. Config and Database singletons injected similarly.\n\n### 9. API Route Pattern (ElysiaJS)\nGroup routes, .post(path, handler, { body: t.Object({...}) }), dynamic import for services, return { success, ...result }.\n\n### 10. Field Name Normalization Pattern\nMultiple normalization layers: normalizeStoredAdjustmentName() (trim+uppercase+single-space), toManualAdjustmentFieldName() (type_prefix + normalized_suffix), normalizeAdtransPremiField() (strip tunjangan_premi_ prefix, snake_case). Seeder must produce adjustment_name values that survive all normalization layers.",
+  "dependencies": "### Internal Dependencies\n- ExcelJS (^4.4.0): All Excel read/write. Used by premiumImportService, otherIncomesExcelService, ptkpExcelDryRunService, daftarUpahExcelService, taxReportExcelService. Already in package.json.\n- PremiumDefinitionService: Reads premium_definitions.json. Must be consulted for all premium type lookups.\n- ManualAdjustmentService: Writes to payroll_manual_adjustments table. The single write target for all seeded premiums.\n- manualAdjustmentNaming.ts: Field name normalization (toManualAdjustmentFieldName). Seeder must produce names compatible with this.\n- adtransDocDescMapping.ts: Maps database DocDesc values to normalized premium field names.\n- manualAdjustmentApplier.ts: Merges seeded + extracted premiums in final payroll calculation.\n- Database (db/client.ts): MSSQL connection via mssql driver. May be needed for empCode/NIK validation during import.\n\n### External Dependencies\n- ExcelJS (exceljs@^4.4.0): Already installed. Provides Workbook, Worksheet, Row, Cell APIs.\n- Node.js fs/path: Used by PremiumDefinitionService for JSON file reads. Seeder needs no direct fs access unless serving generated templates.\n- Buffer: From file upload for parsing uploaded Excel. Already used in existing import.\n\n### No New Dependencies Needed\nThe seeder can be built entirely with existing dependencies. All necessary libraries are already in the project.",
+  "integration_points": "### Integration Points\n\n1. API Route: POST /premium-import-excel (backend/src/api/payroll.ts L3487-L3539). Current: Accepts Excel file with 5 hardcoded columns. New seeder: Either extend this route to accept premium_type parameter, or add new route(s) like POST /premium-seeder/import.\n\n2. API Route: GET /premium-definitions (backend/src/api/payroll.ts L3447-L3457). Returns active definitions for UI to populate premium type dropdown. Already exists.\n\n3. ManualAdjustmentService.saveAdjustment() (backend/src/services/manualAdjustmentService.ts). Write target for all seeded premiums. New seeder calls this per employee per premium type after parsing and validation.\n\n4. PremiumDefinitionService.getActiveDefinitions() (L158-L160). Provides list of valid premium types and their input_type. New seeder uses this to determine required Excel columns per premium type.\n\n5. PremiumDefinitionService.getDefinitionByName() (L173-L178). Resolves premium name to definition (ad_code, task_desc, input_type). New seeder calls this for each premium type being imported.\n\n6. PremiumDefinitionService.validatePremiumName() (L243-L252). Validates that a premium name exists in active definitions. New seeder should call this during Excel header validation.\n\n7. toManualAdjustmentFieldName() (manualAdjustmentNaming.ts L54-L68). Converts adjustment_type + adjustment_name to normalized field name. New seeder should verify that adjustment_name values produce correct field names.\n\n8. Frontend UI (for seeder activation). New or existing page where user selects premium type, uploads Excel, sees preview, confirms import.\n\n9. Existing payroll calculation pipeline (manualAdjustmentApplier). Seeded data flows into payroll totals via this component. No changes needed if seeder produces correct output.",
+  "constraints": "### Technical Constraints\n\n1. Tight coupling to premium_definitions.json: All premium types must be registered in premium_definitions.json with correct input_type before the seeder can import them. Missing or wrong input_type causes import failure or incorrect metadata_json.\n\n2. Single write target: All seeded premiums go to payroll_manual_adjustments table. No separate premium tables exist. The seeder cannot directly seed PR_ADTRANS, only manual adjustments that override/supplement PR_ADTRANS data.\n\n3. Column order dependency: Current Excel parsing uses positional column access (values[1], values[2], etc.). New seeder must enforce strict column order per premium type or implement header-name-based column mapping.\n\n4. adjustment_name must match definition names: The adjustment_name stored in payroll_manual_adjustments must match premium_definitions.json entries (case-insensitive after normalization). Mismatched names are not recognized by PremiumDefinitionService.\n\n5. metadata_json structure must match input_type: Each input_type demands a specific metadata_json shape (MetadataBlok, MetadataExp, MetadataKendaraan, MetadataBlokExp). Wrong shape breaks manualAdjustmentApplier and premium detail popups.\n\n6. No duplicate detection: Current import creates duplicate records on re-import. New seeder should implement upsert logic to prevent double-counting.\n\n7. Division code normalization: Seeder must use normalizeManualAdjustmentDivisionCode() from manualAdjustmentNaming.ts for division_code consistency.\n\n8. emp_code format: Must match PR_ADTRANS EmpCode format (letter-prefixed PTRJ EmpCode), not numeric NIK.\n\n9. ExcelJS library limitations: ExcelJS handles .xlsx only, not .xls (legacy format).\n\n10. Large file performance: ExcelJS loads entire workbook into memory. Files >1000 rows may cause memory pressure.",
+  "clarification_needs": [
+    {
+      "question": "Column mapping strategy: header-name-based or positional?",
+      "context": "Current premiumImportService uses positional columns (values[1]=empcode, values[2]=gangCode, etc.). The new seeder must handle multiple premium types with different column sets. Positional approach is brittle. Header-name-based approach (reading column headers from row 1 and mapping by name) is more flexible but requires naming conventions.",
+      "options": [
+        "Header-name-based: Row 1 contains column names, seeder maps by name. More flexible, supports mixed columns. Recommended for multi-premium-type support.",
+        "Positional: Fixed column positions per premium type. Simpler but fragile. Each premium type needs its own Excel template definition.",
+        "Hybrid: Core columns (empcode, gang_code) are positional, premium-specific columns header-mapped. Balances simplicity and flexibility."
+      ],
+      "recommended": 0
+    },
+    {
+      "question": "Template generation or free-form upload?",
+      "context": "Two approaches: (A) The seeder generates downloadable blank Excel templates for each premium type with correct headers pre-filled. (B) User uploads any Excel and the seeder attempts to parse columns based on headers. Template approach reduces errors but requires template generation code.",
+      "options": [
+        "Generate blank templates per premium type: Downloadable .xlsx with headers + helper rows. Most reliable for field operators.",
+        "Free-form upload only: Accept any Excel, parse by header names, report mismatches. Quicker to implement.",
+        "Both: Generate templates as default option, but also accept free-form with validation. Best UX but most work."
+      ],
+      "recommended": 2
+    },
+    {
+      "question": "Should the seeder include dry-run/preview mode?",
+      "context": "ptkpExcelDryRunService implements a dry-run pattern. For premium seeding, a preview showing what will be imported (count, total amount, conflicts/errors) before committing reduces risk of bad data.",
+      "options": [
+        "Required: Preview mode is mandatory. Parse all rows, validate, show summary, user confirms before any writes. Follows ptkpExcelDryRunService pattern.",
+        "Optional: Preview available but not required. Direct import with error reporting on failures.",
+        "None: Import directly and report results after. Simpler but riskier."
+      ],
+      "recommended": 0
+    },
+    {
+      "question": "Duplicate handling strategy for re-imports?",
+      "context": "If the same Excel file is uploaded twice (or overlapping employee/period/premium), what should happen? Current implementation creates duplicate records in payroll_manual_adjustments. This could double-count premiums.",
+      "options": [
+        "Upsert by unique key (emp_code + period_month + period_year + adjustment_name): Update existing record if found, insert if new. Prevents duplicates.",
+        "Delete-then-insert per premium type: Delete all existing records for period+division+premium_type, then insert new batch. Clean but destructive.",
+        "Check and skip duplicates: Report already exists for duplicates, import only new. Safe but may leave stale data.",
+        "Current behavior (create duplicates): Accept risk, user manages manually. Simplest to implement."
+      ],
+      "recommended": 0
+    },
+    {
+      "question": "Which premium types should the seeder target first?",
+      "context": "premium_definitions.json has 16 active premium types across 4 input_types. Implementing all at once is risky. Phased approach focusing on most-requested types reduces scope.",
+      "options": [
+        "Phase 1: blok input_type premiums only (PREMI PRUNING, RAKING, KINERJA, INSENTIF PANEN, TBS, JAGA, BANTU BRONDOL) -- most common, covers ~8 types.",
+        "Phase 1: All premiums except kendaraan (amount + blok + exp types) -- broader scope, skips complex vehicle tracking.",
+        "Phase 1: All 16 premiums with all input_types -- full scope, highest risk.",
+        "Phase 1: Only PREMI PRUNING + PREMI RAKING (already supported) -- extend the existing importer incrementally."
+      ],
+      "recommended": 0
+    }
+  ],
+  "_metadata": {
+    "timestamp": "2026-06-02T00:00:00.000Z",
+    "task_description": "Build a seeder feature that parses premium data from Excel files and seeds it into premium tables in the database. Each premium type has its own column format. Understand existing premium table formats (Premi Brondol, Premi Prunning, Premi Insentif Panen, Premi Kinerja, Koreksi), Excel-to-table column mapping, and create a reader that maps Excel columns to the appropriate premium tables.",
+    "source": "cli-explore-agent",
+    "exploration_angle": "patterns",
+    "exploration_index": 1,
+    "total_explorations": 3
+  },
+  "relevant_files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "relevance": 1,
+      "rationale": "Existing premium Excel import implementation: reads ExcelJS workbook, validates rows (empcode, subblok, jumlah, jenis), groups by empcode+jenis, resolves premium definitions via PremiumDefinitionService, and saves via ManualAdjustmentService.saveAdjustment(). This is the direct predecessor for the new seeder feature.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "importPremiumExcel",
+        "PremiumImportRow",
+        "PremiumImportResult",
+        "ALLOWED_JENIS",
+        "normalizeJenis"
+      ],
+      "key_code": [
+        {
+          "symbol": "importPremiumExcel()",
+          "location": "L30-L141",
+          "description": "Async function that loads Excel workbook, iterates rows skipping header, validates empcode/subblok/jumlah/jenis fields, groups by empcode+jenis, looks up premium definitions, and calls manualAdjustmentService.saveAdjustment() with metadata_json containing subblok/gang_code/jumlah items. Currently hardcoded to only PREMI PRUNING and PREMI RAKING jenis."
+        },
+        {
+          "symbol": "PremiumImportRow interface",
+          "location": "L5-L11",
+          "description": "Excel row structure: empcode, gang_code, subblok, jumlah, jenis. Current seeder expects columns 1-5 in this exact order."
+        }
+      ],
+      "topic_relation": "Patterns exploration examines this file as the canonical Excel-to-database premium seeding pattern. The new seeder must generalize this from 2 hardcoded premium types to all premium types defined in premium_definitions.json, each with its own column mapping."
+    },
+    {
+      "path": "backend/src/services/premiumDefinitionService.ts",
+      "relevance": 1,
+      "rationale": "Central registry of all premium types (input_type: amount, blok, exp, kendaraan, blok,exp) with ad_code, task_desc, and is_active flags. Loaded from backend/data/premium_definitions.json with file-system fingerprint caching. The new seeder must consult this service to determine which columns each premium type needs.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "PremiumDefinitionService",
+        "PremiumDefinition",
+        "PremiumInputType",
+        "PremiumMetadata",
+        "MetadataBlok",
+        "MetadataExp",
+        "MetadataKendaraan",
+        "MetadataBlokExp",
+        "premiumDefinitionService"
+      ],
+      "key_code": [
+        {
+          "symbol": "PremiumDefinition interface",
+          "location": "L25-L32",
+          "description": "Core type: adjustment_type (PREMI/POTONGAN_KOTOR/POTONGAN_BERSIH), adjustment_name, ad_code, task_desc, input_type (amount|blok|exp|kendaraan|blok,exp), is_active."
+        },
+        {
+          "symbol": "getActiveDefinitions()",
+          "location": "L158-L160",
+          "description": "Returns only active definitions. New seeder should filter to only active premium definitions when building import menu."
+        },
+        {
+          "symbol": "getDefinitionByName()",
+          "location": "L173-L178",
+          "description": "Case-insensitive name lookup. Used by premiumImportService to resolve jenis to definition. Critical for mapping Excel premium type columns to correct database records."
+        },
+        {
+          "symbol": "calculateMetadataTotal()",
+          "location": "L275-L295",
+          "description": "Calculates total_amount from metadata items based on input_type. Used to validate and sync amount field. New seeder must compute totals correctly per input_type."
+        }
+      ],
+      "topic_relation": "Patterns exploration targets this file because the new seeders column mapping logic must be driven by the input_type field in each definition. Each input_type demands different Excel columns: amount needs single numeric, blok needs subblok+gang_code+jumlah rows, exp needs expense_code+jumlah, kendaraan needs nomor_kendaraan+expense_code+jumlah, blok,exp combines both patterns."
+    },
+    {
+      "path": "backend/data/premium_definitions.json",
+      "relevance": 0.95,
+      "rationale": "Ground truth of all premium types: 16 active premiums (PREMI JAGA, PREMI KINERJA, PREMI PRUNING, PREMI RAKING, PREMI RITASE, PREMI TBS, PREMI INSENTIF PANEN, various PREMI ANGKUT variants) plus 2 potongan definitions. Each has ad_code, task_desc, input_type. The new seeders Excel template column layouts must match each input_type.",
+      "role": "config",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "PREMI JAGA (blok)",
+        "PREMI KINERJA (blok)",
+        "PREMI PRUNING (blok)",
+        "PREMI RAKING (blok)",
+        "PREMI INSENTIF PANEN (blok)",
+        "PREMI RITASE (kendaraan)",
+        "PREMI ANGKUT TBS (kendaraan)",
+        "PREMI TIKET (amount)",
+        "KOREKSI X (POTONGAN_KOTOR/blok)",
+        "POTONGAN BPJS (POTONGAN_BERSIH/amount)"
+      ],
+      "key_code": [
+        {
+          "symbol": "input_type distribution",
+          "location": "premium_definitions.json",
+          "description": "Active premiums by input_type: blok=8 (PREMI JAGA, KINERJA, PRUNING, RAKING, TBS, INSENTIF PANEN, BANTU BRONDOL, KOREKSI X), kendaraan=8 (RITASE, ANGKUT variants, PERBAIKAN JALAN, CUCI MOBIL), amount=2 (PREMI TIKET, POTONGAN BPJS/POTONGAN X), exp=1 (PREMI JAGA TANGGUNG JAWAB). No blok,exp combos are currently active."
+        }
+      ],
+      "topic_relation": "Patterns exploration maps each premium types input_type to its required Excel column layout. The Excel seeder must generate or accept different column templates per premium type, not a single universal format."
+    },
+    {
+      "path": "backend/src/services/manualAdjustmentService.ts",
+      "relevance": 0.9,
+      "rationale": "The saveAdjustment() method is the database write target for premium seeding. PremiumImportService delegates all persistence through this service. Interface: period_month, period_year, emp_code, nik, gang_code, division_code, adjustment_type, adjustment_name, amount, ad_code, task_desc, remarks, metadata_json.",
+      "role": "integration_point",
+      "discovery_source": "dependency-trace",
+      "key_symbols": [
+        "saveAdjustment",
+        "getAdjustments",
+        "ManualAdjustmentService",
+        "ManualAdjustmentInput"
+      ],
+      "key_code": [
+        {
+          "symbol": "saveAdjustment()",
+          "location": "manualAdjustmentService.ts",
+          "description": "Persists a manual adjustment record to payroll_manual_adjustments table. Accepts full input with adjustment_type=PREMI, adjustment_name matching definition names, and metadata_json with structured premium details."
+        }
+      ],
+      "topic_relation": "Patterns exploration identifies this as the integration point where the new seeder writes to the database. The new seeder must construct properly formatted ManualAdjustmentInput objects with metadata_json matching the premiums input_type structure."
+    },
+    {
+      "path": "backend/src/api/payroll.ts",
+      "relevance": 0.85,
+      "rationale": "Contains the /premium-import-excel POST endpoint (L3487-L3539, duplicated for two authentication methods) and /premium-definitions GET/POST endpoints. The current Excel import endpoint uses multipart file upload with period_month/period_year/division_code query params. The new seeders API pattern should follow this same structure.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "POST /premium-import-excel",
+        "GET /premium-definitions",
+        "POST /premium-definitions"
+      ],
+      "key_code": [
+        {
+          "symbol": "POST /premium-import-excel",
+          "location": "L3487-L3539",
+          "description": "Accepts multipart file upload, parses Excel via importPremiumExcel(), returns PremiumImportResult with imported/skipped/errors. Period params passed as query string. Duplicate endpoint suggests two auth methods."
+        }
+      ],
+      "topic_relation": "Patterns exploration examines this route as the API contract template. The new seeder should expose a similar POST endpoint (or extend this one) accepting Excel file plus premium type selector plus period params."
+    },
+    {
+      "path": "backend/src/services/payroll/manualAdjustments/manualAdjustmentNaming.ts",
+      "relevance": 0.8,
+      "rationale": "Defines the field naming convention for manual adjustments: toManualAdjustmentFieldName() maps adjustment_type+name to fields like premi_pruning, koreksi_x, potongan_lainnya_bpjs. The new seeder must produce adjustment names that match this convention.",
+      "role": "dependency",
+      "discovery_source": "dependency-trace",
+      "key_symbols": [
+        "toManualAdjustmentFieldName",
+        "normalizeStoredAdjustmentName",
+        "FIELD_PREFIX_BY_TYPE",
+        "MANUAL_ADJUSTMENT_DIVISION_CODE_MAP"
+      ],
+      "topic_relation": "Patterns exploration notes that adjustment_name values stored by the seeder must be compatible with toManualAdjustmentFieldName() output to ensure the manual adjustment applier can correctly merge seeded values with extracted payroll data."
+    },
+    {
+      "path": "backend/src/services/payroll/adtransDocDescMapping.ts",
+      "relevance": 0.8,
+      "rationale": "Maps PR_ADTRANS DocDesc values to normalized premium field names. Contains isBrondolDocDesc(), isDynamicPremiDocDesc(), mapAdtransPremiField(), and the ADTRANS_DYNAMIC_PREMI_PATTERNS list. Critical for understanding database premium-DocDesc relationships.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "ADTRANS_DYNAMIC_PREMI_PATTERNS",
+        "isBrondolDocDesc",
+        "isDynamicPremiDocDesc",
+        "mapAdtransPremiField",
+        "normalizeAdtransPremiField",
+        "matchesAdtransDocDescFilter"
+      ],
+      "topic_relation": "Patterns exploration uses this file to understand the relationship between database-stored DocDesc values and the premium definition names. The seeders adjustment_name values should align with these mappings."
+    },
+    {
+      "path": "backend/src/services/payroll/components/PremiService.ts",
+      "relevance": 0.75,
+      "rationale": "Shows how premiums are calculated from PR_ADTRANS data: fetches by empCode+period, excludes PPH/LEMBUR/BRONDOL/PRUN patterns, categorizes into brondol/pruning/dynamic_premi. Helps understand what premium types exist in source data vs what needs manual import.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "PremiService",
+        "PremiOutput",
+        "DEFAULT_EXCLUDE_PATTERNS",
+        "processPremiData",
+        "fetchPremiFromDatabase"
+      ],
+      "topic_relation": "Patterns exploration notes PremiService categorizes premiums into brondol, pruning, and dynamic_premi. The seeder must be aware that some premiums come from database extraction (PR_ADTRANS) while others are exclusively Excel-seeded."
+    },
+    {
+      "path": "backend/src/services/payroll/extractors/PremiumExtractor.ts",
+      "relevance": 0.75,
+      "rationale": "Extracts premium data from PR_ADTRANS tables with DocDesc LIKE PREMI filter. Has separate extractBrondolLooseFruit() method for PR_LOOSEFRUIT data. The new seeder complements this by providing premiums that do not exist in PR_ADTRANS.",
+      "role": "context_only",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "PremiumExtractor",
+        "PremiumResult",
+        "extract",
+        "extractBrondolLooseFruit",
+        "normalizeDocDesc"
+      ],
+      "topic_relation": "Patterns exploration maps the data flow: PR_ADTRANS to PremiumExtractor to PremiService to payroll totals versus Excel file to Premium Seeder to manual_adjustments to manualAdjustmentApplier to payroll totals. These two paths converge in the final payroll calculation."
+    },
+    {
+      "path": "backend/src/services/payroll/manualAdjustments/manualAdjustmentApplier.ts",
+      "relevance": 0.7,
+      "rationale": "Applies manual adjustments to employee premium/potongan maps. Uses additive/override mode, resolves field name conflicts. The seeded data flows through this component when constructing final payroll totals.",
+      "role": "dependency",
+      "discovery_source": "dependency-trace",
+      "key_symbols": [
+        "applyManualAdjustmentsToEmployee",
+        "ManualAdjustmentApplierInput",
+        "ManualAdjustmentApplierResult",
+        "resolveExistingFieldKey"
+      ],
+      "key_code": [
+        {
+          "symbol": "applyManualAdjustmentsToEmployee()",
+          "location": "L92-L225",
+          "description": "Merges manual adjustments into employee premium/potongan maps. Handles metadata_json.total_amount as effective amount. Uses additive mode by default (sums seeded+extracted). Override mode replaces entirely."
+        }
+      ],
+      "topic_relation": "Patterns exploration notes the apply logic: additive mode sums seeded plus extracted amounts, override mode replaces. The seeder should default to additive mode for premium seeding. Also metadata_json.total_amount is used as effective amount when available."
+    },
+    {
+      "path": "backend/src/services/otherIncomesExcelService.ts",
+      "relevance": 0.65,
+      "rationale": "Demonstrates ExcelJS workbook generation pattern for THR bank list and main report: title rows, header formatting, gang grouping, subtotals, signatures. The new seeder may need to generate template Excel files for each premium type.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "OtherIncomesExcelService",
+        "generateBankListExcel",
+        "generateTHRExcel",
+        "writeItemRow"
+      ],
+      "topic_relation": "Patterns exploration identifies the Excel generation pattern: create workbook, addWorksheet, merge title cells, format header with black bg/white fg, set column widths, row-by-row data with borders, subtotals, signatures. New seeder template generator should follow this pattern."
+    },
+    {
+      "path": "backend/src/services/ptkpExcelDryRunService.ts",
+      "relevance": 0.6,
+      "rationale": "Shows dry-run Excel import pattern: parse Excel rows into typed objects, validate, match against database, generate action summary (READY_UPDATE, WOULD_INSERT, ALREADY_SAME, SKIP_CONFLICT). The new premium seeder should implement similar dry-run/preview before actual import.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "ExcelPtkpParsedRow",
+        "ExcelPtkpDryRunRow",
+        "ExcelPtkpDryRunResult",
+        "ExcelPtkpDryRunAction"
+      ],
+      "topic_relation": "Patterns exploration notes the dry-run pattern as a best practice: parse first, validate all rows, report actions and conflicts, then execute. New seeder should implement preview mode showing what will be imported before committing."
+    },
+    {
+      "path": "backend/src/services/historySeederService.ts",
+      "relevance": 0.55,
+      "rationale": "Established seeder pattern with progress tracking, batch processing, timeout protection, force reset. Uses SeederResult interface, SeederOptions, SeederProgress. The new premium seeder should follow similar progress-reporting patterns for large Excel file imports.",
+      "role": "pattern_reference",
+      "discovery_source": "dependency-trace",
+      "key_symbols": [
+        "HistorySeederService",
+        "SeederResult",
+        "SeederOptions",
+        "SeederProgress",
+        "seedPayrollHistory"
+      ],
+      "topic_relation": "Patterns exploration identifies the seeder pattern: progress object with is_running/current_step/stats, result object with success/imported/skipped/errors, batch processing with configurable size. New seeder should adopt SeederResult-style return type."
+    },
+    {
+      "path": "backend/sql/migrations/create_manual_adjustments_table.ts",
+      "relevance": 0.5,
+      "rationale": "Defines the payroll_manual_adjustments table schema: period_month, period_year, emp_code, nik, emp_name, gang_code, division_code, adjustment_type, adjustment_name, amount, remarks, metadata_json, created_at/updated_at/by. The new seeder writes to this table.",
+      "role": "type_definition",
+      "discovery_source": "bash-scan",
+      "key_symbols": [
+        "payroll_manual_adjustments",
+        "metadata_json NVARCHAR(MAX)"
+      ],
+      "topic_relation": "Patterns exploration confirms that metadata_json can hold the structured premium details (BlokItem[], KendaraanItem[], etc.) as defined by PremiumDefinitionService metadata types."
+    }
+  ]
+}

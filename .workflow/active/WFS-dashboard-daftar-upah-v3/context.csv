@@ -1,0 +1,4 @@
+key,type,value,source
+"context_package_path","path",".process/context-package.json","session"
+"tech_stack","array","React;Vite;Vitest","plan.json"
+"validation","array","npx vitest focused tests;npm run build;HTTP 200 smoke","execution"

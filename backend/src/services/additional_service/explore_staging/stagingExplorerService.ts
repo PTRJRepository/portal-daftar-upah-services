@@ -23,7 +23,7 @@ export interface StagingDiscovery {
     columns: Record<string, ColumnInfo[]>;
 }
 
-const STAGING_CATALOG = "staging_PTRJ_iFES_Plantware";
+const STAGING_CATALOG = Config.DB_STAGING_DATABASE;
 
 export class StagingExplorerService {
     private static instance: StagingExplorerService;
@@ -110,23 +110,23 @@ export class StagingExplorerService {
     }
 
     /**
-     * Get row count for a table in db_ptrj
+     * Get row count for a table in prod DB
      */
     async prodCount(tableName: string, schema = "dbo"): Promise<number> {
         const row = await this.prodDb.queryOne<{ cnt: number }>(
-            `SELECT COUNT(*) as cnt FROM [db_ptrj].[${schema}].[${tableName}]`,
+            `SELECT COUNT(*) as cnt FROM [${Config.DEFAULT_DATABASE}].[${schema}].[${tableName}]`,
         );
         return row?.cnt ?? 0;
     }
 
     /**
-     * Probe db_ptrj for table existence + row count
+     * Probe prod DB for table existence + row count
      */
     async probeProdTable(tableName: string, schema = "dbo"): Promise<{ exists: boolean; count: number }> {
         try {
             const tables = await this.prodDb.query<any>(`
                 SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_CATALOG = 'db_ptrj' AND TABLE_SCHEMA = '${schema}' AND TABLE_NAME = '${tableName}'
+                WHERE TABLE_CATALOG = '${Config.DEFAULT_DATABASE}' AND TABLE_SCHEMA = '${schema}' AND TABLE_NAME = '${tableName}'
             `);
             if (tables.length === 0) return { exists: false, count: 0 };
             const count = await this.prodCount(tableName, schema);
@@ -137,7 +137,7 @@ export class StagingExplorerService {
     }
 
     /**
-     * Find matching db_ptrj table candidates by name similarity.
+     * Find matching prod table candidates by name similarity.
      * Strategy: uppercase, strip trailing _ARC/_ACC/ln/Ln, match substrings.
      */
     findProdCandidates(stagingTableName: string): string[] {
