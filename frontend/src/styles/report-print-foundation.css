@@ -1113,6 +1113,41 @@
 
   /* Clean up - remove old duplicate styles under #summary-report-content */
 
+  /* Gang row styling */
+  #summary-premi-appendix-content .summary-premi-appendix-table .summary-print-gang-row td {
+    background: #ffffff !important;
+    font-weight: 500 !important;
+  }
+
+  /* Division subtotal row styling - bold, distinct */
+  #summary-premi-appendix-content .summary-premi-appendix-table .summary-print-division-subtotal-row td {
+    background: #e2e8f0 !important;
+    font-weight: 900 !important;
+    border-top: 1.5pt solid #000 !important;
+    border-bottom: 1.5pt solid #000 !important;
+  }
+
+  #summary-premi-appendix-content .summary-premi-appendix-table .summary-division-subtotal-label {
+    text-align: left !important;
+    padding-left: 8pt !important;
+  }
+
+  #summary-premi-appendix-content .summary-premi-appendix-table .summary-subtotal-label-text {
+    font-size: 7.5pt !important;
+    font-weight: 900 !important;
+    color: #0f172a !important;
+    text-transform: uppercase !important;
+  }
+
+  /* Total cell styling */
+  #summary-premi-appendix-content .summary-premi-appendix-table .summary-premi-total-cell {
+    font-weight: 900 !important;
+    font-size: 9pt !important;
+    color: #0f172a !important;
+    background: #cbd5e1 !important;
+    text-align: right !important;
+  }
+
   .sticky-col,
   .th-sticky-col,
   .phc-th-sticky,

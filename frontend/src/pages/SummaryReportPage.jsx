@@ -382,7 +382,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
             return {
                 group: groupData.group,
-                rows: groupData.rows,
+                rows: groupData.rows,  // All gangs in this group
                 divisionGroups: buildDivisionRowGroups(groupData.rows),
                 divisionSubtotals: Array.from(divisionSubtotals.values()),
                 summaryGroupLabel: buildGangDescriptionGroupLabel(groupData.rows, {
@@ -1264,7 +1264,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 </div>
                             </div>
 
-                            {/* Lampiran Table - Per Division/Estate */}
+                            {/* Lampiran Table - Gang dengan Subtotal per Divisi */}
                             <div className="wsp-table-wrapper">
                                 <table className="summary-premi-appendix-table">
                                     <colgroup>
@@ -1276,7 +1276,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <thead>
                                         <tr className="wsp-header-master">
                                             <th>NO</th>
-                                            <th>ESTATE / DIVISI</th>
+                                            <th>ESTATE / GANG</th>
                                             <th>TOTAL PREMI</th>
                                             <th>URAIAN PREMI</th>
                                         </tr>
@@ -1287,7 +1287,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 <td colSpan="4">No Data Available</td>
                                             </tr>
                                         ) : (
-                                            groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionSubtotals }) => {
+                                            groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionGroups, divisionSubtotals }) => {
                                                 let appendixRowNo = 0;
                                                 return (
                                                     <React.Fragment key={`summary-print-group-${group}`}>
@@ -1295,21 +1295,40 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                         <tr className="summary-print-group-row">
                                                             <td colSpan="4">{formatSummaryGroupLabel(summaryGroupLabel)}</td>
                                                         </tr>
-                                                        {/* Division Subtotal Rows */}
-                                                        {divisionSubtotals.map((subtotal, idx) => {
-                                                            appendixRowNo += 1;
-                                                            return (
-                                                                <tr key={`print-${group}-${subtotal.division_code || idx}`} className="summary-print-division-row">
-                                                                    <td>{appendixRowNo}</td>
-                                                                    <td>
-                                                                        <div className="summary-print-desc">{subtotal.division_code}</div>
-                                                                        <div className="summary-print-code">{subtotal.gang_count} gang</div>
-                                                                    </td>
-                                                                    <td className="summary-premi-total-cell">{formatNumber(subtotal.total_premi)}</td>
-                                                                    <td className="summary-premi-breakdown-cell">{buildDivisionSubtotalBreakdown(subtotal)}</td>
-                                                                </tr>
-                                                            );
+
+                                                        {/* All Gang Rows */}
+                                                        {divisionGroups.map(({ divisionKey, rows }) => {
+                                                            return rows.map((row, idx) => {
+                                                                const hasGangDescription = row.gang_description && row.gang_description !== row.gang_code;
+                                                                const gangDescription = hasGangDescription ? row.gang_description : row.gang_code;
+                                                                appendixRowNo += 1;
+
+                                                                return (
+                                                                    <tr key={`print-gang-${group}-${divisionKey}-${row.gang_code || idx}`} className="summary-print-gang-row">
+                                                                        <td>{appendixRowNo}</td>
+                                                                        <td>
+                                                                            <div className="summary-print-desc">{gangDescription}</div>
+                                                                            {hasGangDescription && (
+                                                                                <div className="summary-print-code">{row.gang_code}</div>
+                                                                            )}
+                                                                        </td>
+                                                                        <td>{formatNumber(row.total_premi)}</td>
+                                                                        <td className="summary-premi-breakdown-cell">{buildPremiBreakdownText(row)}</td>
+                                                                    </tr>
+                                                                );
+                                                            });
                                                         })}
+
+                                                        {/* Division Subtotal Rows */}
+                                                        {divisionSubtotals.map((subtotal, idx) => (
+                                                            <tr key={`print-subtotal-${group}-${subtotal.division_code || idx}`} className="summary-print-division-subtotal-row">
+                                                                <td colSpan="2" className="summary-division-subtotal-label">
+                                                                    <span className="summary-subtotal-label-text">SUBTOTAL {subtotal.division_code}</span>
+                                                                </td>
+                                                                <td className="summary-premi-total-cell">{formatNumber(subtotal.total_premi)}</td>
+                                                                <td className="summary-premi-breakdown-cell">{buildDivisionSubtotalBreakdown(subtotal)}</td>
+                                                            </tr>
+                                                        ))}
                                                     </React.Fragment>
                                                 );
                                             })
@@ -1318,8 +1337,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     {filteredGrandTotal && (
                                         <tfoot>
                                             <tr className="wsp-grand-total">
-                                                <td>{filteredGrandTotalLabel}</td>
-                                                <td></td>
+                                                <td colSpan="2">{filteredGrandTotalLabel}</td>
                                                 <td>{formatNumber(filteredGrandTotal.total_premi)}</td>
                                                 <td className="summary-premi-breakdown-cell">{buildPremiBreakdownTotalText()}</td>
                                             </tr>
