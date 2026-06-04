@@ -63,6 +63,87 @@
 }
 
 /* =============================================
+   LAMPIRAN TABLE STYLES (SCREEN)
+   ============================================= */
+.summary-premi-appendix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.summary-premi-appendix-table th {
+    background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+    color: #ffffff;
+    font-weight: 700;
+    text-align: center;
+    padding: 0.6rem 0.5rem;
+    border: 1px solid #475569;
+}
+
+.summary-premi-appendix-table td {
+    padding: 0.5rem 0.4rem;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+}
+
+/* Group header row */
+.summary-premi-appendix-table .summary-print-group-row td {
+    background: #334155 !important;
+    color: #ffffff !important;
+    font-weight: 800;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    padding: 0.6rem 0.5rem;
+    text-align: left;
+}
+
+/* Gang row */
+.summary-premi-appendix-table .summary-print-gang-row td {
+    background: #ffffff;
+}
+
+/* Division subtotal row */
+.summary-premi-appendix-table .summary-print-division-subtotal-row td {
+    background: #e2e8f0;
+    font-weight: 800;
+    border-top: 2px solid #0f172a;
+    border-bottom: 2px solid #0f172a;
+}
+
+.summary-premi-appendix-table .summary-division-subtotal-label {
+    text-align: left;
+}
+
+.summary-premi-appendix-table .summary-subtotal-label-text {
+    font-weight: 800;
+    color: #0f172a;
+    text-transform: uppercase;
+}
+
+.summary-premi-appendix-table .summary-premi-total-cell {
+    font-weight: 900;
+    font-size: 1rem;
+    color: #0f172a;
+    background: #cbd5e1 !important;
+    text-align: right;
+}
+
+.summary-premi-appendix-table .summary-premi-breakdown-cell {
+    text-align: left;
+    font-size: 0.75rem;
+    color: #475569;
+}
+
+/* Grand total row */
+.summary-premi-appendix-table tfoot td {
+    background: #0f172a;
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 1rem;
+    padding: 0.75rem 0.5rem;
+}
+
+/* =============================================
    TONASE HIGHLIGHT
    ============================================= */
 .tonase-highlight {
