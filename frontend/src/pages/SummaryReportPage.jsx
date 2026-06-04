@@ -354,13 +354,42 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             groupsByKey.get(group).rows.push(row);
         });
 
-        return groups.map(groupData => ({
-            ...groupData,
-            divisionGroups: buildDivisionRowGroups(groupData.rows),
-            summaryGroupLabel: buildGangDescriptionGroupLabel(groupData.rows, {
-                fallbackLabel: getSummaryGroupFallbackLabel(groupData.group)
-            })
-        })).sort((a, b) => {
+        return groups.map(groupData => {
+            // Calculate division subtotals for each group
+            const divisionSubtotals = new Map();
+            groupData.rows.forEach(row => {
+                const divKey = row.division_code || 'LAINNYA';
+                if (!divisionSubtotals.has(divKey)) {
+                    divisionSubtotals.set(divKey, {
+                        division_code: divKey,
+                        total_premi: 0,
+                        dynamic_premi_totals: {},
+                        gang_count: 0
+                    });
+                }
+                const subtotal = divisionSubtotals.get(divKey);
+                subtotal.total_premi += Number(row.total_premi || 0);
+                subtotal.gang_count += 1;
+
+                // Collect dynamic premium breakdown
+                if (row._dynamic_premi_list) {
+                    row._dynamic_premi_list.forEach(dp => {
+                        const h = dp.header;
+                        subtotal.dynamic_premi_totals[h] = (subtotal.dynamic_premi_totals[h] || 0) + Number(dp.total || 0);
+                    });
+                }
+            });
+
+            return {
+                group: groupData.group,
+                rows: groupData.rows,
+                divisionGroups: buildDivisionRowGroups(groupData.rows),
+                divisionSubtotals: Array.from(divisionSubtotals.values()),
+                summaryGroupLabel: buildGangDescriptionGroupLabel(groupData.rows, {
+                    fallbackLabel: getSummaryGroupFallbackLabel(groupData.group)
+                })
+            };
+        }).sort((a, b) => {
             const aNum = Number(a.group);
             const bNum = Number(b.group);
             const aIsNum = Number.isFinite(aNum);
@@ -691,6 +720,17 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return parts.length ? parts.join('; ') : '-';
     }, [dynamicPremiHeaders, filteredGrandTotal]);
 
+    // Build breakdown text for division subtotal
+    const buildDivisionSubtotalBreakdown = useCallback((subtotal) => {
+        if (!subtotal || !subtotal.dynamic_premi_totals) return '-';
+
+        const parts = Object.entries(subtotal.dynamic_premi_totals)
+            .filter(([_, value]) => Number(value || 0) !== 0)
+            .map(([header, value]) => `${header}: ${formatNumber(value)}`);
+
+        return parts.length ? parts.join('; ') : '-';
+    }, []);
+
     // Handle Save PDF
     const handleSavePDF = () => {
         const element = document.getElementById('summary-report-content');
@@ -1004,7 +1044,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         )}
 
                         {/* Table */}
-                        <div className={`wsp-table-wrapper ${reportMode === 'payroll' ? 'summary-detail-screen-wrapper no-print' : ''}`}>
+                        <div className={`wsp-table-wrapper ${reportMode === 'payroll' ? 'summary-detail-screen-wrapper' : ''}`}>
                             <table className={`wsp-table ${reportMode === 'payroll' ? 'summary-detail-screen-table' : 'summary-thr-table'}`}>
                                 <thead>
                                     {reportMode === 'payroll' ? (
@@ -1224,7 +1264,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                 </div>
                             </div>
 
-                            {/* Lampiran Table */}
+                            {/* Lampiran Table - Per Division/Estate */}
                             <div className="wsp-table-wrapper">
                                 <table className="summary-premi-appendix-table">
                                     <colgroup>
@@ -1236,7 +1276,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                     <thead>
                                         <tr className="wsp-header-master">
                                             <th>NO</th>
-                                            <th>ESTATE / GANG</th>
+                                            <th>ESTATE / DIVISI</th>
                                             <th>TOTAL PREMI</th>
                                             <th>URAIAN PREMI</th>
                                         </tr>
@@ -1247,33 +1287,28 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                                                 <td colSpan="4">No Data Available</td>
                                             </tr>
                                         ) : (
-                                            groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionGroups }) => {
+                                            groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionSubtotals }) => {
                                                 let appendixRowNo = 0;
                                                 return (
                                                     <React.Fragment key={`summary-print-group-${group}`}>
+                                                        {/* Group Header */}
                                                         <tr className="summary-print-group-row">
                                                             <td colSpan="4">{formatSummaryGroupLabel(summaryGroupLabel)}</td>
                                                         </tr>
-                                                        {divisionGroups.map(({ divisionKey, rows }) => {
-                                                            return rows.map((row, idx) => {
-                                                                const hasGangDescription = row.gang_description && row.gang_description !== row.gang_code;
-                                                                const gangDescription = hasGangDescription ? row.gang_description : row.gang_code;
-                                                                appendixRowNo += 1;
-
-                                                                return (
-                                                                    <tr key={`print-${group}-${divisionKey}-${row.gang_code || idx}`}>
-                                                                        <td>{appendixRowNo}</td>
-                                                                        <td>
-                                                                            <div className="summary-print-desc">{gangDescription}</div>
-                                                                            {hasGangDescription && (
-                                                                                <div className="summary-print-code">{row.gang_code}</div>
-                                                                            )}
-                                                                        </td>
-                                                                        <td>{formatNumber(row.total_premi)}</td>
-                                                                        <td className="summary-premi-breakdown-cell">{buildPremiBreakdownText(row)}</td>
-                                                                    </tr>
-                                                                );
-                                                            });
+                                                        {/* Division Subtotal Rows */}
+                                                        {divisionSubtotals.map((subtotal, idx) => {
+                                                            appendixRowNo += 1;
+                                                            return (
+                                                                <tr key={`print-${group}-${subtotal.division_code || idx}`} className="summary-print-division-row">
+                                                                    <td>{appendixRowNo}</td>
+                                                                    <td>
+                                                                        <div className="summary-print-desc">{subtotal.division_code}</div>
+                                                                        <div className="summary-print-code">{subtotal.gang_count} gang</div>
+                                                                    </td>
+                                                                    <td className="summary-premi-total-cell">{formatNumber(subtotal.total_premi)}</td>
+                                                                    <td className="summary-premi-breakdown-cell">{buildDivisionSubtotalBreakdown(subtotal)}</td>
+                                                                </tr>
+                                                            );
                                                         })}
                                                     </React.Fragment>
                                                 );
