@@ -418,134 +418,323 @@
    Print Styles
    ============================================= */
 @media print {
-    .lampiran-premi-appendix {
-        padding: 0.5rem;
-        font-size: 9pt;
-        page-break-before: always;
-        break-before: page;
+    @page {
+        size: A4 landscape;
+        margin: 8mm;
     }
 
+    /* Main container - separate page */
+    .lampiran-premi-appendix {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        page-break-before: always !important;
+        break-before: page !important;
+        page-break-after: auto !important;
+        break-after: auto !important;
+        background: #fff !important;
+        font-size: 9pt !important;
+        line-height: 1.2 !important;
+    }
+
+    /* Header - compact for print */
     .lampiran-header {
-        padding-bottom: 0.5rem;
-        margin-bottom: 0.5rem;
-        border-bottom-width: 2pt;
+        padding-bottom: 8pt !important;
+        margin-bottom: 12pt !important;
+        border-bottom: 2pt solid #000 !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+    }
+
+    .lampiran-header-left {
+        display: flex !important;
+        gap: 10pt !important;
+        align-items: center !important;
     }
 
     .lampiran-logo {
-        width: 50pt;
+        width: 45pt !important;
+        height: auto !important;
+    }
+
+    .lampiran-header-info {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2pt !important;
     }
 
     .lampiran-company {
-        font-size: 14pt;
+        font-size: 14pt !important;
+        font-weight: 900 !important;
+        margin: 0 !important;
+        color: #000 !important;
     }
 
     .lampiran-title {
-        font-size: 10pt;
+        font-size: 10pt !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        margin: 0 !important;
+        color: #000 !important;
+        letter-spacing: 0.5pt !important;
     }
 
-    .lampiran-summary-cards {
-        display: none; /* Hide cards in print, use table data */
+    .lampiran-period {
+        font-size: 8pt !important;
+        color: #333 !important;
+        margin: 0 !important;
     }
 
+    /* Hide charts and cards in print */
+    .lampiran-summary-cards,
     .lampiran-charts-section {
-        display: none; /* Hide charts in print */
+        display: none !important;
+        visibility: hidden !important;
     }
 
+    /* Table section - full width */
     .lampiran-table-section {
-        margin-top: 0.5rem;
-        page-break-inside: auto;
+        margin: 0 !important;
+        page-break-inside: auto !important;
     }
 
+    .lampiran-table-title {
+        font-size: 10pt !important;
+        font-weight: 900 !important;
+        text-transform: uppercase !important;
+        margin: 0 0 8pt 0 !important;
+        padding-bottom: 4pt !important;
+        border-bottom: 1pt solid #000 !important;
+        color: #000 !important;
+    }
+
+    /* Table wrapper */
     .lampiran-table-wrapper {
-        overflow: visible;
-        border: 1pt solid #000;
+        overflow: visible !important;
+        max-height: none !important;
+        width: 100% !important;
+        border: 1pt solid #000 !important;
+        page-break-inside: auto !important;
     }
 
+    /* Table - full width, compact */
     .lampiran-table {
-        font-size: 8pt;
-        min-width: auto;
+        width: 100% !important;
+        min-width: unset !important;
+        font-size: 8pt !important;
+        line-height: 1.15 !important;
+        border-collapse: collapse !important;
+        table-layout: fixed !important;
     }
 
+    /* Column widths for print */
+    .lampiran-th-no,
+    .lampiran-cell-no { width: 4% !important; }
+    .lampiran-th-gang,
+    .lampiran-cell-gang { width: 22% !important; }
+    .lampiran-th-premi,
+    .lampiran-cell-premi,
+    .lampiran-subtotal-value { width: 14% !important; text-align: right !important; }
+    .lampiran-th-detail,
+    .lampiran-cell-detail,
+    .lampiran-subtotal-detail { width: 60% !important; }
+
+    /* Table header */
     .lampiran-table thead th {
-        background: #333 !important;
-        color: #fff !important;
-        padding: 3pt 2pt;
-        font-size: 7pt;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 7.5pt !important;
+        font-weight: 900 !important;
+        text-transform: uppercase !important;
+        padding: 4pt 2pt !important;
+        border: 0.75pt solid #000 !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        white-space: nowrap !important;
     }
 
+    .lampiran-th-gang { text-align: left !important; }
+    .lampiran-th-detail { text-align: left !important; }
+
+    /* All cells */
+    .lampiran-table td {
+        padding: 2.5pt 2pt !important;
+        border: 0.5pt solid #000 !important;
+        vertical-align: top !important;
+        font-size: 8pt !important;
+        line-height: 1.15 !important;
+    }
+
+    /* Division header row */
     .lampiran-division-header {
         background: #1e293b !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
     }
 
+    .lampiran-division-header td,
     .lampiran-division-cell {
-        padding: 4pt !important;
+        background: #1e293b !important;
+        color: #fff !important;
+        padding: 5pt 3pt !important;
+        font-weight: 900 !important;
+        font-size: 9pt !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        border: none !important;
+        border-bottom: 1pt solid #000 !important;
     }
 
     .lampiran-division-name {
-        font-size: 9pt;
+        font-size: 9pt !important;
+        font-weight: 900 !important;
+        color: #fff !important;
+        text-transform: uppercase !important;
     }
 
+    .lampiran-division-meta {
+        display: flex !important;
+        gap: 10pt !important;
+        font-size: 7pt !important;
+        color: #ccc !important;
+    }
+
+    .lampiran-division-total {
+        font-family: monospace !important;
+        font-weight: 700 !important;
+        color: #4ade80 !important;
+        background: transparent !important;
+        padding: 0 !important;
+    }
+
+    /* Group header row */
     .lampiran-group-header {
         background: #64748b !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
     }
 
-    .lampiran-gang-row {
+    .lampiran-group-header td,
+    .lampiran-group-cell {
+        background: #64748b !important;
+        color: #fff !important;
+        padding: 3pt 6pt !important;
+        font-weight: 800 !important;
+        font-size: 8pt !important;
+        text-transform: uppercase !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Gang row */
+    .lampiran-gang-row td {
         background: #fff !important;
-        page-break-inside: auto;
+        page-break-inside: auto !important;
     }
 
-    .lampiran-gang-row:nth-child(even) {
-        background: #f8fafc !important;
+    .lampiran-gang-row:nth-child(even) td {
+        background: #f5f5f5 !important;
+    }
+
+    .lampiran-cell-no {
+        text-align: center !important;
+        color: #666 !important;
+    }
+
+    .lampiran-cell-gang {
+        text-align: left !important;
+    }
+
+    .lampiran-gang-name {
+        font-weight: 700 !important;
+        font-size: 8pt !important;
+        color: #000 !important;
+    }
+
+    .lampiran-gang-code {
+        font-size: 6.5pt !important;
+        color: #666 !important;
+        display: block !important;
     }
 
     .lampiran-cell-premi {
-        font-size: 8pt;
+        font-family: monospace !important;
+        font-weight: 700 !important;
+        font-size: 8pt !important;
+        text-align: right !important;
     }
 
     .lampiran-cell-detail {
-        font-size: 7pt;
-        line-height: 1.2;
+        font-size: 6.5pt !important;
+        color: #333 !important;
+        line-height: 1.2 !important;
     }
 
-    .lampiran-group-subtotal {
-        background: #f1f5f9 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    /* Group subtotal row */
+    .lampiran-group-subtotal td {
+        background: #e5e5e5 !important;
+        border-top: 1pt solid #000 !important;
+        border-bottom: 0.5pt solid #999 !important;
+        font-weight: 800 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
-    .lampiran-division-subtotal {
-        background: #e2e8f0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    .lampiran-subtotal-label {
+        padding-left: 6pt !important;
+        font-weight: 900 !important;
+        font-size: 8pt !important;
+        text-transform: uppercase !important;
     }
 
     .lampiran-subtotal-value {
-        background: #cbd5e1 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        font-family: monospace !important;
+        font-weight: 900 !important;
+        font-size: 9pt !important;
+        text-align: right !important;
+        background: #d4d4d4 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
+    .lampiran-subtotal-detail {
+        font-size: 6.5pt !important;
+        color: #333 !important;
+    }
+
+    /* Division subtotal row */
+    .lampiran-division-subtotal td {
+        background: #cbd5e1 !important;
+        border-top: 1.5pt solid #000 !important;
+        border-bottom: 1.5pt solid #000 !important;
+        font-weight: 900 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Grand total row */
     .lampiran-table tfoot td {
         background: #000 !important;
-        font-size: 9pt;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        color: #fff !important;
+        font-weight: 900 !important;
+        font-size: 9.5pt !important;
+        padding: 5pt 2pt !important;
+        border: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
+    /* Footer */
     .lampiran-footer {
-        margin-top: 1rem;
-        padding-top: 0.5rem;
-    }
-
-    /* Page break control */
-    .lampiran-division-header {
-        page-break-before: auto;
+        margin-top: 8pt !important;
+        padding-top: 6pt !important;
+        border-top: 0.5pt solid #999 !important;
+        font-size: 7pt !important;
+        color: #666 !important;
     }
 }
 
