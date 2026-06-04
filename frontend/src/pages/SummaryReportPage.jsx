@@ -13,6 +13,7 @@ import AggregationSeederModal from '../components/AggregationSeederModal';
 import PrintSignature from '../components/common/PrintSignature';
 import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
 import ReportWatermark from '../components/common/ReportWatermark';
+import LampiranPremiAppendix from '../components/LampiranPremiAppendix';
 import { otherIncomesService } from '../services/otherIncomesService';
 import { getDivisionTypeLabel } from '../utils/reportPresentationLabels';
 import { getReportDivisionSummary } from '../utils/divisionPresentation';
@@ -339,6 +340,70 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
 
         return totals;
     }, [filteredSummaryData]);
+
+    // Structure data for lampiran: by Division > Group > Gang
+    const lampiranData = useMemo(() => {
+        // Group by division first
+        const divisionsMap = new Map();
+
+        filteredSummaryData.forEach(row => {
+            const divKey = row.division_code || 'LAINNYA';
+            if (!divisionsMap.has(divKey)) {
+                divisionsMap.set(divKey, {
+                    division_code: divKey,
+                    gangs: [],
+                    subtotal_premi: 0,
+                    subtotal_dynamic: {}
+                });
+            }
+            const divData = divisionsMap.get(divKey);
+            divData.gangs.push(row);
+            divData.subtotal_premi += Number(row.total_premi || 0);
+
+            // Collect dynamic premium breakdown
+            if (row._dynamic_premi_list) {
+                row._dynamic_premi_list.forEach(dp => {
+                    const h = dp.header;
+                    divData.subtotal_dynamic[h] = (divData.subtotal_dynamic[h] || 0) + Number(dp.total || 0);
+                });
+            }
+        });
+
+        // For each division, group gangs by assistensi/group
+        const result = Array.from(divisionsMap.values()).map(div => {
+            const groupsMap = new Map();
+
+            div.gangs.forEach(gang => {
+                const groupKey = getAsistensi(gang.gang_code, division) || 'LAINNYA';
+                if (!groupsMap.has(groupKey)) {
+                    groupsMap.set(groupKey, {
+                        group: groupKey,
+                        gangs: []
+                    });
+                }
+                groupsMap.get(groupKey).gangs.push(gang);
+            });
+
+            // Sort groups
+            const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => {
+                const aNum = Number(a.group);
+                const bNum = Number(b.group);
+                const aIsNum = Number.isFinite(aNum);
+                const bIsNum = Number.isFinite(bNum);
+                if (aIsNum && bIsNum && aNum !== bNum) return aNum - bNum;
+                if (aIsNum !== bIsNum) return aIsNum ? -1 : 1;
+                return String(a.group).localeCompare(String(b.group));
+            });
+
+            return {
+                ...div,
+                groups: sortedGroups
+            };
+        });
+
+        // Sort divisions alphabetically
+        return result.sort((a, b) => String(a.division_code).localeCompare(String(b.division_code)));
+    }, [filteredSummaryData, getAsistensi, division]);
 
     const groupedSummaryPrintRows = useMemo(() => {
         const groupsByKey = new Map();
@@ -695,6 +760,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return item ? parseFloat(item.total || 0) : 0;
     }, []);
 
+    // Build breakdown text for gang row
     const buildPremiBreakdownText = useCallback((row) => {
         if (!dynamicPremiHeaders.length) return '-';
 
@@ -706,6 +772,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return parts.length ? parts.join('; ') : '-';
     }, [dynamicPremiHeaders, getDynamicPremiValue]);
 
+    // Build breakdown for subtotal - format per line for readability
     const buildPremiBreakdownTotalText = useCallback(() => {
         if (!dynamicPremiHeaders.length || !filteredGrandTotal?.dynamic_premi_totals) return '-';
 
@@ -720,7 +787,7 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
         return parts.length ? parts.join('; ') : '-';
     }, [dynamicPremiHeaders, filteredGrandTotal]);
 
-    // Build breakdown text for division subtotal
+    // Build breakdown array for division subtotal
     const buildDivisionSubtotalBreakdown = useCallback((subtotal) => {
         if (!subtotal || !subtotal.dynamic_premi_totals) return '-';
 
@@ -729,6 +796,15 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
             .map(([header, value]) => `${header}: ${formatNumber(value)}`);
 
         return parts.length ? parts.join('; ') : '-';
+    }, []);
+
+    // Build array of breakdown items for multi-line display
+    const buildBreakdownArray = useCallback((dynamicPremiTotals) => {
+        if (!dynamicPremiTotals) return [];
+        return Object.entries(dynamicPremiTotals)
+            .filter(([_, value]) => Number(value || 0) !== 0)
+            .sort((a, b) => Number(b[1]) - Number(a[1])) // Sort by value descending
+            .map(([header, value]) => ({ header, value: Number(value) }));
     }, []);
 
     // Handle Save PDF
@@ -1242,121 +1318,16 @@ export default function SummaryReportPage({ onBack, initialDivision, initialMont
                         PAGE 2: LAMPIRAN PREMI (SEPARATE PAGE - PREVIEW ON SCREEN)
                         ============================================================ */}
                     {reportMode === 'payroll' && (
-                        <div className="summary-premi-appendix-page wsp-document" id="summary-premi-appendix-content">
-                            <ReportWatermark />
-
-                            {/* Lampiran Letterhead */}
-                            <div className="wsp-letterhead">
-                                <img
-                                    src={companyInfo.logo}
-                                    alt={companyInfo.name}
-                                    className="wsp-logo"
-                                    onError={(e) => {
-                                        if (companyInfo.logoFallback) {
-                                            e.target.src = companyInfo.logoFallback;
-                                        }
-                                    }}
-                                />
-                                <h1 className="wsp-company-name">{companyInfo.name}</h1>
-                                <div className="wsp-report-title">LAMPIRAN REPORT II - URAIAN TOTAL PREMI</div>
-                                <div className="wsp-report-period">
-                                    Division: <strong style={{ color: '#0f172a' }}>{reportDivisionSummary}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
-                                </div>
-                            </div>
-
-                            {/* Lampiran Table - Gang dengan Subtotal per Divisi */}
-                            <div className="wsp-table-wrapper">
-                                <table className="summary-premi-appendix-table">
-                                    <colgroup>
-                                        <col className="summary-col-no" />
-                                        <col className="summary-col-gang" />
-                                        <col className="summary-col-premi" />
-                                        <col className="summary-col-premi-detail" />
-                                    </colgroup>
-                                    <thead>
-                                        <tr className="wsp-header-master">
-                                            <th>NO</th>
-                                            <th>ESTATE / GANG</th>
-                                            <th>TOTAL PREMI</th>
-                                            <th>URAIAN PREMI</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredSummaryData.length === 0 ? (
-                                            <tr>
-                                                <td colSpan="4">No Data Available</td>
-                                            </tr>
-                                        ) : (
-                                            groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionGroups, divisionSubtotals }) => {
-                                                let appendixRowNo = 0;
-                                                return (
-                                                    <React.Fragment key={`summary-print-group-${group}`}>
-                                                        {/* Group Header */}
-                                                        <tr className="summary-print-group-row">
-                                                            <td colSpan="4">{formatSummaryGroupLabel(summaryGroupLabel)}</td>
-                                                        </tr>
-
-                                                        {/* All Gang Rows */}
-                                                        {divisionGroups.map(({ divisionKey, rows }) => {
-                                                            return rows.map((row, idx) => {
-                                                                const hasGangDescription = row.gang_description && row.gang_description !== row.gang_code;
-                                                                const gangDescription = hasGangDescription ? row.gang_description : row.gang_code;
-                                                                appendixRowNo += 1;
-
-                                                                return (
-                                                                    <tr key={`print-gang-${group}-${divisionKey}-${row.gang_code || idx}`} className="summary-print-gang-row">
-                                                                        <td>{appendixRowNo}</td>
-                                                                        <td>
-                                                                            <div className="summary-print-desc">{gangDescription}</div>
-                                                                            {hasGangDescription && (
-                                                                                <div className="summary-print-code">{row.gang_code}</div>
-                                                                            )}
-                                                                        </td>
-                                                                        <td>{formatNumber(row.total_premi)}</td>
-                                                                        <td className="summary-premi-breakdown-cell">{buildPremiBreakdownText(row)}</td>
-                                                                    </tr>
-                                                                );
-                                                            });
-                                                        })}
-
-                                                        {/* Division Subtotal Rows */}
-                                                        {divisionSubtotals.map((subtotal, idx) => (
-                                                            <tr key={`print-subtotal-${group}-${subtotal.division_code || idx}`} className="summary-print-division-subtotal-row">
-                                                                <td colSpan="2" className="summary-division-subtotal-label">
-                                                                    <span className="summary-subtotal-label-text">SUBTOTAL {subtotal.division_code}</span>
-                                                                </td>
-                                                                <td className="summary-premi-total-cell">{formatNumber(subtotal.total_premi)}</td>
-                                                                <td className="summary-premi-breakdown-cell">{buildDivisionSubtotalBreakdown(subtotal)}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </React.Fragment>
-                                                );
-                                            })
-                                        )}
-                                    </tbody>
-                                    {filteredGrandTotal && (
-                                        <tfoot>
-                                            <tr className="wsp-grand-total">
-                                                <td colSpan="2">{filteredGrandTotalLabel}</td>
-                                                <td>{formatNumber(filteredGrandTotal.total_premi)}</td>
-                                                <td className="summary-premi-breakdown-cell">{buildPremiBreakdownTotalText()}</td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-
-                            {/* Report Footer for Lampiran */}
-                            <footer className="wsp-footer" style={{ marginTop: '2rem' }}>
-                                <div className="wsp-footer-left">
-                                    <div>Dicetak: {printDate}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>User: {user?.username}</div>
-                                </div>
-                                <div className="wsp-footer-right">
-                                    {companyInfo.name}
-                                </div>
-                            </footer>
-                        </div>
+                        <LampiranPremiAppendix
+                            filteredSummaryData={filteredSummaryData}
+                            filteredGrandTotal={filteredGrandTotal}
+                            companyInfo={companyInfo}
+                            periodLabel={periodLabel}
+                            reportDivisionSummary={reportDivisionSummary}
+                            printDate={printDate}
+                            user={user}
+                            dynamicPremiHeaders={dynamicPremiHeaders}
+                        />
                     )}
                 </>
             )}
