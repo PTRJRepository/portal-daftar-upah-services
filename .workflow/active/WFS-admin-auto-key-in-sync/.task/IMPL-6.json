@@ -1,0 +1,24 @@
+{
+  "id": "IMPL-6",
+  "title": "Frontend preview confirm and run flow",
+  "description": "Wire admin category buttons to preview modal, explicit confirmation, run state, result state, and table refresh.",
+  "depends_on": [
+    "IMPL-5"
+  ],
+  "files": [
+    "frontend/src/services/adminAutoKeyInSyncService.js",
+    "frontend/src/components/AdminPayrollSyncToolbar.jsx",
+    "frontend/src/components/CustomPayrollTable.jsx"
+  ],
+  "convergence": [
+    "Preview modal shows count, employees, category, and amount total.",
+    "Actual run requires confirmation after preview.",
+    "Running/progress/result states are visible.",
+    "Table data refreshes after success."
+  ],
+  "meta": {
+    "type": "frontend_flow",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

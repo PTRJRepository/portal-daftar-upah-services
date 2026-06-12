@@ -1,0 +1,22 @@
+{
+  "id": "IMPL-2",
+  "title": "Admin-only UI affordance plan",
+  "description": "Add admin-only controls above payroll table/column groups for selecting Premi, Tunjangan, Potongan Upah Kotor, or Potongan Upah Bersih sync.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "files": [
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/components/AdminPayrollSyncToolbar.jsx"
+  ],
+  "convergence": [
+    "Controls render only for user.isAdmin.",
+    "Non-admin and visitor users see no controls.",
+    "Each button shows red/not-sync count and disabled zero state."
+  ],
+  "meta": {
+    "type": "frontend_ui",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

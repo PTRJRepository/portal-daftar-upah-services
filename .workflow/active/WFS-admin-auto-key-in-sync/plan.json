@@ -1,0 +1,34 @@
+{
+  "session_id": "WFS-admin-auto-key-in-sync",
+  "task_ids": [
+    "IMPL-1",
+    "IMPL-2",
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5",
+    "IMPL-6",
+    "IMPL-7",
+    "IMPL-8"
+  ],
+  "recommended_execution": {
+    "strategy": "phased_with_strict_backend_frontend_boundary",
+    "waves": [
+      ["IMPL-1"],
+      ["IMPL-2", "IMPL-3"],
+      ["IMPL-4"],
+      ["IMPL-5"],
+      ["IMPL-6"],
+      ["IMPL-7"],
+      ["IMPL-8"]
+    ]
+  },
+  "complexity": "high",
+  "conflict_risk": "high",
+  "shared_context": [
+    "Auto Key In Refactor already supports category_key values premi, premi_tunjangan, potongan_upah_kotor, and potongan_upah_bersih through runner payload records.",
+    "Payroll app already has AuthContext admin detection using user.isAdmin and role ADMIN/divisi ALL rules.",
+    "CustomPayrollTable already renders red sync borders from row.value_sync_frame[field] === 'red'.",
+    "Backend payroll routes already expose manual-adjustment compare/check/sync endpoints by API key.",
+    "Dirty worktree is large; implementation must audit target files before editing."
+  ]
+}

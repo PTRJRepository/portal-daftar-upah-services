@@ -1,0 +1,24 @@
+{
+  "id": "IMPL-3",
+  "title": "Unsynced item detection model",
+  "description": "Normalize red value_sync_frame cells into category-scoped sync targets and preview metadata.",
+  "depends_on": [
+    "IMPL-2"
+  ],
+  "files": [
+    "frontend/src/utils/payrollSyncTargets.js",
+    "frontend/src/utils/payrollSyncTargets.test.js",
+    "frontend/src/components/CustomPayrollTable.jsx"
+  ],
+  "convergence": [
+    "Only value_sync_frame red cells are selected.",
+    "Green/synced/empty cells are ignored.",
+    "Targets are deduplicated by employee, category, adjustment, detail, and field.",
+    "Focused tests cover mixed categories and duplicates."
+  ],
+  "meta": {
+    "type": "frontend_logic",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "IMPL-1",
+  "title": "Baseline audit and ownership guard",
+  "description": "Audit dirty worktree and establish safe file ownership before touching admin sync, payroll table, or backend automation files.",
+  "depends_on": [],
+  "files": [
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/styles/CustomPayrollTable.css",
+    "frontend/src/context/AuthContext.jsx",
+    "frontend/src/services/manualAdjustmentService.js",
+    "backend/src/api/payroll.ts",
+    "backend/src/services/manualAdjustmentService.ts"
+  ],
+  "convergence": [
+    "Current diffs in target files are reviewed.",
+    "Overlapping active workflow sessions are documented.",
+    "No unrelated uncommitted changes are overwritten."
+  ],
+  "meta": {
+    "type": "safety",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "IMPL-5",
+  "title": "Auto Key-In backend bridge",
+  "description": "Build server-side bridge that creates runner payloads and invokes Auto Key In safely with dry-run default.",
+  "depends_on": [
+    "IMPL-4"
+  ],
+  "files": [
+    "backend/src/services/adminAutoKeyInRunService.ts",
+    "backend/src/api/payroll.ts"
+  ],
+  "convergence": [
+    "RunPayload uses only_missing_rows true and selected category_key.",
+    "Dry-run/preview is default unless explicit actual-run confirmation exists.",
+    "Runner command and credentials come from backend config/env.",
+    "Errors are clear and non-sensitive."
+  ],
+  "meta": {
+    "type": "backend_service",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "IMPL-7",
+  "title": "Post-run sync audit and red indicator refresh",
+  "description": "Run sync-status audit after Auto Key-In success and refresh red/green table indicators from server state.",
+  "depends_on": [
+    "IMPL-5",
+    "IMPL-6"
+  ],
+  "files": [
+    "backend/src/services/manualAdjustmentSyncStatusSeederService.ts",
+    "backend/src/api/payroll.ts",
+    "frontend/src/services/adminAutoKeyInSyncService.js"
+  ],
+  "convergence": [
+    "Backend audits same period/division/category after runner success.",
+    "Response includes updated/unchanged/mismatch counts.",
+    "Frontend refreshes payroll rows and sync frames.",
+    "Audit failure warns without hiding run result."
+  ],
+  "meta": {
+    "type": "integration",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

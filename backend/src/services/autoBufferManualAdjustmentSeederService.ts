@@ -27,6 +27,9 @@ const AUTO_BUFFER_ADJUSTMENT_NAME = {
     spsi: "SPSI",
     potonganPph: "POTONGAN PPH"
 } as const;
+const AUTO_BUFFER_PPH_ADJUSTMENT_NAME_CONDITION = `
+              UPPER(LTRIM(RTRIM(adjustment_name))) IN ('POTONGAN PPH', 'AUTO POTONGAN PPH', 'AUTO PPH')
+`;
 
 function toNumber(value: unknown): number {
     const parsed = Number(value);
@@ -189,6 +192,7 @@ export function buildAutoBufferSeedEntries(
             kehadiran,
             masaKerjaTahun,
             isSpsiMember,
+            divisionCode: normalizedDivision,
             dbJabatanJumlah,
             dbMasaKerjaJumlah
         });
@@ -258,7 +262,8 @@ export function buildAutoBufferSeedEntries(
                 remarks: buildAutoBufferSeedRemark(
                     AUTO_BUFFER_ADJUSTMENT_NAME.potonganPph,
                     pph21TerAmount,
-                    dbPotPph21
+                    dbPotPph21,
+                    { syncStatus: "MISS", matchStatus: "MISMATCH" }
                 )
         };
 
@@ -381,6 +386,7 @@ export class AutoBufferManualAdjustmentSeederService {
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
               ${gangFilterSql}
               AND ${AUTO_BUFFER_MANUAL_REMARK_CONDITION}
+              AND NOT (${AUTO_BUFFER_PPH_ADJUSTMENT_NAME_CONDITION})
         `, scopeParams);
         const protectedManualKeys = new Set<string>();
         for (const row of preservedManualRows) {
@@ -394,7 +400,7 @@ export class AutoBufferManualAdjustmentSeederService {
               AND division_code = ?
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
               ${gangFilterSql}
-              AND ${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION}
+              AND (${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION} OR ${AUTO_BUFFER_PPH_ADJUSTMENT_NAME_CONDITION})
         `;
         const countRow = await db.queryOne<{ count: number }>(countQuery, scopeParams);
         const deletedExisting = toNumber(countRow?.count);
@@ -405,7 +411,7 @@ export class AutoBufferManualAdjustmentSeederService {
               AND division_code = ?
               AND adjustment_type = '${AUTO_BUFFER_ADJUSTMENT_TYPE}'
               ${gangFilterSql}
-              AND ${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION}
+              AND (${AUTO_BUFFER_SEED_OWNED_REMARK_CONDITION} OR ${AUTO_BUFFER_PPH_ADJUSTMENT_NAME_CONDITION})
         `;
         await db.query(deleteQuery, scopeParams);
 
@@ -601,12 +607,18 @@ export class AutoBufferManualAdjustmentSeederService {
             const dbAmount = trueValuesMap.get(key) || 0;
             const currentAmount = Math.abs(toNumber(record.amount)); // Comparing absolute values for safety since SPSI is a deduction
             const absoluteDbAmount = Math.abs(dbAmount);
+            const isPphAdjustment = adjustmentName === AUTO_BUFFER_ADJUSTMENT_NAME.potonganPph;
             
             // Build the new remark containing the match status
-            const newRemark = buildAutoBufferSeedRemark(adjustmentName, currentAmount, absoluteDbAmount);
+            const newRemark = buildAutoBufferSeedRemark(
+                adjustmentName,
+                currentAmount,
+                absoluteDbAmount,
+                isPphAdjustment ? { syncStatus: "MISS", matchStatus: "MISMATCH" } : undefined
+            );
             
             // Check if it's a match
-            if (Math.abs(currentAmount - absoluteDbAmount) <= 0.01) {
+            if (!isPphAdjustment && Math.abs(currentAmount - absoluteDbAmount) <= 0.01) {
                 matches++;
             } else {
                 misses++;
