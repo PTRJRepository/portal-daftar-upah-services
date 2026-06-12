@@ -395,6 +395,7 @@ export default function SalaryHistoryTable({ empCode, months = 12, onPeriodClick
  */
 function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
     const n = (key) => Number(row[key]) || 0;
+    const deductionAmount = (key) => Math.abs(n(key));
 
     // --- Earnings ---
     const gajiPokok = n('gaji_pokok') || (n('jumlah_hk') * n('upah_dasar'));
@@ -417,7 +418,7 @@ function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
         });
     } else {
         Object.entries(row).forEach(([key, val]) => {
-            if (key.startsWith('premi_') && key !== 'premi_brondol' && typeof val === 'number' && val > 0) {
+            if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'pot_premi_pph' && typeof val === 'number' && val > 0) {
                 const label = key.replace('premi_', '').replace(/_/g, ' ').toUpperCase();
                 if (!premiList.some(p => p.label === `Premi ${label}`)) {
                     premiList.push({ label: `Premi ${label}`, value: val });
@@ -431,24 +432,25 @@ function ExpandedPayslipDetail({ row, fmt, fmtCurrency }) {
 
     // --- Deductions ---
     const potKotorList = [];
-    if (n('pot_koreksi') > 0) potKotorList.push({ label: 'Koreksi', value: n('pot_koreksi') });
+    if (deductionAmount('pot_koreksi') > 0) potKotorList.push({ label: 'Koreksi', value: deductionAmount('pot_koreksi') });
     Object.entries(row).forEach(([key, val]) => {
-        if (key.startsWith('koreksi_') && typeof val === 'number' && val > 0) {
+        const amount = Math.abs(Number(val) || 0);
+        if (key.startsWith('koreksi_') && typeof val === 'number' && amount > 0) {
             const label = key.replace('koreksi_', '').replace(/_/g, ' ').toUpperCase();
-            potKotorList.push({ label: `Koreksi ${label}`, value: val });
+            potKotorList.push({ label: `Koreksi ${label}`, value: amount });
         }
     });
 
     const potBersihList = [
-        { label: 'BPJS Kesehatan', value: n('pot_bpjs_kesehatan_pekerja') },
-        { label: 'BPJS Pensiun', value: n('pot_bpjs_pensiun_pekerja') },
-        { label: 'Astek Pekerja', value: n('pot_astek_pekerja') || n('pot_astek') || n('pot_astek_jumlah') },
-        { label: 'SPSI', value: n('pot_spsi') },
-        { label: 'PPh 21', value: n('pot_pph21') },
+        { label: 'BPJS Kesehatan', value: deductionAmount('pot_bpjs_kesehatan_pekerja') },
+        { label: 'BPJS Pensiun', value: deductionAmount('pot_bpjs_pensiun_pekerja') },
+        { label: 'Astek Pekerja', value: deductionAmount('pot_astek_pekerja') || deductionAmount('pot_astek') },
+        { label: 'SPSI', value: deductionAmount('pot_spsi') },
+        { label: 'PPh 21', value: deductionAmount('pot_pph21') },
     ].filter(item => item.value > 0);
 
     const jumlahUpahKotor = n('jumlah_upah_kotor');
-    const totalPotongan = n('total_potongan');
+    const totalPotongan = deductionAmount('total_potongan');
     const upahBersih = n('upah_bersih');
     const totalPremi = n('total_premi');
     const totalTunjangan = n('total_tunjangan');

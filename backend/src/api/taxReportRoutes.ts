@@ -21,6 +21,13 @@ import { getApiKeyHeader, getAuthorizationHeader, resolveUserFromHeaders } from 
 import { historyDatabaseService } from "../services/historyDatabaseService";
 import { applyReportIdentity, collectNikLookupKeys, resolveReportIdentity } from "../utils/taxReportIdentity";
 import { prepareDomTaxExcelRows } from "../utils/taxDomExportRows";
+import {
+    attachPayrollPeriodAdjustmentNotes,
+    resolveAdjustedJabatanJumlah,
+    shouldForcePotPph21ToTer
+} from "../utils/payrollPeriodAdjustments";
+import { summaryService } from "../services/summaryService";
+import { getCanonicalOtherIncomeType } from "../utils/otherIncomeCanonical";
 
 /**
  * Sanitize string for filename - remove/replace invalid filename characters
@@ -31,6 +38,180 @@ function sanitizeForFilename(str: string): string {
         .replace(/[\\/:*?"<>|]/g, '_')  // Replace invalid filename chars
         .replace(/\s+/g, '_')            // Replace spaces with underscore
         .substring(0, 50);               // Limit length
+}
+
+type TaxExcelScopeLabels = {
+    divisionLabel: string;
+    gangLabel: string;
+    filenameDivision: string;
+    filenameGang: string;
+};
+
+const GENERIC_GANG_DESCRIPTION_WORDS = new Set([
+    'gang', 'kemandoran', 'mandor', 'panen', 'rawat', 'rawatan', 'pruning', 'prunning',
+    'bhl', 'harian', 'pemeliharaan', 'perawatan', 'maintenance', 'umum', 'buah',
+    'brondol', 'angkut', 'muat', 'pupuk', 'semprot', 'tunas'
+]);
+
+function getAsistensiFromGangCode(gangCode: string): string | null {
+    const normalized = String(gangCode || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized.startsWith('K2')) return '1';
+    const match = normalized.match(/\d/);
+    return match ? match[0] : null;
+}
+
+function getGangGroupCode(gangCode: string): string {
+    const normalized = String(gangCode || '').trim().toUpperCase();
+    const match = normalized.match(/^([A-Z]+\d+)/);
+    return match ? match[1] : normalized;
+}
+
+function normalizeDescriptionWords(value: string): string[] {
+    return String(value || '')
+        .replace(/[()[\]{}.,;:/\\|_-]+/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+}
+
+function isGenericDescriptionWord(word: string): boolean {
+    return GENERIC_GANG_DESCRIPTION_WORDS.has(String(word || '').toLowerCase());
+}
+
+function isMeaningfulWords(words: string[]): boolean {
+    return words.length > 0 && words.some((word) => !isGenericDescriptionWord(word));
+}
+
+function cleanLeadingGenericDescriptionWords(words: string[]): string[] {
+    const cleaned = [...words];
+    while (cleaned.length > 1 && isGenericDescriptionWord(cleaned[0])) {
+        cleaned.shift();
+    }
+    return isMeaningfulWords(cleaned) && !isGenericDescriptionWord(cleaned[0]) ? cleaned : [];
+}
+
+function findSharedMeaningfulSuffix(wordLists: string[][]): string[] {
+    if (wordLists.length < 2) return [];
+
+    const suffixes = new Map<string, { words: string[]; rows: Set<number>; firstRow: number }>();
+    wordLists.forEach((words, rowIndex) => {
+        for (let length = words.length; length >= 1; length -= 1) {
+            const suffix = words.slice(words.length - length);
+            if (!isMeaningfulWords(suffix) || isGenericDescriptionWord(suffix[0])) continue;
+
+            const key = suffix.join('\u0000').toLowerCase();
+            const existing = suffixes.get(key) || { words: suffix, rows: new Set<number>(), firstRow: rowIndex };
+            existing.rows.add(rowIndex);
+            suffixes.set(key, existing);
+        }
+    });
+
+    return Array.from(suffixes.values())
+        .filter((item) => item.rows.size >= 2)
+        .sort((a, b) => {
+            if (b.words.length !== a.words.length) return b.words.length - a.words.length;
+            if (b.rows.size !== a.rows.size) return b.rows.size - a.rows.size;
+            return a.firstRow - b.firstRow;
+        })[0]?.words || [];
+}
+
+function buildGangDescriptionGroupLabel(rows: Array<Record<string, any>>, fallbackLabel: string): string {
+    const wordLists = rows
+        .map((row) => normalizeDescriptionWords(row?.gang_description || row?.description || ''))
+        .filter(isMeaningfulWords);
+    const sharedSuffix = findSharedMeaningfulSuffix(wordLists);
+    if (sharedSuffix.length > 0) return sharedSuffix.join(' ');
+
+    const cleaned = cleanLeadingGenericDescriptionWords(wordLists[0] || []);
+    if (cleaned.length > 0) return cleaned.join(' ');
+
+    return fallbackLabel;
+}
+
+async function resolveGroupGangLabelFromEmployees(
+    employees: Array<Record<string, any>> | undefined,
+    gangPrefix: string,
+    gangDescriptions: Record<string, string>
+): Promise<{ code: string; description: string } | null> {
+    if (!Array.isArray(employees) || employees.length === 0 || !gangPrefix || gangPrefix === 'ALL') {
+        return null;
+    }
+
+    const matchingGangCodes = [...new Set(
+        employees
+            .map((emp) => String(emp.gang_code || '').trim().toUpperCase())
+            .filter((gangCode) => gangCode && getAsistensiFromGangCode(gangCode) === gangPrefix)
+    )];
+    if (matchingGangCodes.length === 0) return null;
+
+    const groupCodes = [...new Set(matchingGangCodes.map(getGangGroupCode).filter(Boolean))];
+    const displayCode = groupCodes.length === 1 ? groupCodes[0] : `G${gangPrefix}`;
+
+    const rowsWithDescriptions = await Promise.all(matchingGangCodes.map(async (gangCode) => {
+        const employeeDescription = employees.find((emp) => String(emp.gang_code || '').trim().toUpperCase() === gangCode)?.gang_description;
+        const mappedDescription = gangDescriptions[gangCode]?.trim() || String(employeeDescription || '').trim();
+        if (mappedDescription) return { gang_code: gangCode, gang_description: mappedDescription };
+
+        // Filter group memakai angka asistensi, tetapi nama area harus tetap diambil dari tabel gang aktual.
+        const gangInfo = await gangService.getGangInfo(gangCode).catch(() => null);
+        return { gang_code: gangCode, gang_description: gangInfo?.description?.trim() || '' };
+    }));
+
+    const directDescription = gangDescriptions[displayCode]?.trim() || '';
+    const description = directDescription || buildGangDescriptionGroupLabel(rowsWithDescriptions, `Group ${gangPrefix}`);
+
+    return { code: displayCode, description };
+}
+
+async function resolveTaxExcelScopeLabels(input: {
+    division?: string;
+    gang?: string;
+    gangPrefix?: string;
+    employees?: Array<Record<string, any>>;
+}): Promise<TaxExcelScopeLabels> {
+    const divisionCode = (input.division || 'ALL').trim() || 'ALL';
+    const gangCode = (input.gang || '').trim();
+    const gangPrefix = (input.gangPrefix || '').trim();
+
+    const [divisionDescriptions, gangDescriptions] = await Promise.all([
+        summaryService.getDivisionDescriptionsMap().catch(() => ({} as Record<string, string>)),
+        summaryService.getAllGangDescriptions().catch(() => ({} as Record<string, string>))
+    ]);
+
+    const divisionDescription = divisionDescriptions[divisionCode]?.trim() || '';
+    const divisionLabel = divisionDescription && divisionDescription !== divisionCode
+        ? `${divisionCode} - ${divisionDescription}`
+        : divisionCode;
+    const filenameDivision = `${divisionCode}${divisionDescription && divisionDescription !== divisionCode ? `_${sanitizeForFilename(divisionDescription)}` : ''}`;
+
+    let displayGangCode = gangCode && gangCode !== 'ALL' ? gangCode : 'ALL';
+    let gangDescription = '';
+
+    if (gangCode && gangCode !== 'ALL') {
+        gangDescription = gangDescriptions[gangCode]?.trim() || '';
+        if (!gangDescription) {
+            const gangInfo = await gangService.getGangInfo(gangCode).catch(() => null);
+            gangDescription = gangInfo?.description?.trim() || '';
+        }
+    } else if (gangPrefix && gangPrefix !== 'ALL') {
+        const groupLabel = await resolveGroupGangLabelFromEmployees(input.employees, gangPrefix, gangDescriptions);
+        displayGangCode = groupLabel?.code || `G${gangPrefix}`;
+        gangDescription = groupLabel?.description || '';
+    } else if (Array.isArray(input.employees) && input.employees.length > 0) {
+        const uniqueGangCodes = [...new Set(input.employees.map((emp) => String(emp.gang_code || '').trim()).filter(Boolean))];
+        if (uniqueGangCodes.length === 1) {
+            displayGangCode = uniqueGangCodes[0];
+            gangDescription = gangDescriptions[displayGangCode]?.trim() || '';
+        }
+    }
+
+    const gangLabel = gangDescription && gangDescription !== displayGangCode
+        ? `${displayGangCode} - ${gangDescription}`
+        : displayGangCode;
+    const filenameGang = `${displayGangCode}${gangDescription && gangDescription !== displayGangCode ? `_${sanitizeForFilename(gangDescription)}` : ''}`;
+
+    return { divisionLabel, gangLabel, filenameDivision, filenameGang };
 }
 
 const authService = AuthService.getInstance();
@@ -133,22 +314,15 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             const gangLabel = resolved.gang || resolved.gangPrefix || 'ALL';
-
-            // Get gang description for filename
-            let gangDescForFilename = '';
-            if (gangLabel && gangLabel !== 'ALL') {
-                try {
-                    const gangInfo = await gangService.getGangInfo(gangLabel);
-                    if (gangInfo?.description) {
-                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
-                    }
-                } catch (e) {
-                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
-                }
-            }
+            const scopeLabels = await resolveTaxExcelScopeLabels({
+                division: resolved.division || 'ALL',
+                gang: resolved.gang,
+                gangPrefix: resolved.gangPrefix,
+                employees: data.employees
+            });
 
             // Generate Excel Buffer (pass premiKeys for dynamic column headers)
-            const excelBuffer = await generateMonthlyTaxExcel(data, resolved.year, resolved.month, resolved.division || 'ALL', gangLabel, data.premiKeys);
+            const excelBuffer = await generateMonthlyTaxExcel(data, resolved.year, resolved.month, resolved.division || 'ALL', gangLabel, data.premiKeys, scopeLabels);
 
             console.log(`[TaxReport Excel] Excel generated: ${excelBuffer?.length || 0} bytes, type: ${typeof excelBuffer}`);
 
@@ -157,9 +331,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const isGroupOnly = resolved.gangPrefix && (!resolved.gang || resolved.gang === 'ALL');
-            const displayGangLabel = isGroupOnly ? `G${resolved.gangPrefix}` : gangLabel;
-            const filename = `PPH21_${resolved.division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${resolved.month}_${resolved.year}.xlsx`;
+            const filename = `PPH21_${scopeLabels.filenameDivision}_${scopeLabels.filenameGang}_${resolved.month}_${resolved.year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -254,19 +426,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             // Get other incomes for the year
             const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(resolved.year, effectiveDivision, gang);
-            const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
+            const dbIncomeByMonthNik = new Map<string, { thr: number; bonus: number; kontan: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
                     const nikKeys = collectNikLookupKeys(inc);
-                    const type = String(inc.income_type || '').toUpperCase();
+                    const type = getCanonicalOtherIncomeType(inc);
                     const amt = Number(inc.amount) || 0;
                     for (const nik of nikKeys) {
                         const monthKey = `${inc.period_month}_${nik}`;
-                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, bonus: 0, kontan: 0, custom: 0 });
                         const mData = dbIncomeByMonthNik.get(monthKey)!;
                         if (type === 'THR') mData.thr += amt;
-                        else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
-                        else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
+                        else if (type === 'KONTAN') mData.kontan += amt;
+                        else if (type === 'BONUS') mData.bonus += amt;
                         else mData.custom += amt;
                     }
                 }
@@ -394,12 +566,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     const [mStr, nikStr] = key.split('_');
                     if (nikStr === rawEmpNikForBonus && parseInt(mStr) === resolved.month) {
                         if (mData.thr > 0) empOtherIncomes.push({ type: 'THR', name: 'THR', amount: mData.thr });
-                        if (mData.exgratia > 0) empOtherIncomes.push({ type: 'KONTAN', name: 'KONTAN', amount: mData.exgratia });
+                        if (mData.bonus > 0) empOtherIncomes.push({ type: 'BONUS', name: 'PENDAPATAN BONUS', amount: mData.bonus });
+                        if (mData.kontan > 0) empOtherIncomes.push({ type: 'KONTAN', name: 'KONTANAN', amount: mData.kontan });
                         if (mData.custom > 0) empOtherIncomes.push({ type: 'CUSTOM', name: 'Custom', amount: mData.custom });
                     }
                 }
 
                 const empThrAmount = empOtherIncomes.filter((i: any) => i.type === 'THR').reduce((s: number, i: any) => s + i.amount, 0);
+                const empBonusAmount = empOtherIncomes.filter((i: any) => i.type === 'BONUS').reduce((s: number, i: any) => s + i.amount, 0);
                 const empKontanAmount = empOtherIncomes.filter((i: any) => i.type === 'KONTAN').reduce((s: number, i: any) => s + i.amount, 0);
                 const empOtherIncomeAmount = empOtherIncomes.filter((i: any) => i.type === 'CUSTOM').reduce((s: number, i: any) => s + i.amount, 0);
 
@@ -498,9 +672,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     astek_jht_majikan: astek084,
                     other_incomes: empOtherIncomes,
                     thr_amount: empThrAmount,
-                    exgratia_amount: empKontanAmount,
+                    exgratia_amount: empBonusAmount,
+                    bonus_amount: empBonusAmount,
+                    kontanan_amount: empKontanAmount,
+                    pendapatan_thr: empThrAmount,
+                    pendapatan_bonus: empBonusAmount,
+                    pendapatan_kontan: empKontanAmount,
                     other_income_amount: empOtherIncomeAmount,
-                    pendapatan_tidak_tetap_thp: empThrAmount + empKontanAmount + empOtherIncomeAmount,
+                    pendapatan_tidak_tetap_thp: empThrAmount + empBonusAmount + empKontanAmount + empOtherIncomeAmount,
                     upah_dasar: upahDasar,
                     gaji_pokok_ideal: row.gaji_pokok_ideal || 0,
                     carumanBase: carumanBase
@@ -510,24 +689,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.log(`[TaxReport Excel Progressive] Transformed ${employees.length} employees, total_pph21=${totalPph21}`);
 
             const gangLabel = gang || gangPrefix || 'ALL';
-
-            // Get gang description for filename
-            let gangDescForFilename = '';
-            if (gangLabel && gangLabel !== 'ALL') {
-                try {
-                    const gangInfo = await gangService.getGangInfo(gangLabel);
-                    if (gangInfo?.description) {
-                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
-                    }
-                } catch (e) {
-                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
-                }
-            }
+            const scopeLabels = await resolveTaxExcelScopeLabels({
+                division: division || 'ALL',
+                gang,
+                gangPrefix,
+                employees
+            });
 
             // Generate Excel
             const excelBuffer = await generateMonthlyTaxExcel(
                 { employees, period: { month: resolved.month, year: resolved.year }, total_pph21: totalPph21 },
-                resolved.year, resolved.month, division || 'ALL', gangLabel
+                resolved.year, resolved.month, division || 'ALL', gangLabel, undefined, scopeLabels
             );
 
             if (!excelBuffer || excelBuffer.length === 0) {
@@ -535,9 +707,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 return { error: "Failed to generate Excel buffer" };
             }
 
-            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
-            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
-            const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${resolved.month}_${resolved.year}.xlsx`;
+            const filename = `PPH21_${scopeLabels.filenameDivision}_${scopeLabels.filenameGang}_${resolved.month}_${resolved.year}.xlsx`;
             set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             set.headers["Content-Disposition"] = `attachment; filename="${filename}"`;
 
@@ -675,19 +845,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionForSecondary, gang);
             console.log(`[TaxReport Excel FAST] Found ${dbOtherIncomesYear.length} other income records`);
             
-            const dbIncomeByMonthNik = new Map<string, { thr: number; exgratia: number; custom: number }>();
+            const dbIncomeByMonthNik = new Map<string, { thr: number; bonus: number; kontan: number; custom: number }>();
             for (const inc of dbOtherIncomesYear) {
                 if (inc.is_taxable) {
                     const nikKeys = collectNikLookupKeys(inc);
-                    const type = String(inc.income_type || '').toUpperCase();
+                    const type = getCanonicalOtherIncomeType(inc);
                     const amt = Number(inc.amount) || 0;
                     for (const nik of nikKeys) {
                         const monthKey = `${inc.period_month}_${nik}`;
-                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                        if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, bonus: 0, kontan: 0, custom: 0 });
                         const mData = dbIncomeByMonthNik.get(monthKey)!;
                         if (type === 'THR') mData.thr += amt;
-                        else if (type === 'KONTAN' || type === 'KONTANAN') mData.exgratia += amt;
-                        else if (type === 'BONUS' || type === 'EXGRATIA') mData.exgratia += amt;
+                        else if (type === 'KONTAN') mData.kontan += amt;
+                        else if (type === 'BONUS') mData.bonus += amt;
                         else mData.custom += amt;
                     }
                 }
@@ -805,15 +975,17 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                 // Other incomes for this employee this month
                 const rawEmpNikForBonus = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
                 const monthKey = `${month}_${rawEmpNikForBonus}`;
-                const empOtherIncome = dbIncomeByMonthNik.get(monthKey) || { thr: 0, exgratia: 0, custom: 0 };
+                const empOtherIncome = dbIncomeByMonthNik.get(monthKey) || { thr: 0, bonus: 0, kontan: 0, custom: 0 };
                 const empThrAmount = empOtherIncome.thr;
-                const empKontanAmount = empOtherIncome.exgratia;
+                const empBonusAmount = empOtherIncome.bonus;
+                const empKontanAmount = empOtherIncome.kontan;
                 const empOtherIncomeAmount = empOtherIncome.custom;
 
                 // Build other incomes array for this employee
                 let empOtherIncomes: { type: string; name: string; amount: number }[] = [];
                 if (empThrAmount > 0) empOtherIncomes.push({ type: 'THR', name: 'THR', amount: empThrAmount });
-                if (empKontanAmount > 0) empOtherIncomes.push({ type: 'KONTAN', name: 'Kontan', amount: empKontanAmount });
+                if (empBonusAmount > 0) empOtherIncomes.push({ type: 'BONUS', name: 'PENDAPATAN BONUS', amount: empBonusAmount });
+                if (empKontanAmount > 0) empOtherIncomes.push({ type: 'KONTAN', name: 'KONTANAN', amount: empKontanAmount });
                 if (empOtherIncomeAmount > 0) empOtherIncomes.push({ type: 'LAIN', name: 'Pendapatan Lain', amount: empOtherIncomeAmount });
 
                 // Get job title
@@ -959,9 +1131,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     
                     // Pendapatan Lainnya
                     thr_amount: empThrAmount,                    // Was: missing
-                    exgratia_amount: empKontanAmount,             // Was: missing
+                    exgratia_amount: empBonusAmount,
+                    bonus_amount: empBonusAmount,
+                    kontanan_amount: empKontanAmount,
+                    pendapatan_thr: empThrAmount,
+                    pendapatan_bonus: empBonusAmount,
+                    pendapatan_kontan: empKontanAmount,
                     other_incomes: empOtherIncomes,
-                    pendapatan_tidak_tetap_thp: empThrAmount + empKontanAmount + empOtherIncomeAmount,
+                    pendapatan_tidak_tetap_thp: empThrAmount + empBonusAmount + empKontanAmount + empOtherIncomeAmount,
                     
                     // GL Metadata — use TAX_COMPONENT_METADATA directly (DataExtractor doesn't provide this)
                     component_metadata: TAX_COMPONENT_METADATA,
@@ -976,26 +1153,19 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             console.log(`[TaxReport Excel FAST] Transformed ${employees.length} employees, total_pph21=${totalPph21} in ${Date.now() - startTime}ms`);
 
             const gangLabel = gang || gangPrefix || 'ALL';
-
-            // Get gang description for filename
-            let gangDescForFilename = '';
-            if (gangLabel && gangLabel !== 'ALL') {
-                try {
-                    const gangInfo = await gangService.getGangInfo(gangLabel);
-                    if (gangInfo?.description) {
-                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
-                    }
-                } catch (e) {
-                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
-                }
-            }
+            const scopeLabels = await resolveTaxExcelScopeLabels({
+                division: division || 'ALL',
+                gang,
+                gangPrefix,
+                employees
+            });
 
             // Generate Excel
             console.log(`[TaxReport Excel FAST] Calling generateMonthlyTaxExcel with ${employees.length} employees...`);
             try {
                 const excelBuffer = await generateMonthlyTaxExcel(
                     { employees, period: { month, year }, total_pph21: totalPph21 },
-                    year, month, division || 'ALL', gangLabel
+                    year, month, division || 'ALL', gangLabel, undefined, scopeLabels
                 );
                 console.log(`[TaxReport Excel FAST] generateMonthlyTaxExcel returned buffer length=${excelBuffer?.length || 0}`);
 
@@ -1016,9 +1186,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
                     return { error: "Failed to generate Excel - empty buffer" };
                 }
 
-                const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
-                const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
-                const filename = `PPH21_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${month}_${year}.xlsx`;
+                const filename = `PPH21_${scopeLabels.filenameDivision}_${scopeLabels.filenameGang}_${month}_${year}.xlsx`;
                 console.log(`[TaxReport Excel FAST] Returning file: ${filename} (${finalBuffer.length} bytes)`);
 
                 // Set headers and return a native Response object
@@ -1091,6 +1259,14 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
 
             console.log(`[TaxReport DOM FAST] Request: ${division}/${gang || gangPrefix || 'ALL'} ${m}/${y}, ${employees.length} employees`);
 
+            // Debug: Log first employee structure
+            if (employees.length > 0) {
+                const firstEmp = employees[0];
+                console.log('[TaxReport DOM FAST] First employee keys:', Object.keys(firstEmp).join(', '));
+                console.log('[TaxReport DOM FAST] First employee pph21_ter:', firstEmp.pph21_ter, 'pot_pph21:', firstEmp.pot_pph21);
+                console.log('[TaxReport DOM FAST] First employee emp_code:', firstEmp.emp_code, 'nama:', firstEmp.nama);
+            }
+
             const empCodes = employees.map((emp: any) => (emp.emp_code || emp.ID_KARYAWAN || '').trim().toUpperCase()).filter(Boolean);
 
             if (empCodes.length > 0) {
@@ -1111,33 +1287,55 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             const metaToInject = TAX_COMPONENT_METADATA;
             const preparedDomRows = prepareDomTaxExcelRows(employees, Array.isArray(premiKeys) ? premiKeys : [], metaToInject);
             const excelEmployees = preparedDomRows.employees;
+            for (const emp of excelEmployees) {
+                emp.tunjangan_jabatan = resolveAdjustedJabatanJumlah(emp, { month: m, year: y, divisionCode: division }, Number(emp.tunjangan_jabatan ?? emp.jabatan_jumlah ?? 0));
+                emp.jabatan_jumlah = emp.tunjangan_jabatan;
+                if (shouldForcePotPph21ToTer(emp, { month: m, year: y, divisionCode: division })) {
+                    emp.pot_pph21 = Number(emp.pph21_ter || 0);
+                    emp.pph21 = emp.pot_pph21;
+                }
+                attachPayrollPeriodAdjustmentNotes(emp, { month: m, year: y, divisionCode: division });
+            }
             const totalPph21 = preparedDomRows.totalPph21;
-            console.log(`[TaxReport DOM FAST] Prepared DOM rows without premium re-query: employees=${excelEmployees.length}, metadata=${Object.keys(metaToInject || {}).join(', ')}`);
+            console.log(`[TaxReport DOM FAST] Prepared DOM rows: employees=${excelEmployees.length}, totalPph21=${totalPph21}`);
+
+            // Debug: Log first 3 employees' pph21 values
+            excelEmployees.slice(0, 3).forEach((emp, idx) => {
+                console.log(`[TaxReport DOM FAST] Employee ${idx+1}: emp_code=${emp.emp_code}, nama=${emp.nama}, pph21_ter=${emp.pph21_ter}, pot_pph21=${emp.pot_pph21}`);
+            });
 
             const gangLabel = gang || gangPrefix || 'ALL';
+            const scopeLabels = await resolveTaxExcelScopeLabels({
+                division: division || 'ALL',
+                gang,
+                gangPrefix,
+                employees: excelEmployees
+            });
 
-            // Get gang description for filename
-            let gangDescForFilename = '';
-            if (gangLabel && gangLabel !== 'ALL') {
-                try {
-                    const gangInfo = await gangService.getGangInfo(gangLabel);
-                    if (gangInfo?.description) {
-                        gangDescForFilename = '_' + sanitizeForFilename(gangInfo.description);
-                    }
-                } catch (e) {
-                    console.warn(`[TaxReport] Could not get gang description for ${gangLabel}:`, e);
-                }
+            // Debug: Log first employee before Excel generation
+            if (excelEmployees.length > 0) {
+                const firstEmp = excelEmployees[0];
+                console.log('[TaxReport DOM FAST] Before Excel generation - first emp:', {
+                    emp_code: firstEmp.emp_code,
+                    nama: firstEmp.nama,
+                    emp_name: firstEmp.emp_name,
+                    pph21_ter: firstEmp.pph21_ter,
+                    pot_pph21: firstEmp.pot_pph21,
+                    premi_detail: firstEmp.premi_detail ? Object.keys(firstEmp.premi_detail) : 'NONE',
+                    total_premi: firstEmp.total_premi
+                });
             }
 
             let excelBuffer: Buffer | undefined;
 
             try {
                 excelBuffer = await generateMonthlyTaxExcel(
-                    { employees: excelEmployees, period: { month: m, year: y }, total_pph21: totalPph21 },
+                    { employees: excelEmployees as any, period: { month: m, year: y }, total_pph21: totalPph21 },
                     y, m,
                     division || 'ALL',
                     gangLabel,
-                    premiKeys || []
+                    premiKeys || [],
+                    scopeLabels
                 );
                 console.log(`[TaxReport Excel DOM] generateMonthlyTaxExcel completed: ${excelBuffer?.length || 0} bytes`);
             } catch (excelGenError: any) {
@@ -1158,9 +1356,7 @@ export const taxReportRoutes = new Elysia({ prefix: "/tax-report" })
             }
 
             const totalMs = (performance.now() - t0).toFixed(0);
-            const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
-            const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : gangLabel;
-            const filename = `PPH21_DOM_${division || 'ALL'}_${displayGangLabel}${gangDescForFilename}_${m}_${y}.xlsx`;
+            const filename = `PPH21_DOM_${scopeLabels.filenameDivision}_${scopeLabels.filenameGang}_${m}_${y}.xlsx`;
             console.log(`[TaxReport DOM FAST] ✅ Done in ${totalMs}ms — ${filename} (${excelBuffer.length} bytes)`);
 
             // Set headers and return a native Response object

@@ -78,29 +78,53 @@ describe('taxReportService', () => {
           nama: 'Siti',
           gang_code: 'A1H',
           upah_dasar: 100000,
+          gaji_pokok: 100000,
+          gaji_pokok_bulanan: 110000,
+          gaji_pokok_dibayarkan: 100000,
+          pot_alpa_cth: -10000,
+          astek_084pct: 840,
           total_premi: 50000,
           premi: { pruning: 30000, brondol: 20000 },
           premi_pruning: 30000,
           premi_brondol: 20000,
           pph21_ter: 7500,
           penghasilan_bruto: 150000,
+          other_incomes: [
+            { income_type: 'THR', income_name: 'THR', amount: 500000 },
+            { income_type: 'KONTAN', income_name: 'Kontanan', amount: 125000 }
+          ],
           lembur_records: Array.from({ length: 20 }, (_, id) => ({ id, notes: 'detail berat' })),
           shortage_details: [{ date: '2026-04-01' }],
           manual_adjustment_metadata: { premi_pruning: { items: [{ subblok: 'A/1', jumlah: 1 }] } },
           value_source_compare: { total_premi: { active: 50000, db_ptrj: 49000 } }
+        },
+        {
+          emp_code: 'A0002',
+          nama: 'Budi',
+          exgratia_amount: 125000
+        },
+        {
+          emp_code: 'A0003',
+          nama: 'Dedi',
+          pendapatan_kontan: 90000
         }
       ],
       ['premi_pruning']
     );
 
     const [, payload] = axios.post.mock.calls[0];
-    expect(payload.employees).toHaveLength(1);
+    expect(payload.employees).toHaveLength(3);
     expect(payload.employees[0]).toMatchObject({
       emp_code: 'A0001',
       nik: '123',
       new_nik: '456',
       nama: 'Siti',
       gang_code: 'A1H',
+      gaji_pokok: 100000,
+      gaji_pokok_bulanan: 110000,
+      gaji_pokok_dibayarkan: 100000,
+      pot_alpa_cth: -10000,
+      astek_084pct: 840,
       total_premi: 50000,
       premi_pruning: 30000,
       premi_brondol: 20000,
@@ -108,6 +132,22 @@ describe('taxReportService', () => {
       penghasilan_bruto: 150000
     });
     expect(payload.employees[0].premi).toEqual({ pruning: 30000, brondol: 20000 });
+    expect(payload.employees[0].other_incomes).toEqual([
+      { type: 'THR', name: 'THR', amount: 500000 },
+      { type: 'KONTAN', name: 'Kontanan', amount: 125000 }
+    ]);
+    expect(payload.employees[1]).toMatchObject({
+      emp_code: 'A0002',
+      nama: 'Budi',
+      exgratia_amount: 125000,
+      bonus: 125000
+    });
+    expect(payload.employees[2]).toMatchObject({
+      emp_code: 'A0003',
+      nama: 'Dedi',
+      pendapatan_kontan: 90000,
+      bonus: 0
+    });
     expect(payload.employees[0]).not.toHaveProperty('lembur_records');
     expect(payload.employees[0]).not.toHaveProperty('shortage_details');
     expect(payload.employees[0]).not.toHaveProperty('manual_adjustment_metadata');

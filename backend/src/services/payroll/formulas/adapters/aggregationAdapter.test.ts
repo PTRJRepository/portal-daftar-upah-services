@@ -44,4 +44,15 @@ describe("rowToPayrollCalculatorInput", () => {
 
         expect(input.total_premi).toBe(100_000);
     });
+
+    test("normalizes koreksi to absolute deduction amount", () => {
+        const input = rowToPayrollCalculatorInput({
+            gaji_pokok: 1_000_000,
+            total_tunjangan: 0,
+            total_premi: 0,
+            pot_koreksi: -50_000,
+        });
+
+        expect(input.pot_koreksi).toBe(50_000);
+    });
 });

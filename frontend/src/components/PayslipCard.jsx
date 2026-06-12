@@ -51,6 +51,15 @@ const sumPositiveFields = (source, predicate) => {
   }, 0);
 };
 
+const deductionAmount = (value) => Math.abs(toFiniteNumber(value));
+
+const sumDeductionFields = (source, predicate) => {
+  return Object.entries(source || {}).reduce((sum, [key, val]) => {
+    if (!predicate(key)) return sum;
+    return sum + deductionAmount(val);
+  }, 0);
+};
+
 const isPositiveAmount = (value) => toFiniteNumber(value) > 0;
 
 /**
@@ -132,10 +141,23 @@ export default function PayslipCard({ data, month, year }) {
     0,
   );
 
+  const koreksiBrondolTotal = Object.entries(payroll || {}).reduce(
+    (sum, [key, val]) => {
+      const normalizedKey = key.toLowerCase().replace(/berondol/g, "brondol");
+      if (!normalizedKey.startsWith("koreksi_") || !normalizedKey.includes("brondol")) {
+        return sum;
+      }
+      return sum + Math.abs(toFiniteNumber(val));
+    },
+    0,
+  );
+
   // Premi Breakdown
   const premiList = [];
-  if (getNum("premi_brondol") > 0)
-    premiList.push({ label: "Brondol", value: getNum("premi_brondol") });
+  const premiBrondolBase = getNum("premi_brondol") || toFiniteNumber(payroll.premi?.brondol);
+  const premiBrondolDisplay = Math.max(0, premiBrondolBase - koreksiBrondolTotal);
+  if (premiBrondolDisplay > 0)
+    premiList.push({ label: "Brondol", value: premiBrondolDisplay });
 
   // Dynamic premiums from premi object (API format)
   if (payroll.premi && typeof payroll.premi === "object") {
@@ -167,13 +189,9 @@ export default function PayslipCard({ data, month, year }) {
     });
   }
 
-  const totalPremi = getNum("total_premi");
+  const totalPremi = Math.max(0, getNum("total_premi") - koreksiBrondolTotal);
   const totalPremiDetail = premiList.reduce((sum, item) => sum + item.value, 0);
   const displayedTotalPremi = totalPremi > 0 ? totalPremi : totalPremiDetail;
-  const overflowTunjanganList = tunjanganList;
-  const overflowPremiList = premiList;
-  const hasIncomeOverflow =
-    overflowTunjanganList.length > 0 || overflowPremiList.length > 0;
   const lemburJam = getNum("lembur_jam") || getNum("total_jam_lembur");
   const lemburJumlah =
     getNum("lembur_jumlah") ||
@@ -181,13 +199,18 @@ export default function PayslipCard({ data, month, year }) {
     getNum("upah_lembur");
 
   // Koreksi mengurangi pendapatan langsung, bukan potongan bersih.
-  const dynamicKoreksiTotal = sumPositiveFields(
+  // Guardrail: deductions/koreksi are magnitude values in payslip math.
+  // Do not subtract raw signed values, because `gross - (-200)` would increase pay.
+  const dynamicKoreksiTotal = sumDeductionFields(
     payroll,
-    (key) => key.startsWith("koreksi_") && key !== "koreksi_hk",
+    (key) => {
+      const normalizedKey = key.toLowerCase().replace(/berondol/g, "brondol");
+      return key.startsWith("koreksi_") && key !== "koreksi_hk" && !normalizedKey.includes("brondol");
+    },
   );
   const totalPotKotor =
-    getNum("potongan_upah_kotor_total") ||
-    getNum("pot_koreksi") ||
+    Math.max(0, deductionAmount(getNum("potongan_upah_kotor_total")) - koreksiBrondolTotal) ||
+    Math.max(0, deductionAmount(getNum("pot_koreksi")) - koreksiBrondolTotal) ||
     dynamicKoreksiTotal;
 
   // Potongan Upah Bersih
@@ -195,20 +218,20 @@ export default function PayslipCard({ data, month, year }) {
     {
       label: "BPJS Kes (1%)",
       value:
-        getNum("pot_bpjs_kesehatan_pekerja") || getNum("pot_bpjs_kesehatan"),
+        deductionAmount(getNum("pot_bpjs_kesehatan_pekerja") || getNum("pot_bpjs_kesehatan")),
     },
     {
       label: "BPJS Pens (1%)",
-      value: getNum("pot_bpjs_pensiun_pekerja") || getNum("pot_bpjs_pensiun"),
+      value: deductionAmount(getNum("pot_bpjs_pensiun_pekerja") || getNum("pot_bpjs_pensiun")),
     },
     {
       label: "Astek (2%)",
       value:
-        getNum("pot_astek") || getNum("pot_astek_jumlah") || getNum("pot_jht"),
+        deductionAmount(getNum("pot_astek_pekerja") || getNum("pot_astek") || getNum("pot_jht")),
     },
-    { label: "SPSI", value: getNum("pot_spsi") },
-    { label: "PPh 21", value: getNum("pot_pph21") || getNum("pph21_ter") },
-    { label: "Potongan PPh21", value: getNum("POTONGAN_PPH21") },
+    { label: "SPSI", value: deductionAmount(getNum("pot_spsi")) },
+    { label: "PPh 21", value: deductionAmount(getNum("pot_pph21") || getNum("pph21_ter")) },
+    { label: "Potongan PPh21", value: deductionAmount(getNum("POTONGAN_PPH21")) },
   ].filter((item) => item.value > 0);
 
   // Dynamic deductions from 'potongan_' fields in payroll record
@@ -220,7 +243,7 @@ export default function PayslipCard({ data, month, year }) {
       normalizedKey.includes("pendapatan_lain")
     )
       return;
-    if (key.startsWith("potongan_") && typeof val === "number" && val > 0) {
+    if (key.startsWith("potongan_") && typeof val === "number" && deductionAmount(val) > 0) {
       const label = key
         .replace("potongan_", "")
         .replace(/_/g, " ")
@@ -233,7 +256,7 @@ export default function PayslipCard({ data, month, year }) {
         !isDuplicate &&
         !potBersihList.some((p) => p.label.toUpperCase() === label)
       ) {
-        potBersihList.push({ label, value: val });
+        potBersihList.push({ label, value: deductionAmount(val) });
       }
     }
   });
@@ -331,8 +354,8 @@ export default function PayslipCard({ data, month, year }) {
 
   // Payslip deductions exclude other income; other income is tax-detail-only.
   const rawTotalPotongan =
-    getNum("total_potongan_bersih") || getNum("total_potongan");
-  const otherIncomeDeduction = sumPositiveFields(
+    deductionAmount(getNum("total_potongan_bersih") || getNum("total_potongan"));
+  const otherIncomeDeduction = sumDeductionFields(
     payroll,
     (key) => key.startsWith("potongan_") && key.includes("pendapatan_lain"),
   );
@@ -340,12 +363,12 @@ export default function PayslipCard({ data, month, year }) {
     potBersihList.reduce(
       (acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value),
       0,
-    ) + premiPph;
+    );
   const totalPotongan =
     itemizedTotalPotongan > 0
       ? itemizedTotalPotongan
       : Math.max(0, rawTotalPotongan - otherIncomeDeduction);
-  // upahBersih should be Gross - Total Potongan Bersih
+  // Payslip displays total potongan as magnitude, so THP subtracts that magnitude once.
   const upahBersih = payslipGrossIncome - totalPotongan;
 
   return (
@@ -455,16 +478,22 @@ export default function PayslipCard({ data, month, year }) {
           {tunjanganList.length > 0 && (
             <>
               <div className="payslip-subheader">Tunjangan:</div>
-              <div className="payslip-item payslip-item-indent">
-                <span className="payslip-item-label">
-                  - Tunjangan (rincian kanan)
-                </span>
+              {tunjanganList.map((item, idx) => (
+                <div
+                  key={`tunj-${idx}`}
+                  className="payslip-item payslip-item-indent"
+                >
+                  <span className="payslip-item-label">- {item.label}</span>
+                  <span className="payslip-item-value">
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
+              <div className="payslip-subtotal-line">
+                <span className="payslip-item-label">Subtotal Tunjangan</span>
                 <span className="payslip-item-value">
                   {formatCurrency(totalTunjangan)}
                 </span>
-              </div>
-              <div className="payslip-income-overflow-note">
-                Rincian tunjangan ada di bawah kolom potongan.
               </div>
             </>
           )}
@@ -472,16 +501,22 @@ export default function PayslipCard({ data, month, year }) {
           {premiList.length > 0 && (
             <>
               <div className="payslip-subheader">Premi:</div>
-              <div className="payslip-item payslip-item-indent">
-                <span className="payslip-item-label">
-                  - Premi (rincian kanan)
-                </span>
+              {premiList.map((item, idx) => (
+                <div
+                  key={`premi-${idx}`}
+                  className="payslip-item payslip-item-indent"
+                >
+                  <span className="payslip-item-label">- {item.label}</span>
+                  <span className="payslip-item-value">
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
+              <div className="payslip-subtotal-line">
+                <span className="payslip-item-label">Subtotal Premi</span>
                 <span className="payslip-item-value">
                   {formatCurrency(displayedTotalPremi)}
                 </span>
-              </div>
-              <div className="payslip-income-overflow-note">
-                Rincian premi/penerimaan ada di bawah kolom potongan.
               </div>
             </>
           )}
@@ -558,59 +593,6 @@ export default function PayslipCard({ data, month, year }) {
               </span>
             </div>
           </div>
-
-          {hasIncomeOverflow && (
-            <div className="payslip-income-overflow-section">
-              <div className="payslip-overflow-divider">
-                <span>LANJUTAN PENERIMAAN</span>
-                <strong>BUKAN POTONGAN</strong>
-              </div>
-              {overflowTunjanganList.length > 0 && (
-                <>
-                  <div className="payslip-subheader">Tunjangan:</div>
-                  {overflowTunjanganList.map((item, idx) => (
-                    <div
-                      key={`tunj-overflow-${idx}`}
-                      className="payslip-item payslip-item-indent"
-                    >
-                      <span className="payslip-item-label">- {item.label}</span>
-                      <span className="payslip-item-value">
-                        {formatCurrency(item.value)}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="payslip-subtotal-line">
-                    <span className="payslip-item-label">Subtotal Tunjangan</span>
-                    <span className="payslip-item-value">
-                      {formatCurrency(totalTunjangan)}
-                    </span>
-                  </div>
-                </>
-              )}
-              {overflowPremiList.length > 0 && (
-                <>
-                  <div className="payslip-subheader">Premi:</div>
-              {overflowPremiList.map((item, idx) => (
-                <div
-                  key={`premi-overflow-${idx}`}
-                  className="payslip-item payslip-item-indent"
-                >
-                  <span className="payslip-item-label">- {item.label}</span>
-                  <span className="payslip-item-value">
-                    {formatCurrency(item.value)}
-                  </span>
-                </div>
-              ))}
-              <div className="payslip-subtotal-line">
-                <span className="payslip-item-label">Subtotal Premi</span>
-                <span className="payslip-item-value">
-                  {formatCurrency(displayedTotalPremi)}
-                </span>
-              </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

@@ -4,14 +4,15 @@ import { useAuth } from '../context/AuthContext';
 import { getBatchEmployeeCheckroll, savePayslipHistory } from '../services/payslipService';
 import PayslipCard from '../components/PayslipCard';
 import { generatePDF } from '../utils/pdfGenerator';
-import { Download, Printer, ArrowLeft, FileText, Database, RefreshCw } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, Database, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
 import { printReport } from '../utils/printPageSetup';
+import { exportPayslipsToExcel } from '../utils/exportPayslipsToExcel';
 import '../styles/payslip-print.css';
 
 /**
  * PayslipPrintPage - Page for printing multiple employee payslips
- * Layout: 6 payslips per A4 page
+ * Layout: 4 payslips per A4 page
  */
 export default function PayslipPrintPage() {
     const { token } = useAuth();
@@ -21,6 +22,7 @@ export default function PayslipPrintPage() {
 
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
+    const [exportingExcel, setExportingExcel] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
@@ -239,11 +241,29 @@ export default function PayslipPrintPage() {
         }
     };
 
+    const handleExportExcel = async () => {
+        if (!payslipData.length) return;
+        setExportingExcel(true);
+        try {
+            await exportPayslipsToExcel(payslipData, {
+                division,
+                month,
+                year,
+                useHistory,
+                snapshotVersion
+            });
+        } catch (err) {
+            console.error('Excel Export error:', err);
+        } finally {
+            setExportingExcel(false);
+        }
+    };
+
     const handleBack = () => {
         navigate(-1);
     };
 
-    // Chunk data into groups of 6 for each A4 page
+    // Chunk data into groups of 4 for each A4 page
     const chunkArray = (array, size) => {
         const chunks = [];
         for (let i = 0; i < array.length; i += size) {
@@ -252,7 +272,7 @@ export default function PayslipPrintPage() {
         return chunks;
     };
 
-    const payslipChunks = chunkArray(payslipData, 6);
+    const payslipChunks = chunkArray(payslipData, 4);
 
     // Get month name
     const getMonthName = (m) => {
@@ -346,6 +366,14 @@ export default function PayslipPrintPage() {
                         {exporting ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />}
                         {exporting ? 'Memproses...' : 'Simpan PDF'}
                     </button>
+                    <button
+                        className="payslip-preview-btn"
+                        onClick={handleExportExcel}
+                        disabled={exportingExcel}
+                    >
+                        {exportingExcel ? <RefreshCw size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+                        {exportingExcel ? 'Memproses...' : 'Simpan Excel'}
+                    </button>
                     <button className="payslip-preview-btn payslip-preview-btn-primary" onClick={handlePrint}>
                         <Printer size={16} /> Print
                     </button>
@@ -361,7 +389,7 @@ export default function PayslipPrintPage() {
                 fontSize: '0.85rem'
             }} className="no-print">
                 <strong style={{ color: '#b45309' }}>⚠️ WAJIB: </strong>
-                <span style={{ color: '#92400e' }}>Saat Print, pilih <strong>Orientation: Portrait</strong> dan <strong>Scale: 100%</strong> agar 6 slip muat di 1 halaman A4</span>
+                <span style={{ color: '#92400e' }}>Saat Print, pilih <strong>Orientation: Portrait</strong> dan <strong>Scale: 100%</strong> agar 4 slip muat di 1 halaman A4</span>
             </div>
 
             {/* Print Pages */}
@@ -372,8 +400,7 @@ export default function PayslipPrintPage() {
                         className="payslip-a4-page"
                         style={chunkIndex === payslipChunks.length - 1 ? { pageBreakAfter: 'auto' } : {}}
                     >
-                        <span className="payslip-cut-line payslip-cut-line--upper" aria-hidden="true"></span>
-                        <span className="payslip-cut-line payslip-cut-line--lower" aria-hidden="true"></span>
+                        <span className="payslip-cut-line payslip-cut-line--middle" aria-hidden="true"></span>
                         <div className="payslip-grid">
                             {chunk.map((employeeData, slotIndex) => (
                                 <PayslipCard
@@ -423,6 +450,13 @@ export default function PayslipPrintPage() {
                         disabled={exporting}
                     >
                         {exporting ? 'Memproses PDF...' : '📄 Simpan sebagai PDF'}
+                    </button>
+                    <button
+                        className="payslip-preview-btn"
+                        onClick={handleExportExcel}
+                        disabled={exportingExcel}
+                    >
+                        {exportingExcel ? 'Memproses Excel...' : 'Simpan sebagai Excel'}
                     </button>
                     <button
                         className="payslip-preview-btn payslip-preview-btn-primary"

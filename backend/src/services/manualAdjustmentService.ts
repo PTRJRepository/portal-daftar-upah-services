@@ -429,48 +429,53 @@ function validatePremiumAdjustmentDefinition(data: ManualAdjustment, normalizedA
     premiumDefinitionService.validatePremiumName(normalizedAdjustmentName);
 }
 
-const DETAIL_TOTAL_SYNC_PREMI_NAMES = new Set(["PREMI PRUNING", "PREMI RAKING", "PREMI TIKET"]);
-
 function serializeManualAdjustmentMetadata(metadataJson: unknown): string | null {
     if (!metadataJson) return null;
     return typeof metadataJson === "string" ? metadataJson : JSON.stringify(metadataJson);
 }
 
-function sumMetadataJumlah(items: any[] | undefined): number {
-    return (items || []).reduce((sum, item) => sum + (Number(item?.jumlah) || 0), 0);
-}
-
 function calculateManualAdjustmentMetadataTotal(metadata: any): number {
     switch (metadata?.input_type) {
         case "blok":
-            return sumMetadataJumlah(metadata.items);
+            return (metadata.items || []).reduce((sum, item) => sum + (Number(item?.jumlah) || 0), 0);
         case "exp":
             return Number(metadata.jumlah) || 0;
         case "kendaraan":
-            return sumMetadataJumlah(metadata.items);
+            return (metadata.items || []).reduce((sum, item) => sum + (Number(item?.jumlah) || 0), 0);
         case "blok,exp":
-            return sumMetadataJumlah(metadata.blok_items) + (Number(metadata.expense?.jumlah) || 0);
+            return (metadata.blok_items || []).reduce((sum, item) => sum + (Number(item?.jumlah) || 0), 0)
+                 + (Number(metadata.expense?.jumlah) || 0);
         default:
             return 0;
     }
 }
 
 function resolveDetailTotalSync(data: ManualAdjustment, normalizedAdjustmentName: string, metadataJsonStr: string | null, fallbackAmount: number): { amount: number; metadataJsonStr: string | null } {
-    if (String(data.adjustment_type || "").trim().toUpperCase() !== "PREMI") return { amount: fallbackAmount, metadataJsonStr };
-    if (!DETAIL_TOTAL_SYNC_PREMI_NAMES.has(normalizedAdjustmentName)) return { amount: fallbackAmount, metadataJsonStr };
+    // Only PREMI type adjustments have structured metadata
+    if (String(data.adjustment_type || "").trim().toUpperCase() !== "PREMI") {
+        return { amount: fallbackAmount, metadataJsonStr };
+    }
 
     const metadata = premiumDefinitionService.parseMetadata(metadataJsonStr);
-    if (!metadata || metadata.input_type === "amount") return { amount: fallbackAmount, metadataJsonStr };
+    // No metadata or plain amount type — nothing to sync
+    if (!metadata || metadata.input_type === "amount") {
+        return { amount: fallbackAmount, metadataJsonStr };
+    }
 
+    // Sync amount for ALL detail input types (blok, exp, kendaraan, blok,exp)
+    // NOT limited to specific premium names — source of truth is metadata items
     const calculatedTotal = calculateManualAdjustmentMetadataTotal(metadata);
-    let syncedAmount = fallbackAmount;
-    if (Number.isFinite(calculatedTotal) && Math.abs(calculatedTotal) > 0.01) {
+
+    // Use calculated total if finite; otherwise fall back to declared total_amount
+    let syncedAmount: number;
+    if (Number.isFinite(calculatedTotal)) {
         syncedAmount = calculatedTotal;
     } else {
         const declaredTotal = Number((metadata as any).total_amount);
         syncedAmount = Number.isFinite(declaredTotal) ? declaredTotal : fallbackAmount;
     }
 
+    // Always inject the synced total_amount into metadata_json so DB stays consistent
     return {
         amount: syncedAmount,
         metadataJsonStr: JSON.stringify({ ...(metadata as any), total_amount: syncedAmount })
@@ -2160,6 +2165,29 @@ export class ManualAdjustmentService {
      */
     public async saveAdjustment(data: ManualAdjustment, user?: string): Promise<number> {
         data = normalizeManualAdjustmentForSave(data);
+
+        // Validate metadata_json if provided — reject invalid JSON or missing input_type
+        if (data.metadata_json !== undefined && data.metadata_json !== null) {
+            const rawMeta = typeof data.metadata_json === "string" ? data.metadata_json : JSON.stringify(data.metadata_json);
+            if (rawMeta && typeof rawMeta === "string" && rawMeta.trim() !== "") {
+                try {
+                    const parsed = JSON.parse(rawMeta);
+                    if (!parsed || !parsed.input_type) {
+                        throw new Error("metadata_json must have an 'input_type' field");
+                    }
+                    // Reject unknown input_type values
+                    const validInputTypes = ["amount", "blok", "exp", "kendaraan", "blok,exp"];
+                    if (!validInputTypes.includes(parsed.input_type)) {
+                        throw new Error(`metadata_json input_type "${parsed.input_type}" not supported. Use: ${validInputTypes.join(", ")}`);
+                    }
+                } catch (err: any) {
+                    if (err.message.includes("input_type") || err.message.includes("not supported")) {
+                        throw err;
+                    }
+                    throw new Error(`metadata_json is not valid JSON: ${err.message}`);
+                }
+            }
+        }
 
         // Ensure amount is a valid float
         const parsedAmount = parseFloat(data.amount.toString()) || 0;

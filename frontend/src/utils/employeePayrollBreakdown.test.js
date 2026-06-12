@@ -50,4 +50,28 @@ describe('buildEmployeePayrollBreakdown', () => {
     expect(breakdown.totalPotongan).toBe(140000);
     expect(breakdown.upahBersih).toBe(450000);
   });
+
+  it('shows negative-source deductions as magnitudes and keeps ASTEK worker-only', () => {
+    const breakdown = buildEmployeePayrollBreakdown({
+      pot_koreksi: -10000,
+      koreksi_denda_panen: -5000,
+      pot_pph21: -7000,
+      pot_spsi: -2000,
+      pot_astek_pekerja: 3000,
+      pot_astek_majikan: 4000,
+      pot_astek_jumlah: 7000,
+    });
+
+    expect(breakdown.potKotorList).toEqual([
+      { label: 'Koreksi', value: 10000 },
+      { label: 'Koreksi Denda Panen', value: 5000 },
+    ]);
+    expect(breakdown.potBersihList).toEqual(expect.arrayContaining([
+      { label: 'Astek Pekerja', value: 3000 },
+      { label: 'SPSI', value: 2000 },
+      { label: 'PPh 21', value: 7000 },
+    ]));
+    expect(breakdown.potBersihList).not.toContainEqual({ label: 'Astek Pekerja', value: 7000 });
+    expect(breakdown.totalPotKotor).toBe(15000);
+  });
 });

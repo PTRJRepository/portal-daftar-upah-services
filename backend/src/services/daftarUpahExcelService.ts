@@ -1,5 +1,11 @@
 import ExcelJS from 'exceljs';
 import { CARUMAN_RATES, calculateAllCaruman } from './carumanDefinitions';
+import {
+    formatCanonicalOtherIncomeLabel,
+    getCanonicalOtherIncomeType,
+    normalizeOtherIncomeType,
+    sumOtherIncomeByCanonicalType
+} from '../utils/otherIncomeCanonical';
 
 /**
  * Helper: convert 1-based column index to Excel letter(s)
@@ -60,6 +66,74 @@ function getPremiValue(emp: any, keyName: string): number {
     return Number(emp[fieldKey]) || 0;
 }
 
+function otherIncomeFieldKey(keyName: string): string {
+    return `pendapatan_${keyName.toLowerCase()}`;
+}
+
+function formatOtherIncomeLabel(keyName: string): string {
+    return formatCanonicalOtherIncomeLabel(keyName);
+}
+
+function discoverOtherIncomeKeys(records: any[]): string[] {
+    const keys = new Set<string>();
+
+    for (const emp of records) {
+        for (const k of Object.keys(emp || {})) {
+            if (!k.startsWith('pendapatan_')) continue;
+            if (['pendapatan_lainnya', 'pendapatan_tidak_tetap'].includes(k)) continue;
+            if (Number(emp[k]) !== 0) keys.add(String(getCanonicalOtherIncomeType({ type: k.replace(/^pendapatan_/, '') })));
+        }
+
+        if (Array.isArray(emp?.other_incomes)) {
+            for (const income of emp.other_incomes) {
+                const key = getCanonicalOtherIncomeType(income);
+                if (key && Number(income?.amount ?? income?.value ?? income?.jumlah ?? 0) !== 0) {
+                    keys.add(key);
+                }
+            }
+        }
+    }
+
+    const preferredOrder = ['THR', 'KONTAN', 'BONUS', 'CUSTOM'];
+    return Array.from(keys).sort((a, b) => {
+        const ai = preferredOrder.indexOf(a);
+        const bi = preferredOrder.indexOf(b);
+        if (ai !== -1 || bi !== -1) {
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+        }
+        return a.localeCompare(b);
+    });
+}
+
+function getOtherIncomeValue(emp: any, keyName: string): number {
+    const normalizedKey = normalizeOtherIncomeType(keyName);
+    const direct = Number(emp?.[otherIncomeFieldKey(normalizedKey)] || 0);
+    if (direct !== 0) return direct;
+    if (normalizedKey === 'BONUS') {
+        const exgratiaDirect = Number(emp?.pendapatan_exgratia || emp?.taxable_pendapatan_exgratia || 0);
+        if (exgratiaDirect !== 0) return exgratiaDirect;
+    }
+
+    if (!Array.isArray(emp?.other_incomes)) return 0;
+
+    return sumOtherIncomeByCanonicalType(emp.other_incomes, normalizedKey);
+}
+
+function getKoreksiValue(emp: any): number {
+    // Keep source values as magnitude only. Excel writes this as a signed negative cell,
+    // then formulas ADD that cell. Never subtract this value in a formula, because
+    // -(-200) would flip the deduction into an addition and corrupt payroll totals.
+    return Math.abs(Number(
+        emp?.potongan_upah_kotor_total
+        ?? emp?.pot_koreksi
+        ?? emp?.potongan_upah_kotor?.total
+        ?? emp?.potongan_upah_kotor?.koreksi
+        ?? 0
+    ) || 0);
+}
+
 /**
  * Generate a comprehensive Daftar Upah Excel file with:
  * - Dynamic premi columns (one per premi type)
@@ -79,7 +153,7 @@ export async function generateDaftarUpahExcel(
 
     const sheetName = `Daftar Upah ${division} ${month}_${year}`.substring(0, 31);
     const sheet = workbook.addWorksheet(sheetName);
-    const numFormat = '#,##0';
+    const numFormat = '#.##0';
     const L = colLetter;
 
     // ─────────────────────────────────────────────
@@ -87,6 +161,8 @@ export async function generateDaftarUpahExcel(
     // ─────────────────────────────────────────────
     const allPremiKeys = discoverPremiKeys(records);
     if (allPremiKeys.length === 0) allPremiKeys.push('BRONDOL');
+    const allOtherIncomeKeys = discoverOtherIncomeKeys(records);
+    const HAS_GROSS_KOREKSI = records.some((emp) => getKoreksiValue(emp) !== 0);
 
     // ─────────────────────────────────────────────
     // Column definitions (fixed + dynamic)
@@ -122,8 +198,24 @@ export async function generateDaftarUpahExcel(
     const COL_PREMI_END = 18 + allPremiKeys.length;
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
-    // POTONGAN (dynamic but track static ones too)
-    const COL_POT_ASTEK = COL_TOTAL_PREMI + 1;
+    // PENDAPATAN LAINNYA (dynamic, added into gross display)
+    const COL_OTHER_INCOME_START = COL_TOTAL_PREMI + 1;
+    const COL_OTHER_INCOME_END = COL_OTHER_INCOME_START + allOtherIncomeKeys.length - 1;
+    const HAS_OTHER_INCOME = allOtherIncomeKeys.length > 0;
+
+    // POTONGAN UPAH KOTOR: koreksi is exported as a negative number so plain SUM reduces gross.
+    const COL_AFTER_OTHER_INCOME = HAS_OTHER_INCOME ? COL_OTHER_INCOME_END + 1 : COL_TOTAL_PREMI + 1;
+    const COL_POT_KOREKSI = COL_AFTER_OTHER_INCOME;
+
+    // POTONGAN UPAH BERSIH: pendapatan lainnya is deducted here after being shown in gross.
+    const COL_OTHER_INCOME_DED_START = HAS_GROSS_KOREKSI ? COL_POT_KOREKSI + 1 : COL_AFTER_OTHER_INCOME;
+    const COL_OTHER_INCOME_DED_END = COL_OTHER_INCOME_DED_START + allOtherIncomeKeys.length - 1;
+    const HAS_OTHER_INCOME_DED = allOtherIncomeKeys.length > 0;
+
+    // POTONGAN UPAH BERSIH (dynamic but track static ones too)
+    const COL_POT_ASTEK = HAS_OTHER_INCOME_DED
+        ? COL_OTHER_INCOME_DED_END + 1
+        : (HAS_GROSS_KOREKSI ? COL_POT_KOREKSI + 1 : COL_TOTAL_PREMI + 1);
     const COL_POT_BPJS = COL_POT_ASTEK + 1;
     const COL_POT_SPSI = COL_POT_BPJS + 1;
     const COL_POT_PPH21 = COL_POT_SPSI + 1;
@@ -147,6 +239,9 @@ export async function generateDaftarUpahExcel(
         else if (i >= COL_GP_STANDAR && i <= COL_GP_AKTUAL) widths.push(16);
         else if (i >= COL_BERAS && i <= COL_TOTAL_TUNJ) widths.push(13);
         else if (i >= COL_PREMI_START && i <= COL_TOTAL_PREMI) widths.push(13);
+        else if (HAS_OTHER_INCOME && i >= COL_OTHER_INCOME_START && i <= COL_OTHER_INCOME_END) widths.push(14);
+        else if (HAS_GROSS_KOREKSI && i === COL_POT_KOREKSI) widths.push(14);
+        else if (HAS_OTHER_INCOME_DED && i >= COL_OTHER_INCOME_DED_START && i <= COL_OTHER_INCOME_DED_END) widths.push(14);
         else if (i >= COL_POT_ASTEK && i <= COL_TOTAL_POT) widths.push(14);
         else if (i >= COL_UPAH_KOTOR) widths.push(16);
         else widths.push(10);
@@ -183,7 +278,7 @@ export async function generateDaftarUpahExcel(
     // ─────────────────────────────────────────────
     sheet.mergeCells(`A2:${L(TOTAL_COLS)}2`);
     const subtitleCell = sheet.getCell('A2');
-    subtitleCell.value = `GP Standar=UpahDasar×30 | GP Ideal=UpahDasar×HK | Total Tunjangan=SUM(Beras,Jabatan,MasaKerja,Lembur) | Total Premi=SUM(Premi) | Upah Kotor=GP+Tunj+Premi | Upah Bersih=Kotor-Potongan | Base BPJS/Astek=(GP_Standar+MasaKerja)`;
+    subtitleCell.value = `GP Standar=UpahDasar×30 | GP Ideal=UpahDasar×HK | Total Tunjangan=SUM(Beras,Jabatan,MasaKerja,Lembur) | Total Premi=SUM(Premi) | Pendapatan Lainnya diuraikan pada Upah Kotor dan Potongan Upah Bersih | Koreksi ditampilkan minus dan mengurangi Upah Kotor | Upah Bersih=Kotor-Potongan | Base BPJS/Astek=(GP_Standar+MasaKerja)`;
     subtitleCell.font = { size: 8, italic: true, color: { argb: '6B7280' } };
     subtitleCell.alignment = { horizontal: 'center' };
 
@@ -209,7 +304,13 @@ export async function generateDaftarUpahExcel(
     mergeAndHeader(COL_GP_STANDAR, COL_GP_AKTUAL, 'GAJI POKOK', '1D4ED8');
     mergeAndHeader(COL_BERAS, COL_TOTAL_TUNJ, 'TUNJANGAN', '047857');
     mergeAndHeader(COL_PREMI_START, COL_TOTAL_PREMI, 'Uraian Premi', '7C3AED');
-    mergeAndHeader(COL_POT_ASTEK, COL_TOTAL_POT, 'POTONGAN', 'B91C1C');
+    if (HAS_OTHER_INCOME) {
+        mergeAndHeader(COL_OTHER_INCOME_START, COL_OTHER_INCOME_END, 'PENDAPATAN LAINNYA', 'B45309');
+    }
+    if (HAS_GROSS_KOREKSI) {
+        mergeAndHeader(COL_POT_KOREKSI, COL_POT_KOREKSI, 'POTONGAN UPAH KOTOR', 'C2410C');
+    }
+    mergeAndHeader(HAS_OTHER_INCOME_DED ? COL_OTHER_INCOME_DED_START : COL_POT_ASTEK, COL_TOTAL_POT, 'POTONGAN UPAH BERSIH', 'B91C1C');
     mergeAndHeader(COL_UPAH_KOTOR, COL_UPAH_BERSIH, 'UPAH', '0F172A');
 
     // ─────────────────────────────────────────────
@@ -237,6 +338,9 @@ export async function generateDaftarUpahExcel(
         [COL_TOTAL_TUNJ, 'TOTAL\nTUNJANGAN', '047857'],
         ...allPremiKeys.map((k, i): [number, string, string] => [COL_PREMI_START + i, k, '7C3AED']),
         [COL_TOTAL_PREMI, 'TOTAL\nPREMI', '7C3AED'],
+        ...allOtherIncomeKeys.map((k, i): [number, string, string] => [COL_OTHER_INCOME_START + i, `${formatOtherIncomeLabel(k)}\n(+)`, 'B45309']),
+        ...(HAS_GROSS_KOREKSI ? [[COL_POT_KOREKSI, 'TOTAL\nKOREKSI (-)', 'C2410C'] as [number, string, string]] : []),
+        ...allOtherIncomeKeys.map((k, i): [number, string, string] => [COL_OTHER_INCOME_DED_START + i, `${formatOtherIncomeLabel(k)}\n(-)`, 'B91C1C']),
         [COL_POT_ASTEK, `ASTEK\n(${(CARUMAN_RATES.ASTEK_PEKERJA_JHT * 100).toFixed(0)}%×Base)`, 'B91C1C'],
         [COL_POT_BPJS, `BPJS KES\n(${(CARUMAN_RATES.BPJS_KES_PEKERJA * 100).toFixed(0)}%×Base)`, 'B91C1C'],
         [COL_POT_SPSI, 'SPSI', 'B91C1C'],
@@ -315,6 +419,11 @@ export async function generateDaftarUpahExcel(
         const lPremiStart = L(COL_PREMI_START);
         const lPremiEnd = L(COL_PREMI_END);
         const lTotalPremi = L(COL_TOTAL_PREMI);
+        const lOtherIncomeStart = HAS_OTHER_INCOME ? L(COL_OTHER_INCOME_START) : '';
+        const lOtherIncomeEnd = HAS_OTHER_INCOME ? L(COL_OTHER_INCOME_END) : '';
+        const lPotKoreksi = HAS_GROSS_KOREKSI ? L(COL_POT_KOREKSI) : '';
+        const lOtherIncomeDedStart = HAS_OTHER_INCOME_DED ? L(COL_OTHER_INCOME_DED_START) : '';
+        const lOtherIncomeDedEnd = HAS_OTHER_INCOME_DED ? L(COL_OTHER_INCOME_DED_END) : '';
         const lPotAstek = L(COL_POT_ASTEK);
         const lPotBpjs = L(COL_POT_BPJS);
         const lPotSpsi = L(COL_POT_SPSI);
@@ -383,41 +492,71 @@ export async function generateDaftarUpahExcel(
             };
         }
 
+        // Pendapatan Lainnya: shown as an addition in gross section.
+        for (let i = 0; i < allOtherIncomeKeys.length; i++) {
+            row.getCell(COL_OTHER_INCOME_START + i).value = getOtherIncomeValue(emp, allOtherIncomeKeys[i]);
+        }
+
+        if (HAS_GROSS_KOREKSI) {
+            // Signed deduction cell: display -Koreksi, then add this cell in Upah Kotor formula.
+            row.getCell(COL_POT_KOREKSI).value = -getKoreksiValue(emp);
+        }
+
+        // Potongan Upah Bersih: pendapatan lainnya dibayarkan terpisah, jadi dikurangkan kembali dari THP.
+        for (let i = 0; i < allOtherIncomeKeys.length; i++) {
+            // Signed deduction cell: formulas SUM/ADD these negatives, never subtract them again.
+            row.getCell(COL_OTHER_INCOME_DED_START + i).value = -Math.abs(getOtherIncomeValue(emp, allOtherIncomeKeys[i]));
+        }
+
         // Potongan
         // ASTEK pekerja = ROUND((GP_Standar + Masa_Kerja) × 2%, 0)
         const carumanBase = gpStandar + masaKerja;
         const astekPek = Math.round(carumanBase * CARUMAN_RATES.ASTEK_PEKERJA_JHT);
         const bpjsKesPek = Math.round(carumanBase * CARUMAN_RATES.BPJS_KES_PEKERJA);
-        const potSpsi = Number(emp.pot_spsi || 0);
-        const potPph21 = Number(emp.pot_pph21 || 0);
-        const totalPot = Number(emp.total_potongan_bersih || (astekPek + bpjsKesPek + potSpsi + potPph21));
+        const potSpsi = Math.abs(Number(emp.pot_spsi || 0));
+        const potPph21 = Math.abs(Number(emp.pot_pph21 || 0));
+        const totalOtherIncome = allOtherIncomeKeys.reduce((sum, key) => sum + getOtherIncomeValue(emp, key), 0);
+        const totalPot = -Math.abs(Number(emp.total_potongan_bersih || (totalOtherIncome + astekPek + bpjsKesPek + potSpsi + potPph21)));
 
         row.getCell(COL_POT_ASTEK).value = {
-            formula: `ROUND((${lGS}${r}+${lMK}${r})*${CARUMAN_RATES.ASTEK_PEKERJA_JHT},0)`,
-            result: astekPek
+            // Formula returns a negative deduction value, so Total Potongan can be a plain SUM.
+            formula: `-ROUND((${lGS}${r}+${lMK}${r})*${CARUMAN_RATES.ASTEK_PEKERJA_JHT},0)`,
+            result: -Math.abs(astekPek)
         };
         row.getCell(COL_POT_BPJS).value = {
-            formula: `ROUND((${lGS}${r}+${lMK}${r})*${CARUMAN_RATES.BPJS_KES_PEKERJA},0)`,
-            result: bpjsKesPek
+            // Formula returns a negative deduction value, so Upah Bersih can add Total Potongan.
+            formula: `-ROUND((${lGS}${r}+${lMK}${r})*${CARUMAN_RATES.BPJS_KES_PEKERJA},0)`,
+            result: -Math.abs(bpjsKesPek)
         };
-        row.getCell(COL_POT_SPSI).value = potSpsi;
-        row.getCell(COL_POT_PPH21).value = potPph21;
+        row.getCell(COL_POT_SPSI).value = -potSpsi;
+        row.getCell(COL_POT_PPH21).value = -potPph21;
+        const potonganStartCol = HAS_OTHER_INCOME_DED ? lOtherIncomeDedStart : lPotAstek;
         row.getCell(COL_TOTAL_POT).value = {
-            formula: `SUM(${lPotAstek}${r}:${lPotPph}${r})`,
+            formula: `SUM(${potonganStartCol}${r}:${lPotPph}${r})`,
             result: totalPot
         };
 
-        // Upah Kotor = GP_Aktual + Total_Tunjangan + Total_Premi
-        const upahKotor = Number(emp.jumlah_upah_kotor || emp.upah_kotor || (gpAktual + totalTunj + totalPremiResult));
+        // Upah Kotor = GP_Aktual + Total_Tunjangan + Total_Premi + Pendapatan_Lainnya
+        // [FIX] KOREKSI sudah termasuk di GAJI_POKOK_AKTUAL (dari DB PR_TASKREGLN),
+        // jadi TIDAK boleh ditambahkan/dikurangkan lagi di formula UPAH KOTOR.
+        // KOLOM POT KOREKSI di Excel hanya untuk DISPLAY/TAMPILAN, bukan untuk perhitungan.
+        const totalKoreksi = getKoreksiValue(emp);
+        // Hitung base: gpAktual + tunjangan + premi (tanpa koreksi karena sudah termasuk di gpAktual)
+        const baseUpahKotor = gpAktual + totalTunj + totalPremiResult;
+        const upahKotor = Number(emp.upah_kotor || emp.jumlah_upah_kotor || baseUpahKotor);
+        const otherIncomeFormula = HAS_OTHER_INCOME ? `+SUM(${lOtherIncomeStart}${r}:${lOtherIncomeEnd}${r})` : '';
+        // [FIX] JANGAN tambahkan koreksiFormula karena koreksi_hk sudah di dalam gpAktual
         row.getCell(COL_UPAH_KOTOR).value = {
-            formula: `${lGA}${r}+${lTunj}${r}+${lTotalPremi}${r}`,
+            // GP_AKTUAL sudah termasuk koreksi_hk, KOREKSI di Excel hanya untuk DISPLAY
+            formula: `${lGA}${r}+${lTunj}${r}+${lTotalPremi}${r}${otherIncomeFormula}`,
             result: upahKotor
         };
 
-        // Upah Bersih = Upah Kotor - Total Potongan
-        const upahBersih = Number(emp.upah_bersih || (upahKotor - totalPot));
+        // Upah Bersih = Upah Kotor + Total Potongan (potongan sudah bernilai minus).
+        const upahBersih = Number(emp.upah_bersih || (upahKotor + totalPot));
         row.getCell(COL_UPAH_BERSIH).value = {
-            formula: `${lUK}${r}-${lTotalPot}${r}`,
+            // Total Potongan is negative. Add it; do not create a -(-potongan) formula.
+            formula: `${lUK}${r}+${lTotalPot}${r}`,
             result: upahBersih
         };
 
@@ -464,6 +603,9 @@ export async function generateDaftarUpahExcel(
         COL_BERAS, COL_JABATAN_TUNJ, COL_MASA_KERJA, COL_LEMBUR, COL_TOTAL_TUNJ,
         ...Array.from({ length: allPremiKeys.length }, (_, i) => COL_PREMI_START + i),
         COL_TOTAL_PREMI,
+        ...Array.from({ length: allOtherIncomeKeys.length }, (_, i) => COL_OTHER_INCOME_START + i),
+        ...(HAS_GROSS_KOREKSI ? [COL_POT_KOREKSI] : []),
+        ...Array.from({ length: allOtherIncomeKeys.length }, (_, i) => COL_OTHER_INCOME_DED_START + i),
         COL_POT_ASTEK, COL_POT_BPJS, COL_POT_SPSI, COL_POT_PPH21, COL_TOTAL_POT,
         COL_UPAH_KOTOR, COL_UPAH_BERSIH,
     ];
@@ -471,7 +613,7 @@ export async function generateDaftarUpahExcel(
     sumCols.forEach(c => {
         const cell = footerRow.getCell(c);
         cell.value = { formula: `SUM(${L(c)}${DATA_START}:${L(c)}${totalRow - 1})` };
-        cell.numFmt = numFormat;
+        cell.numFmt = '#.##0';
         cell.font = { bold: true };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'DBEAFE' } };
     });

@@ -22,6 +22,7 @@ import { initPrintMode } from '../utils/printOptimizer';
 import { getDivisionTypeLabel, getReportModeLabel, getSourceModeLabel } from '../utils/reportPresentationLabels';
 import { getReportDivisionSummary } from '../utils/divisionPresentation';
 import { printReport } from '../utils/printPageSetup';
+import { buildWagesAuditModel } from '../utils/wagesSummaryAudit';
 import '../styles/wages-summary-professional.css';
 import '../styles/wages-summary-print-simple.css';
 import '../styles/report-print-foundation.css';
@@ -376,6 +377,10 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
     }, [kpiTotalsData, grandTotal]);
 
     const calculatedGrandTotal = grandTotal;
+    const isStandardWagesMode = !thrMode && !comparisonMode;
+    const auditReport = useMemo(() => (
+        isStandardWagesMode ? buildWagesAuditModel(groupedData, calculatedGrandTotal) : null
+    ), [calculatedGrandTotal, groupedData, isStandardWagesMode]);
 
     // Render Comparison KPI Cards
     const renderComparisonKPI = () => {
@@ -853,7 +858,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
     // Handle Save PDF
     const handleSavePDF = () => {
-        const element = document.getElementById('wsp-report-content');
+        const element = document.getElementById(isStandardWagesMode ? 'wsp-report-print-set' : 'wsp-report-content');
         const filename = `Wages_Summary_Rebinmas_${month}_${year}.pdf`;
         generatePDF(element, filename, {
             jsPDF: { orientation: thrMode ? 'portrait' : 'landscape' }
@@ -862,7 +867,10 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
 
     // Handle print
     const handlePrint = () => {
-        printReport({ orientation: thrMode ? 'portrait' : 'landscape' });
+        printReport({
+            orientation: thrMode ? 'portrait' : 'landscape',
+            margin: comparisonMode ? '0' : '8mm'
+        });
     };
 
     // Handle export CSV
@@ -1030,6 +1038,477 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
         );
     };
 
+    const renderAuditFooter = (pageNumber, totalPages = 3) => (
+        <footer className="wsp-footer wages-report-footer">
+            <div>Dicetak: {printDate}</div>
+            <div>Payroll Reporting System - PT. Rebinmas Jaya</div>
+            <div>Halaman {pageNumber} dari {totalPages}</div>
+        </footer>
+    );
+
+    const renderAuditHeader = ({ title, subtitle }) => (
+        <>
+            <ReportWatermark />
+            <div className="wsp-letterhead wages-audit-letterhead">
+                <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
+                <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+                <div className="wsp-report-title wsp-report-title-main">{title}</div>
+                <div className="wsp-report-subtitle">{subtitle}</div>
+                <div className="wsp-report-period">
+                    Periode: <strong>{periodLabel}</strong>
+                </div>
+                <ReportPrintMetadata
+                    mode={getReportModeLabel({ comparisonMode, thrMode })}
+                    source={getSourceModeLabel({ useHistory })}
+                    scope={getDivisionTypeLabel(divisionType)}
+                    estate="Rebinmas"
+                    items={[
+                        { label: 'Deskripsi', value: reportDivisionSummary },
+                        { label: 'Status Audit', value: auditReport?.grandTotal?.auditStatus }
+                    ]}
+                    note="Total audit mengikuti data ringkasan backend aktif dan dihitung dari scope yang sama dengan halaman utama."
+                />
+            </div>
+        </>
+    );
+
+    const renderStatusBadge = (status) => (
+        <span className={`wages-audit-status ${status === 'OK' ? 'ok' : 'review'}`}>{status}</span>
+    );
+
+    const renderDeductionAuditPage = () => {
+        if (!auditReport) return null;
+
+        return (
+            <div className="wsp-document wages-rebinmas-print-document wages-audit-page wages-deduction-audit-page">
+                {renderAuditHeader({
+                    title: 'AUDIT BREAKDOWN POTONGAN',
+                    subtitle: 'Deduction Audit - PPH 21, SPSI, Total Potongan, dan Selisih Thumb Print'
+                })}
+
+                <div className="wages-audit-grid two-col">
+                    <section className="wages-audit-panel">
+                        <h2>Ringkasan Potongan per Estate</h2>
+                        <table className="wsp-table wages-audit-summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Estate</th>
+                                    <th>PPH 21</th>
+                                    <th>SPSI</th>
+                                    <th>Total Potongan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {auditReport.deductionEstateSummary.map((row) => (
+                                    <tr key={`deduction-summary-${row.estateName}`}>
+                                        <td>{row.estateName}</td>
+                                        <td className="text-right">{formatNumber(row.pph21)}</td>
+                                        <td className="text-right">{formatNumber(row.spsi)}</td>
+                                        <td className="text-right">{formatNumber(row.totalPotongan)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr className="wsp-grand-total">
+                                    <td>GRAND TOTAL</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.pph21)}</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.spsi)}</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.totalPotongan)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </section>
+
+                    <section className="wages-audit-panel wages-audit-notes">
+                        <h2>Audit Notes</h2>
+                        <ul>
+                            <li>Total potongan harus sama dengan agregasi backend untuk scope aktif.</li>
+                            <li>Selisih portal vs thumb print harus dapat dilacak sampai divisi.</li>
+                            <li>Format angka menggunakan separator ribuan Indonesia.</li>
+                            <li>Baris selisih tidak nol wajib direview sebelum approval.</li>
+                        </ul>
+                    </section>
+                </div>
+
+                <section className="wages-audit-panel full-width">
+                    <h2>Tabel Audit Potongan</h2>
+                    <table className="wsp-table wages-audit-detail-table wages-deduction-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Estate / Divisi</th>
+                                <th>Workers</th>
+                                <th>HK</th>
+                                <th>PPH 21</th>
+                                <th>SPSI</th>
+                                <th>Total Potongan</th>
+                                <th>Upah Bersih Portal</th>
+                                <th>Thumb Print</th>
+                                <th>Selisih</th>
+                                <th>Status Audit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {auditReport.deductionRows.map((row) => (
+                                <tr key={`deduction-${row.divisionCode || row.divisionName}`}>
+                                    <td className="division-name"><strong>{row.divisionName}</strong><span>{row.divisionCode}</span></td>
+                                    <td className="text-right">{formatNumber(row.workers)}</td>
+                                    <td className="text-right">{formatNumber(row.hk)}</td>
+                                    <td className="text-right">{formatNumber(row.pph21)}</td>
+                                    <td className="text-right">{formatNumber(row.spsi)}</td>
+                                    <td className="text-right">{formatNumber(row.totalPotongan)}</td>
+                                    <td className="text-right">{formatNumber(row.upahBersihPortal)}</td>
+                                    <td className="text-right">{formatNumber(row.thumbPrint)}</td>
+                                    <td className={`text-right ${row.selisih === 0 ? 'text-neutral' : 'text-diff-neg'}`}>{formatNumber(row.selisih)}</td>
+                                    <td>{renderStatusBadge(row.auditStatus)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="wsp-grand-total">
+                                <td>GRAND TOTAL</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.workers)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.hk)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.pph21)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.spsi)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.totalPotongan)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.upahBersihPortal)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.thumbPrint)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.selisih)}</td>
+                                <td>{renderStatusBadge(auditReport.grandTotal.auditStatus)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </section>
+                {renderAuditFooter(2)}
+            </div>
+        );
+    };
+
+    const renderIncomeAuditPage = () => {
+        if (!auditReport) return null;
+
+        return (
+            <div className="wsp-document wages-rebinmas-print-document wages-audit-page wages-income-audit-page wages-last-print-page">
+                {renderAuditHeader({
+                    title: 'AUDIT BREAKDOWN PENDAPATAN',
+                    subtitle: 'Income Audit - Total Premi, Lembur, Upah Bersih, dan Validasi Selisih'
+                })}
+
+                <div className="wages-audit-grid two-col">
+                    <section className="wages-audit-panel">
+                        <h2>Ringkasan Income per Estate</h2>
+                        <table className="wsp-table wages-audit-summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Estate</th>
+                                    <th>Total Premi</th>
+                                    <th>Lembur</th>
+                                    <th>Upah Bersih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {auditReport.incomeEstateSummary.map((row) => (
+                                    <tr key={`income-summary-${row.estateName}`}>
+                                        <td>{row.estateName}</td>
+                                        <td className="text-right">{formatNumber(row.totalPremi)}</td>
+                                        <td className="text-right">{formatNumber(row.lembur)}</td>
+                                        <td className="text-right">{formatNumber(row.upahBersihPortal)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr className="wsp-grand-total">
+                                    <td>GRAND TOTAL</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.totalPremi)}</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.lembur)}</td>
+                                    <td className="text-right">{formatNumber(auditReport.grandTotal.upahBersihPortal)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </section>
+
+                    <section className="wages-audit-panel wages-validation-list">
+                        <h2>Validation Checklist</h2>
+                        <ul>
+                            <li>Total upah bersih portal sudah dibandingkan dengan thumb print.</li>
+                            <li>Grand total income mengikuti data backend aktif.</li>
+                            <li>Baris subtotal dipisahkan per estate/divisi untuk audit cepat.</li>
+                        </ul>
+                    </section>
+                </div>
+
+                <section className="wages-audit-panel full-width">
+                    <h2>Tabel Audit Income</h2>
+                    <table className="wsp-table wages-audit-detail-table wages-income-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Estate / Divisi</th>
+                                <th>Workers</th>
+                                <th>HK</th>
+                                <th>Total Premi</th>
+                                <th>Lembur</th>
+                                <th>Total Income</th>
+                                <th>Upah Bersih Portal</th>
+                                <th>Thumb Print</th>
+                                <th>Selisih</th>
+                                <th>Audit Remark</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {auditReport.incomeRows.map((row) => (
+                                <tr key={`income-${row.divisionCode || row.divisionName}`}>
+                                    <td className="division-name"><strong>{row.divisionName}</strong><span>{row.divisionCode}</span></td>
+                                    <td className="text-right">{formatNumber(row.workers)}</td>
+                                    <td className="text-right">{formatNumber(row.hk)}</td>
+                                    <td className="text-right">{formatNumber(row.totalPremi)}</td>
+                                    <td className="text-right">{formatNumber(row.lembur)}</td>
+                                    <td className="text-right">{formatNumber(row.totalIncome)}</td>
+                                    <td className="text-right">{formatNumber(row.upahBersihPortal)}</td>
+                                    <td className="text-right">{formatNumber(row.thumbPrint)}</td>
+                                    <td className={`text-right ${row.selisih === 0 ? 'text-neutral' : 'text-diff-neg'}`}>{formatNumber(row.selisih)}</td>
+                                    <td>{row.auditRemark}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="wsp-grand-total">
+                                <td>GRAND TOTAL</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.workers)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.hk)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.totalPremi)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.lembur)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.totalIncome)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.upahBersihPortal)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.thumbPrint)}</td>
+                                <td className="text-right">{formatNumber(auditReport.grandTotal.selisih)}</td>
+                                <td>{auditReport.grandTotal.auditRemark}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </section>
+
+                <div className="wages-audit-signature">
+                    <PrintSignature />
+                </div>
+                {renderAuditFooter(3)}
+            </div>
+        );
+    };
+
+    const renderAppendixHeader = ({ title, subtitle }) => (
+        <>
+            <ReportWatermark />
+            <div className="wsp-letterhead wages-infographic-letterhead">
+                <img src="/images/rebinmas.webp" alt="PT REBINMAS JAYA" className="wsp-logo" />
+                <h1 className="wsp-company-name">PT. REBINMAS JAYA</h1>
+                <div className="wsp-report-title wsp-report-title-main">{title}</div>
+                <div className="wsp-report-subtitle">{subtitle}</div>
+                <div className="wsp-report-period">
+                    Periode: <strong>{periodLabel}</strong>
+                </div>
+                <ReportPrintMetadata
+                    mode={getReportModeLabel({ comparisonMode, thrMode })}
+                    source={getSourceModeLabel({ useHistory })}
+                    scope={getDivisionTypeLabel(divisionType)}
+                    estate="Rebinmas"
+                    items={[{ label: 'Deskripsi', value: reportDivisionSummary }]}
+                    note="Lampiran infografis dihitung dari data backend yang sama dengan tabel utama Wages Summary."
+                />
+            </div>
+        </>
+    );
+
+    const renderInfographicAppendixPage = () => {
+        if (!auditReport) return null;
+        const estateRows = auditReport.estateSummary || [];
+        const maxNetPay = Math.max(...estateRows.map(row => row.upahBersihPortal), 1);
+        const maxPremi = Math.max(...estateRows.map(row => row.totalPremi), 1);
+        const maxLembur = Math.max(...estateRows.map(row => row.lembur), 1);
+        const maxPotongan = Math.max(...estateRows.map(row => row.totalPotongan), 1);
+        const totalPotongan = auditReport.grandTotal.totalPotongan || 0;
+        const totalIncome = auditReport.grandTotal.totalIncome || 0;
+        const grandNetPay = auditReport.grandTotal.upahBersihPortal || 0;
+        const pphShare = totalPotongan > 0 ? (auditReport.grandTotal.pph21 / totalPotongan) * 100 : 0;
+        const spsiShare = totalPotongan > 0 ? (auditReport.grandTotal.spsi / totalPotongan) * 100 : 0;
+        const premiShare = totalIncome > 0 ? (auditReport.grandTotal.totalPremi / totalIncome) * 100 : 0;
+        const lemburShare = totalIncome > 0 ? (auditReport.grandTotal.lembur / totalIncome) * 100 : 0;
+        const cleanRows = estateRows.filter(row => row.workers || row.upahBersihPortal || row.totalPremi || row.lembur);
+
+        return (
+            <div className="wsp-document wages-rebinmas-print-document wages-infographic-page wages-last-print-page">
+                {renderAppendixHeader({
+                    title: 'LAMPIRAN INFOGRAFIS WAGES SUMMARY',
+                    subtitle: 'Visualisasi komponen gaji: upah bersih, premi, lembur, potongan, pekerja, dan HK'
+                })}
+
+                <div className="wages-infographic-kpi-grid">
+                    <div className="wages-infographic-kpi">
+                        <span>Total Upah Bersih</span>
+                        <strong>Rp {formatNumber(grandNetPay)}</strong>
+                        <small>Portal payroll</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Total Premi</span>
+                        <strong>Rp {formatNumber(auditReport.grandTotal.totalPremi)}</strong>
+                        <small>Komponen premi</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Total Lembur</span>
+                        <strong>Rp {formatNumber(auditReport.grandTotal.lembur)}</strong>
+                        <small>Komponen lembur</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Pendapatan Variabel</span>
+                        <strong>Rp {formatNumber(totalIncome)}</strong>
+                        <small>Premi + lembur</small>
+                    </div>
+                </div>
+
+                <div className="wages-infographic-kpi-grid secondary">
+                    <div className="wages-infographic-kpi">
+                        <span>Total Potongan</span>
+                        <strong>Rp {formatNumber(totalPotongan)}</strong>
+                        <small>PPH 21 + SPSI</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Total PPH 21</span>
+                        <strong>Rp {formatNumber(auditReport.grandTotal.pph21)}</strong>
+                        <small>Pajak karyawan</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Total SPSI</span>
+                        <strong>Rp {formatNumber(auditReport.grandTotal.spsi)}</strong>
+                        <small>Iuran SPSI</small>
+                    </div>
+                    <div className="wages-infographic-kpi">
+                        <span>Total HK</span>
+                        <strong>{formatNumber(auditReport.grandTotal.hk)}</strong>
+                        <small>Hari kerja checkroll</small>
+                    </div>
+                </div>
+
+                <div className="wages-infographic-layout">
+                    <section className="wages-infographic-panel wide">
+                        <h2>Kontribusi Upah Bersih per Estate</h2>
+                        <div className="wages-bar-list">
+                            {cleanRows.map(row => (
+                                <div className="wages-bar-row" key={`netpay-${row.estateName}`}>
+                                    <div className="wages-bar-label">{row.estateName}</div>
+                                    <div className="wages-bar-track">
+                                        <span style={{ width: `${Math.max((row.upahBersihPortal / maxNetPay) * 100, 3)}%` }} />
+                                    </div>
+                                    <div className="wages-bar-value">{formatNumber(row.upahBersihPortal)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="wages-infographic-panel">
+                        <h2>Premi per Estate</h2>
+                        <div className="wages-bar-list compact">
+                            {cleanRows.map(row => (
+                                <div className="wages-bar-row" key={`premi-${row.estateName}`}>
+                                    <div className="wages-bar-label">{row.estateName}</div>
+                                    <div className="wages-bar-track premi">
+                                        <span style={{ width: `${Math.max((row.totalPremi / maxPremi) * 100, 3)}%` }} />
+                                    </div>
+                                    <div className="wages-bar-value">{formatNumber(row.totalPremi)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="wages-infographic-panel">
+                        <h2>Lembur per Estate</h2>
+                        <div className="wages-bar-list compact">
+                            {cleanRows.map(row => (
+                                <div className="wages-bar-row" key={`lembur-${row.estateName}`}>
+                                    <div className="wages-bar-label">{row.estateName}</div>
+                                    <div className="wages-bar-track lembur">
+                                        <span style={{ width: `${Math.max((row.lembur / maxLembur) * 100, 3)}%` }} />
+                                    </div>
+                                    <div className="wages-bar-value">{formatNumber(row.lembur)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="wages-infographic-panel">
+                        <h2>Komposisi Pendapatan</h2>
+                        <div className="wages-share-stack">
+                            <span className="premi" style={{ width: `${premiShare}%` }}>Premi</span>
+                            <span className="lembur" style={{ width: `${lemburShare}%` }}>Lembur</span>
+                        </div>
+                        <div className="wages-share-legend">
+                            <span>Premi: {formatNumber(auditReport.grandTotal.totalPremi)}</span>
+                            <span>Lembur: {formatNumber(auditReport.grandTotal.lembur)}</span>
+                        </div>
+                    </section>
+
+                    <section className="wages-infographic-panel">
+                        <h2>Komposisi Potongan</h2>
+                        <div className="wages-share-stack deductions">
+                            <span className="pph" style={{ width: `${pphShare}%` }}>PPH 21</span>
+                            <span className="spsi" style={{ width: `${spsiShare}%` }}>SPSI</span>
+                        </div>
+                        <div className="wages-share-legend">
+                            <span>PPH 21: {formatNumber(auditReport.grandTotal.pph21)}</span>
+                            <span>SPSI: {formatNumber(auditReport.grandTotal.spsi)}</span>
+                        </div>
+                    </section>
+
+                    <section className="wages-infographic-panel wide">
+                        <h2>Komponen Gaji per Estate</h2>
+                        <table className="wsp-table wages-infographic-table">
+                            <thead>
+                                <tr>
+                                    <th>Estate</th>
+                                    <th>Workers</th>
+                                    <th>HK</th>
+                                    <th>Premi</th>
+                                    <th>Lembur</th>
+                                    <th>PPH 21</th>
+                                    <th>SPSI</th>
+                                    <th>Upah Bersih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {cleanRows.map(row => (
+                                    <tr key={`components-${row.estateName}`}>
+                                        <td>{row.estateName}</td>
+                                        <td className="text-right">{formatNumber(row.workers)}</td>
+                                        <td className="text-right">{formatNumber(row.hk)}</td>
+                                        <td className="text-right">{formatNumber(row.totalPremi)}</td>
+                                        <td className="text-right">{formatNumber(row.lembur)}</td>
+                                        <td className="text-right">{formatNumber(row.pph21)}</td>
+                                        <td className="text-right">{formatNumber(row.spsi)}</td>
+                                        <td className="text-right">{formatNumber(row.upahBersihPortal)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section className="wages-infographic-panel wide">
+                        <h2>Potongan per Estate</h2>
+                        <div className="wages-bar-list compact">
+                            {cleanRows.map(row => (
+                                <div className="wages-bar-row" key={`deduction-${row.estateName}`}>
+                                    <div className="wages-bar-label">{row.estateName}</div>
+                                    <div className="wages-bar-track deduction">
+                                        <span style={{ width: `${Math.max((row.totalPotongan / maxPotongan) * 100, 3)}%` }} />
+                                    </div>
+                                    <div className="wages-bar-value">{formatNumber(row.totalPotongan)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                </div>
+                {renderAuditFooter(2, 2)}
+            </div>
+        );
+    };
     return (
         <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
             {/* Action Bar */}
@@ -1059,7 +1538,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             <option value="virtual">Divisi Virtual Saja</option>
                         </select>
 
-                        {/* ── Period Slider (Highlighted & Prominent) ─────────────── */}
+                        {/* ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Period Slider (Highlighted & Prominent) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -1127,6 +1606,14 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                         <Printer size={18} /> Cetak Report
                     </button>
                     <button
+                        onClick={handleSavePDF}
+                        className="wsp-btn-secondary"
+                        disabled={loading || (isStandardWagesMode && summaryData.length === 0)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        Save PDF
+                    </button>
+                    <button
                         onClick={handleExport}
                         className="wsp-btn-secondary"
                         disabled={loading || (!comparisonMode && summaryData.length === 0)}
@@ -1190,7 +1677,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                     </button>
                     {/* History DB Toggle */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: useHistory ? '#fef3c7' : 'var(--bg-card, #fff)', padding: '0.5rem 1rem', borderRadius: '8px', border: useHistory ? '1px solid #f59e0b' : '1px solid var(--border-color, #e2e8f0)', marginLeft: '0.5rem', transition: 'all 0.2s' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 500, fontSize: '0.875rem', color: useHistory ? '#92400e' : 'inherit' }} title="Ambil data dari history DB (extend_db_ptrj) — origin DB tidak terbebani">
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0, fontWeight: 500, fontSize: '0.875rem', color: useHistory ? '#92400e' : 'inherit' }} title="Ambil data dari history DB (extend_db_ptrj) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â origin DB tidak terbebani">
                             <input
                                 type="checkbox"
                                 checked={useHistory}
@@ -1234,8 +1721,10 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             </button>
                         </div>
                     ) : (
-                        /* Paper Document */
-                        <div className={`wsp-document ${thrMode ? 'thr-print-document' : 'wages-rebinmas-print-document'}`} id="wsp-report-content">
+                        <>
+                        <div id="wsp-report-print-set" className={`wages-report-print-set ${isStandardWagesMode ? 'standard-wages-print-set' : ''}`}>
+                        {/* Paper Document */}
+                        <div className={`wsp-document ${thrMode ? 'thr-print-document' : `wages-rebinmas-print-document ${comparisonMode ? 'wages-comparison-page' : 'wages-summary-page'}`}`} id="wsp-report-content">
                             <ReportWatermark />
                             {/* Letterhead */}
                             <div className="wsp-letterhead">
@@ -1452,7 +1941,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                             {summaryData.length === 0 ? (
                                                 <tr>
                                                     <td colSpan="10" style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
-                                                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📋</div>
+                                                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹</div>
                                                         <div>Tidak ada data tersedia untuk periode ini</div>
                                                     </td>
                                                 </tr>
@@ -1509,7 +1998,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                                     gap: '10px'
                                 }}>
                                     <span style={{ display: 'inline-block', width: '48px', height: '1px', background: '#c7d2fe' }} />
-                                    ✍️ Papan Penanda Tangan
+                                    ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Papan Penanda Tangan
                                     <span style={{ display: 'inline-block', width: '48px', height: '1px', background: '#c7d2fe' }} />
                                 </div>
                                 <PrintSignature />
@@ -1520,19 +2009,28 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                             </div>
 
                             {/* Report Footer */}
-                            <footer className="wsp-footer" style={{ marginTop: '4rem' }}>
+                            <footer className="wsp-footer wages-report-footer" style={{ marginTop: '4rem' }}>
                                 <div className="wsp-footer-left">
                                     <div>Dicetak: {printDate}</div>
                                     <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>User: {user?.username}</div>
                                 </div>
                                 <div className="wsp-footer-right">
-                                    PT. REBINMAS JAYA
+                                    {isStandardWagesMode ? 'Halaman 1 dari 2' : 'PT. REBINMAS JAYA'}
                                 </div>
                             </footer>
                         </div>
+                        {isStandardWagesMode && renderInfographicAppendixPage()}
+                        </div>
+                        </>
                     )}
                 </>
             )}
         </div>
     );
 }
+
+
+
+
+
+

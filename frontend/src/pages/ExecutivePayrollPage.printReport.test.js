@@ -14,8 +14,8 @@ describe('ExecutivePayrollPage print report', () => {
     expect(pageSource).toContain('executive-print-report print-only');
   });
 
-  it('prints the executive report in landscape with compact black-and-white sections', () => {
-    expect(pageSource).toContain("printReport({ orientation: 'landscape', margin: '7mm' })");
+  it('prints the executive report in landscape with a print-safe executive layout', () => {
+    expect(pageSource).toContain("printReport({ orientation: 'landscape', margin: '0' })");
     expect(pageSource).toContain('Cetak Report');
     expect(pageSource).toContain("import { Printer } from 'lucide-react';");
     expect(pageSource).toContain('className="executive-print-button"');
@@ -28,9 +28,11 @@ describe('ExecutivePayrollPage print report', () => {
     expect(pageSource).toContain('executive-print-trend-table');
     expect(pageSource).toContain('executive-print-alert-table');
 
-    expect(css).toMatch(/@page\s+executive-payroll-landscape\s*{[\s\S]*size:\s*A4 landscape;[\s\S]*margin:\s*7mm;/);
+    expect(css).toMatch(/@page\s+executive-payroll-landscape\s*{[\s\S]*size:\s*A4 landscape;[\s\S]*margin:\s*0;/);
+    expect(css).toMatch(/html,[\s\S]*body,[\s\S]*#root\s*{[\s\S]*width:\s*297mm\s*!important;/);
     expect(css).toMatch(/\.executive-dashboard-screen\s*{[\s\S]*display:\s*none\s*!important;/);
-    expect(css).toMatch(/#executive-print-report\.executive-print-report\s*{[\s\S]*display:\s*block\s*!important;/);
-    expect(css).toMatch(/#executive-print-report \.executive-print-table th\s*{[\s\S]*background:\s*#fff\s*!important;[\s\S]*color:\s*#000\s*!important;/);
+    expect(css).toMatch(/#executive-print-report\.executive-print-report\s*{[\s\S]*display:\s*block\s*!important;[\s\S]*width:\s*281mm\s*!important;[\s\S]*margin:\s*8mm auto\s*!important;/);
+    expect(css).toMatch(/#executive-print-report \.executive-print-header\s*{[\s\S]*background:\s*#081f3a\s*!important;/);
+    expect(css).toMatch(/#executive-print-report \.executive-print-table th\s*{[\s\S]*background:\s*#081f3a\s*!important;[\s\S]*color:\s*#ffffff\s*!important;/);
   });
 });

@@ -1,8 +1,56 @@
+import { sumOtherIncomeByCanonicalType } from "./otherIncomeCanonical";
+
 type ComponentMetadata = Record<string, unknown>;
 
 function toNumber(value: unknown): number {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function firstNonZeroNumber(...values: unknown[]): number {
+    for (const value of values) {
+        const numeric = toNumber(value);
+        if (numeric !== 0) return numeric;
+    }
+    return 0;
+}
+function resolveThrValue(emp: Record<string, any>): number {
+    return firstNonZeroNumber(
+        emp.pendapatan_thr,
+        emp.taxable_pendapatan_thr,
+        emp.thr_amount,
+        emp.THR,
+        emp.thr,
+        emp.THR_AMOUNT,
+        sumOtherIncomeByCanonicalType(emp.other_incomes, "THR")
+    );
+}
+
+function resolveBonusValue(emp: Record<string, any>): number {
+    const bonusDirect = firstNonZeroNumber(
+        emp.pendapatan_bonus,
+        emp.taxable_pendapatan_bonus,
+        emp.bonus,
+        emp.bonus_amount
+    );
+    const exgratiaSeparate = toNumber(emp.pendapatan_exgratia) || toNumber(emp.taxable_pendapatan_exgratia);
+    const exgratiaAlias = bonusDirect === 0 ? toNumber(emp.exgratia_amount) : 0;
+
+    return firstNonZeroNumber(
+        bonusDirect + exgratiaSeparate + exgratiaAlias,
+        sumOtherIncomeByCanonicalType(emp.other_incomes, "BONUS")
+    );
+}
+
+function resolveKontanValue(emp: Record<string, any>): number {
+    return firstNonZeroNumber(
+        emp.pendapatan_kontan,
+        emp.taxable_pendapatan_kontan,
+        emp.kontanan_amount,
+        emp.KONTANAN,
+        emp.KONTAN,
+        sumOtherIncomeByCanonicalType(emp.other_incomes, "KONTAN")
+    );
 }
 
 function normalizePremiumLookupKey(value: string): string {
@@ -86,8 +134,9 @@ export function prepareDomTaxExcelRows(
     componentMetadata: ComponentMetadata = {}
 ): { employees: Array<Record<string, any>>; totalPph21: number } {
     let totalPph21 = 0;
-    const preparedEmployees = (Array.isArray(employees) ? employees : []).map((emp) => {
-        const next = {
+    console.log(`[prepareDomTaxExcelRows] Input: ${employees.length} employees, ${premiKeys.length} premiKeys`);
+    const preparedEmployees = (Array.isArray(employees) ? employees : []).map((emp, idx) => {
+        const next: Record<string, any> = {
             ...emp,
             component_metadata: componentMetadata
         };
@@ -97,6 +146,17 @@ export function prepareDomTaxExcelRows(
             next.premi_detail = premiumDetail;
         }
 
+        const thr = resolveThrValue(next);
+        const bonus = resolveBonusValue(next);
+        const kontan = resolveKontanValue(next);
+        next.pendapatan_thr = thr;
+        if (next.thr_amount === undefined) next.thr_amount = thr;
+        next.bonus = bonus;
+        next.pendapatan_bonus = bonus;
+        if (next.bonus_amount === undefined) next.bonus_amount = bonus;
+        next.pendapatan_kontan = kontan;
+        if (next.kontanan_amount === undefined) next.kontanan_amount = kontan;
+
         if (!next.pot_alpa_cth && !next.pot_alpa) {
             const ideal = toNumber(next.gaji_pokok_ideal);
             const actual = toNumber(next.gaji_pokok_aktual);
@@ -105,9 +165,25 @@ export function prepareDomTaxExcelRows(
             }
         }
 
-        totalPph21 += toNumber(next.pph21_ter) || toNumber(next.potongan_pph21) || toNumber(next.pot_pph21);
+        if (!next.lebih_hk && !next.lebih_hk_cth) {
+            const ideal = toNumber(next.gaji_pokok_ideal);
+            const actual = toNumber(next.gaji_pokok_aktual);
+            const koreksiHk = toNumber(next.koreksi_hk);
+            const lebihHk = koreksiHk > 0 ? koreksiHk : (ideal > 0 && actual > ideal ? actual - ideal : 0);
+            if (lebihHk > 0) {
+                next.lebih_hk = lebihHk;
+            }
+        }
+
+        const pph21Val = toNumber(next.pph21_ter) || toNumber(next.potongan_pph21) || toNumber(next.pot_pph21);
+        totalPph21 += pph21Val;
+        // Debug first employee
+        if (idx === 0) {
+            console.log(`[prepareDomTaxExcelRows] First emp: pph21_ter=${next.pph21_ter}, pot_pph21=${next.pot_pph21}, calculated=${pph21Val}`);
+        }
         return next;
     });
+    console.log(`[prepareDomTaxExcelRows] Output: ${preparedEmployees.length} employees, totalPph21=${totalPph21}`);
 
     return { employees: preparedEmployees, totalPph21 };
 }

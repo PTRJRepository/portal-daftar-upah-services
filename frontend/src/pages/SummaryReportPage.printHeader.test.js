@@ -1,52 +1,93 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(new URL('./SummaryReportPage.jsx', import.meta.url), 'utf8');
+const pageSource = readFileSync(new URL('./SummaryReportPage.jsx', import.meta.url), 'utf8');
+const headerSource = readFileSync(new URL('../components/common/ReportPrintHeader.jsx', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../styles/summary-report-new.css', import.meta.url), 'utf8');
 
-describe('SummaryReportPage print headers', () => {
-  it('marks screen and print table headers with explicit print visibility classes', () => {
-    expect(source).toContain('wsp-header-master no-print report-screen-header');
-    expect(source).toContain('wsp-header-sub no-print report-screen-header');
-    expect(source).toContain('wsp-header-master print-only report-print-header');
-    expect(source).toContain('wsp-header-sub print-only report-print-header');
-    expect(source).toContain('summary-detail-print-wrapper print-only');
-    expect(source).toContain('summary-detail-print-table');
+describe('SummaryReportPage redesigned print header', () => {
+  it('renders the company kop on all three printable pages', () => {
+    expect(pageSource.match(/<ReportPrintHeader/g)).toHaveLength(3);
+    expect(pageSource).toContain('id="print-page-1"');
+    expect(pageSource).toContain('id={`print-page-${pageNumber}`}');
+    expect(pageSource).toContain('id={`print-page-${pageNumber}`}');
+    expect(pageSource).toContain('Hal. 1 / {totalPages}');
+    expect(pageSource).toContain('Hal. {pageNumber} / {totalPages}');
+    expect(pageSource).toContain('detailPrintPages.map');
+    expect(pageSource.indexOf('detailPrintPages.map')).toBeLessThan(pageSource.indexOf('<PrintPage2'));
+    expect(pageSource).toContain('pageNumber={pageIdx + 2}');
+    expect(pageSource).toContain('pageNumber={premiPrintPageNumber}');
   });
 
-  it('groups summary detail print rows and emphasizes gang description before gang code', () => {
-    expect(source).toContain('groupedSummaryPrintRows');
-    expect(source).toContain('summary-print-group-row');
-    expect(source).toContain('buildGangDescriptionGroupLabel');
-    expect(source).toContain('summaryGroupLabel.toUpperCase()');
-    expect(source).not.toContain('GROUP {group}');
-    expect(source.indexOf('summary-print-desc')).toBeLessThan(source.indexOf('summary-print-code'));
+  it('uses the Rebinmas asset logo instead of a generated/background-only print logo', () => {
+    expect(headerSource).toContain('className="srn-paper-logo"');
+    expect(headerSource).toContain('REBINMAS_LOGO_SRC');
+    expect(headerSource).toContain('images/rebinmas.webp');
+    expect(pageSource).toContain('REBINMAS_LOGO_SRC');
+    expect(headerSource).toContain('PT. REBINMAS JAYA');
+    expect(headerSource).toContain('srn-paper-accent-line');
+    expect(headerSource).not.toContain('srn-paper-header-deco');
   });
 
-  it('prints thumbprint once as a right-side table column spanning the summary body', () => {
-    expect(source).toContain('THUMBPRINT');
-    expect(source).toContain('summary-compare-value');
-    expect(source).toContain('summary-compare-diff');
-    expect(source).toContain('groupedSummaryScreenRows');
-    expect(source).toContain('groupedSummaryPrintRows');
-    expect(source).toContain('reportComparison');
-    expect(source).toContain('summaryComparisonRowSpan');
-    expect(source).not.toContain('printComparisonRowSpan');
-    expect(source).toContain('filteredSummaryData.length + groupedSummaryPrintRows.length');
-    expect(source).not.toContain('rowSpan={printComparisonRowSpan}');
-    expect(source).toContain('summaryPrintComparisonRowSpan');
-    expect(source).toContain('rowSpan={summaryPrintComparisonRowSpan}');
-    expect(source).toContain('groupIdx === 0 && summaryPrintComparisonRowSpan > 0');
-    expect(source).toContain('<td colSpan="8">{formatSummaryGroupLabel(summaryGroupLabel)}</td>');
-    expect(source).toContain('Thumbprint: {formatNumber(reportComparison.thumbPrint)}');
-    expect(source).toContain('Selisih: {formatNumber(reportComparison.selisih)}');
-    expect(source).toContain('formatNumber(reportComparison.thumbPrint)');
-    expect(source).toContain('formatNumber(reportComparison.selisih)');
-    expect(source).toContain('filteredGrandTotal?.thumb_print');
-    expect(source).toContain('filteredGrandTotal?.selisih');
-    expect(source).toContain('summary-compare-cell');
-    expect(source).toContain('summary-col-compare');
-    expect(source).not.toContain('summary-compare-footer-cell');
-    expect(source).not.toContain('summary-col-thumbprint');
-    expect(source).not.toContain('summary-col-selisih');
+  it('keeps print logo, metadata, and accent line visible without cropping', () => {
+    expect(css).toMatch(/\.srn-paper\s*{[\s\S]*aspect-ratio:\s*297\s*\/\s*210;/);
+    expect(css).toMatch(/\.srn-paper\s*{[\s\S]*overflow:\s*hidden;/);
+    expect(css).toMatch(/\.srn-paper-logo\s*{[\s\S]*overflow:\s*visible;/);
+    expect(css).toMatch(/\.srn-paper-logo\s*{[\s\S]*object-fit:\s*contain;/);
+    expect(css).toMatch(/\.srn-paper-meta\s*{[\s\S]*white-space:\s*pre-line;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper-header\s*{[\s\S]*display:\s*grid\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper-logo\s*{[\s\S]*object-fit:\s*contain\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper-accent-line\s*{[\s\S]*display:\s*block\s*!important;/);
+  });
+
+  it('keeps thumbprint as right-side table columns and zero-margin A4 print setup', () => {
+    expect(pageSource).toContain('<th>THUMBPRINT</th>');
+    expect(pageSource).toContain('<th>SELISIH</th>');
+    expect(pageSource).toContain('summary-compare-cell');
+    expect(pageSource).toContain('function buildThumbprintRowSpans');
+    expect(pageSource).toContain('rowSpan={comparisonCell.rowSpan}');
+    expect(pageSource).toContain('Lanjutan Detail Per Gang / Estate');
+    expect(pageSource).toContain('thumb_print');
+    expect(pageSource).toContain('PRINT_SUMMARY_ROWS');
+    expect(pageSource).toContain('PRINT_DETAIL_ROWS_PER_PAGE');
+    expect(pageSource).toContain('filteredData.slice(PRINT_SUMMARY_ROWS)');
+    expect(pageSource).toContain('chunkRows(detailPrintRows, PRINT_DETAIL_ROWS_PER_PAGE)');
+    expect(pageSource).toContain("printReport({ orientation: 'landscape', margin: '0' })");
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper\s*{[\s\S]*overflow:\s*hidden\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper\s*{[\s\S]*display:\s*flex\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper\s*{[\s\S]*flex-direction:\s*column\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper \+ \.srn-paper\s*{[\s\S]*break-before:\s*page\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-paper-header\s*{[\s\S]*break-after:\s*avoid\s*!important;/);
+    expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.srn-page-container > :not\(\.srn-print-section\),[\s\S]*\.srn-content-body > :not\(\.srn-print-section\)\s*{[\s\S]*display:\s*none\s*!important;/);
+  });
+
+  it('uses gang composition for the distribution chart when a division is selected', () => {
+    expect(pageSource).toContain('function DistributionDonutChart');
+    expect(pageSource).toContain("selectedDivisionLevel ? 'Distribusi Premi Per Gang' : 'Distribusi Premi Per Divisi'");
+    expect(pageSource).toContain("? (row.gang_description || row.gang_code || 'Lainnya')");
+  });
+
+  it('builds the premium detail page from the selected division totals and previous extend_db_ptrj period', () => {
+    expect(pageSource).toContain('function buildPremiBreakdown');
+    expect(pageSource).toContain('const [previousSummaryData, setPreviousSummaryData] = useState([])');
+    expect(pageSource).toContain('useHistory: true');
+    expect(pageSource).toContain('previousPeriodLabel');
+    expect(pageSource).toContain('premiBreakdownData={premiBreakdownData}');
+    expect(pageSource).toContain('previousGrandTotal={previousGrandTotal}');
+    expect(pageSource).toContain('<th>BULAN LALU</th>');
+    expect(pageSource).toContain('<th>SELISIH</th>');
+    expect(pageSource).toContain('{formatNumber(grandTotal?.total_premi)}');
+    expect(pageSource).not.toContain("{ no: 1, name: 'Premi Raking'");
+    expect(pageSource).not.toContain('2.263.864.707');
+    expect(pageSource).toContain('Pilih satu divisi terlebih dahulu');
+  });
+
+  it('defaults the report to the primary AB1 division and keeps premium print rows bounded', () => {
+    expect(pageSource).toContain("const DEFAULT_DIVISION = 'AB1'");
+    expect(pageSource).toContain('useState(initialDivision || DEFAULT_DIVISION)');
+    expect(pageSource).toContain("useState('real')");
+    expect(pageSource).toContain('PRINT_PREMI_ROWS');
+    expect(pageSource).toContain('function compactPremiRowsForPrint');
+    expect(pageSource).toContain('const printPremiRows = compactPremiRowsForPrint(premiBreakdownData)');
   });
 });

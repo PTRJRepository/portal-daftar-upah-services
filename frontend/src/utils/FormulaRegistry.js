@@ -158,7 +158,9 @@ export const FormulaRegistry = {
         label: 'Upah Bersih',
         type: 'currency',
         inputs: ['upah_kotor', 'total_premi', 'total_potongan'],
-        formula: 'upah_kotor + total_premi - total_potongan'
+        // Guardrail: if total_potongan is exported/rendered as signed negative,
+        // formulas must ADD it. Never build -(-potongan) formulas.
+        formula: 'upah_kotor + total_premi + signed_total_potongan'
     }
 };
 

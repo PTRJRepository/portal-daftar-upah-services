@@ -1,4 +1,4 @@
-import * as ExcelJS from 'exceljs';
+﻿import * as ExcelJS from 'exceljs';
 import { OtherIncomesService } from './otherIncomesService';
 
 export class OtherIncomesExcelService {
@@ -91,7 +91,7 @@ export class OtherIncomesExcelService {
                 const gangSubRow = worksheet.getRow(currentRow++);
                 gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode} (${items.length} orang)`;
                 gangSubRow.getCell(6).value = gangTotal;
-                gangSubRow.getCell(6).numFmt = '#,##0';
+                gangSubRow.getCell(6).numFmt = '#.##0';
                 gangSubRow.font = { bold: true, italic: true };
                 gangSubRow.getCell(1).alignment = { horizontal: 'right' };
                 gangSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }; });
@@ -99,8 +99,8 @@ export class OtherIncomesExcelService {
                 totalAll += gangTotal;
             }
         } else {
-            // ===== ALL DIVISIONS MODE: Group by division → gang, subtotals for both =====
-            // Group: division_code → gang_code → items
+            // ===== ALL DIVISIONS MODE: Group by division â†’ gang, subtotals for both =====
+            // Group: division_code â†’ gang_code â†’ items
             const divGrouped: Record<string, Record<string, any[]>> = {};
             incomes.forEach(item => {
                 const divCode = item.division_code || 'TANPA DIVISI';
@@ -149,7 +149,7 @@ export class OtherIncomesExcelService {
                     const gangSubRow = worksheet.getRow(currentRow++);
                     gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode} (${items.length} orang)`;
                     gangSubRow.getCell(6).value = gangTotal;
-                    gangSubRow.getCell(6).numFmt = '#,##0';
+                    gangSubRow.getCell(6).numFmt = '#.##0';
                     gangSubRow.font = { bold: true, italic: true };
                     gangSubRow.getCell(1).alignment = { horizontal: 'right' };
                     worksheet.mergeCells(`A${currentRow - 1}`, `E${currentRow - 1}`);
@@ -161,7 +161,7 @@ export class OtherIncomesExcelService {
                 const divSubRow = worksheet.getRow(currentRow++);
                 divSubRow.getCell(1).value = `SUBTOTAL DIVISI ${divKey} (${divisionCount} orang)`;
                 divSubRow.getCell(6).value = divisionTotal;
-                divSubRow.getCell(6).numFmt = '#,##0';
+                divSubRow.getCell(6).numFmt = '#.##0';
                 divSubRow.font = { bold: true };
                 divSubRow.getCell(1).alignment = { horizontal: 'right' };
                 divSubRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; });
@@ -174,7 +174,7 @@ export class OtherIncomesExcelService {
         const totalRow = worksheet.getRow(currentRow++);
         totalRow.getCell(1).value = `TOTAL TRANSFER KESELURUHAN (${incomes.length} orang)`;
         totalRow.getCell(6).value = totalAll;
-        totalRow.getCell(6).numFmt = '#,##0';
+        totalRow.getCell(6).numFmt = '#.##0';
         totalRow.font = { bold: true };
         totalRow.getCell(1).alignment = { horizontal: 'right' };
         totalRow.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }; c.font = { color: { argb: 'FFFFFFFF' }, bold: true }; });
@@ -243,7 +243,7 @@ export class OtherIncomesExcelService {
         row.getCell(5).value = bankCode;
         row.getCell(5).alignment = { horizontal: 'center' };
         row.getCell(6).value = Number(item.amount);
-        row.getCell(6).numFmt = '#,##0';
+        row.getCell(6).numFmt = '#.##0';
     }
 
     /**
@@ -391,26 +391,26 @@ export class OtherIncomesExcelService {
                 row.getCell(5).value = v.JOIN_DATE || item.join_date || '';
                 row.getCell(5).alignment = { horizontal: 'center' };
                 row.getCell(6).value = Number(upahDasar);
-                row.getCell(6).numFmt = '#,##0';
+                row.getCell(6).numFmt = '#.##0';
                 row.getCell(7).value = Number(upahDasar) * 30;
-                row.getCell(7).numFmt = '#,##0';
+                row.getCell(7).numFmt = '#.##0';
                 row.getCell(8).value = Number(berasRate);
-                row.getCell(8).numFmt = '#,##0';
+                row.getCell(8).numFmt = '#.##0';
                 row.getCell(9).value = Number(berasJumlah);
-                row.getCell(9).numFmt = '#,##0';
+                row.getCell(9).numFmt = '#.##0';
                 row.getCell(10).value = v.MASA_KERJA_TAHUN || 0;
                 row.getCell(10).alignment = { horizontal: 'center' };
                 row.getCell(11).value = Number(masaKerjaJumlah);
-                row.getCell(11).numFmt = '#,##0';
+                row.getCell(11).numFmt = '#.##0';
                 row.getCell(12).value = amount;
-                row.getCell(12).numFmt = '#,##0';
+                row.getCell(12).numFmt = '#.##0';
                 row.getCell(12).font = { bold: true };
                 row.getCell(13).value = pajak;
-                row.getCell(13).numFmt = '#,##0';
+                row.getCell(13).numFmt = '#.##0';
                 row.getCell(14).value = (v.PROPORTION_FACTOR && v.PROPORTION_FACTOR !== '12/12') ? v.PROPORTION_FACTOR : 'PENUH';
                 row.getCell(14).alignment = { horizontal: 'center' };
                 row.getCell(15).value = amount - pajak;
-                row.getCell(15).numFmt = '#,##0';
+                row.getCell(15).numFmt = '#.##0';
                 row.getCell(15).font = { bold: true };
 
                 // Apply borders to all cells
@@ -425,10 +425,10 @@ export class OtherIncomesExcelService {
             const gangSubRow = worksheet.getRow(currentRow++);
             gangSubRow.getCell(1).value = `SUBTOTAL GANG ${gcode} (${items.length} orang)`;
             gangSubRow.getCell(12).value = gangTotalKotor;
-            gangSubRow.getCell(12).numFmt = '#,##0';
+            gangSubRow.getCell(12).numFmt = '#.##0';
             gangSubRow.getCell(12).font = { bold: true };
             gangSubRow.getCell(15).value = gangTotalKotor;
-            gangSubRow.getCell(15).numFmt = '#,##0';
+            gangSubRow.getCell(15).numFmt = '#.##0';
             gangSubRow.getCell(15).font = { bold: true };
             gangSubRow.getCell(1).alignment = { horizontal: 'right' };
             gangSubRow.font = { bold: true, italic: true };
@@ -442,10 +442,10 @@ export class OtherIncomesExcelService {
         const totalRow = worksheet.getRow(currentRow++);
         totalRow.getCell(1).value = `TOTAL TRANSFER KESELURUHAN (${incomes.length} orang)`;
         totalRow.getCell(12).value = grandTotalKotor;
-        totalRow.getCell(12).numFmt = '#,##0';
+        totalRow.getCell(12).numFmt = '#.##0';
         totalRow.getCell(12).font = { bold: true };
         totalRow.getCell(15).value = grandTotalKotor;
-        totalRow.getCell(15).numFmt = '#,##0';
+        totalRow.getCell(15).numFmt = '#.##0';
         totalRow.getCell(15).font = { bold: true };
         totalRow.getCell(1).alignment = { horizontal: 'right' };
         totalRow.font = { bold: true };

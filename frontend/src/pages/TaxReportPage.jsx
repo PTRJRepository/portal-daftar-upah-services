@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReport } from '../context/ReportContext';
-import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcel, downloadDecemberTaxReportExcel, exportPajakJson } from '../services/taxReportService';
+import { fetchMonthlyTaxReport, fetchAnnualTaxReport, fetchAnnualAstekBpjsReport, fetchDecemberTaxReport, downloadMonthlyTaxReportExcelFromDOM, downloadDecemberTaxReportExcel, exportPajakJson } from '../services/taxReportService';
 import { fetchDivisions, fetchGangs } from '../services/gangService';
 import { Calculator, BarChart2, CalendarDays, Activity, FileWarning, Search, ChevronDown, ChevronRight, DollarSign, Download, Filter } from 'lucide-react';
 import { useCurrentPeriod } from '../hooks/useCurrentPeriod';
@@ -58,10 +58,28 @@ const formatNumber = (val) => {
     return new Intl.NumberFormat('id-ID').format(Math.round(val));
 };
 
+const formatSignedDeduction = (val) => {
+    const amount = Math.abs(Number(val) || 0);
+    if (amount === 0) return '-';
+    // Guardrail: display one explicit minus from ABS magnitude. Do not render `-${raw}`
+    // because a negative raw value would become --200 and hide data sign errors.
+    return `-${formatNumber(amount)}`;
+};
+
 const formatPercent = (val) => {
     if (val === null || val === undefined || val === 0) return '-';
     return `${val.toFixed(2)}%`;
 };
+
+const getMonthlyBonusAmount = (emp) => Number(
+    emp?.pendapatan_bonus
+    ?? emp?.taxable_pendapatan_bonus
+    ?? emp?.bonus_amount
+    ?? emp?.exgratia_amount
+    ?? emp?.pendapatan_kontan
+    ?? emp?.kontanan_amount
+    ?? 0
+) || 0;
 
 // ================================================================
 // TAB 1: Pajak Bulanan (Monthly PPH21)
@@ -138,8 +156,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
     const handleDownloadExcel = async () => {
         setDownloadingExcel(true);
         try {
-            // Use the same useHistory state as the displayed data to ensure consistency
-            await downloadMonthlyTaxReportExcel(token, year, month, division, gang, gangPrefix, useHistory, snapshotVersion, valuePriorityMode);
+            await downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, data?.employees || [], data?.premiKeys || []);
         } catch (err) {
             alert('Gagal mengunduh Excel: ' + (err.message || 'Unknown error'));
         } finally {
@@ -245,7 +262,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                             }}
                         >
                             <Download size={16} />
-                            {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (Formula)'}
+                            {downloadingExcel ? 'Mengunduh...' : 'Unduh Excel (DOM)'}
                         </button>
                     </>
                 )}
@@ -294,6 +311,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <th title="GP Aktual">GP Akt</th>
                                 <th title="GP Aktual - GP Ideal">Kor HK</th>
                                 <th title="Pendapatan Lainnya (THR, Bonus, dll)">Pend. Lainnya</th>
+                                <th title="Bonus/Exgratia dari data yang tampil di report pajak">Bonus</th>
                                 <th title="Upah Kotor">U. Kotor</th>
                                 <th title="Penghasilan Bruto">Bruto</th>
                                 <th>Tarif (%)</th>
@@ -329,6 +347,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                             <td className="text-right">{formatNumber(emp.gaji_pokok_aktual)}</td>
                                             <td className="text-right" style={{ color: (emp.koreksi_hk || 0) < 0 ? '#dc2626' : undefined }}>{formatNumber(emp.koreksi_hk)}</td>
                                             <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(emp.pendapatan_tidak_tetap_thp || 0)}</td>
+                                            <td className="text-right" style={{ color: '#047857', fontWeight: '600' }}>{formatNumber(getMonthlyBonusAmount(emp))}</td>
                                             <td className="text-right">{formatNumber(emp.upah_kotor)}</td>
                                             <td className="text-right">{formatNumber(emp.penghasilan_bruto)}</td>
                                             <td className="text-center">{formatPercent(emp.tarif_pajak_ter)}</td>
@@ -336,7 +355,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                         </tr>
                                         {isExpanded && (
                                             <tr className="expanded-row-detail" style={{ backgroundColor: '#f8fafc' }}>
-                                                <td colSpan={16} style={{ padding: '16px' }}>
+                                                <td colSpan={19} style={{ padding: '16px' }}>
                                                     <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
 
                                                         {/* RINCIAN UPAH KOTOR */}
@@ -386,12 +405,13 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                                                     {emp.pendapatan_tidak_tetap_thp > 0 && (
                                                                         <>
                                                                             <tr><td style={{ paddingTop: '8px', fontWeight: '600', color: '#059669' }}>Pendapatan Lainnya (THR/Bonus)</td><td className="text-right" style={{ paddingTop: '8px', color: '#059669' }}>{formatNumber(emp.pendapatan_tidak_tetap_thp)}</td></tr>
+                                                                            <tr><td style={{ padding: '4px 0', color: '#047857' }}>Bonus/Exgratia</td><td className="text-right" style={{ padding: '4px 0', color: '#047857' }}>{formatNumber(getMonthlyBonusAmount(emp))}</td></tr>
                                                                             <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px dashed #e2e8f0' }}></td></tr>
                                                                         </>
                                                                     )}
 
-                                                                    <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>-{formatNumber(emp.pot_koreksi)}</td></tr>
-                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>-{formatNumber(emp.total_potongan_kotor)}</td></tr>
+                                                                    <tr><td style={{ paddingTop: '8px', color: '#dc2626' }}>Potongan Koreksi</td><td className="text-right" style={{ paddingTop: '8px', color: '#dc2626' }}>{formatSignedDeduction(emp.pot_koreksi)}</td></tr>
+                                                                    <tr><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>Total Potongan (Kotor)</td><td className="text-right" style={{ padding: '4px 0', fontWeight: 'bold', color: '#dc2626' }}>{formatSignedDeduction(emp.total_potongan_kotor)}</td></tr>
 
                                                                     <tr><td colSpan={2} style={{ height: '8px', borderBottom: '1px solid #94a3b8' }}></td></tr>
                                                                     <tr>
@@ -470,6 +490,7 @@ function MonthlyTaxTab({ token, month, year, setMonth, setYear, division, gang, 
                                 <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.gaji_pokok_aktual || 0)}</td>
                                 <td className="text-right">{formatNumber(data.summary?.monthly_table_totals?.koreksi_hk || 0)}</td>
                                 <td className="text-right" style={{ color: '#059669', fontWeight: '600' }}>{formatNumber(data.summary?.monthly_table_totals?.pendapatan_tidak_tetap_thp || 0)}</td>
+                                <td className="text-right" style={{ color: '#047857', fontWeight: '600' }}>{formatNumber(data.employees.reduce((sum, emp) => sum + getMonthlyBonusAmount(emp), 0))}</td>
                                 <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.upah_kotor || 0)}</strong></td>
                                 <td className="text-right"><strong>{formatNumber(data.summary?.monthly_table_totals?.penghasilan_bruto || 0)}</strong></td>
                                 <td></td>

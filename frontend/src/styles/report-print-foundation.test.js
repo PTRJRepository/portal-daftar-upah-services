@@ -10,23 +10,25 @@ describe('report print foundation CSS', () => {
     expect(css).toMatch(/@media\s+print\s*{[\s\S]*\.wsp-table thead tr\.report-print-header[\s\S]*display:\s*table-row\s*!important;/);
   });
 
-  it('uses a fixed centered print table for summary detail', () => {
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table\s*{[\s\S]*table-layout:\s*fixed\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table th,\s*[\s\S]*#summary-report-content \.summary-detail-print-table td[\s\S]*text-align:\s*center\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-col-gang\s*{[\s\S]*width:\s*18%\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-col-total\s*{[\s\S]*width:\s*18%\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-col-compare\s*{[\s\S]*width:\s*18%\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-compare-cell\s*{[\s\S]*background:\s*#fff7ed\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-compare-diff\s*{[\s\S]*font-size:\s*6\.8pt\s*!important;/);
+  it('uses a fixed centered print table for the summary premi appendix', () => {
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table\s*{[\s\S]*table-layout:\s*fixed\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table th,\s*[\s\S]*#summary-premi-appendix-content \.summary-premi-appendix-table td[\s\S]*text-align:\s*center\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-col-no\s*{[\s\S]*width:\s*5%\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-col-gang\s*{[\s\S]*width:\s*25%\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-col-premi\s*{[\s\S]*width:\s*16%\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-col-premi-detail\s*{[\s\S]*width:\s*54%\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-premi-breakdown-cell\s*{[\s\S]*text-align:\s*left\s*!important;/);
   });
 
-  it('allows the summary detail print table wrapper to start on the first page and split across pages', () => {
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-wrapper\s*{[\s\S]*page-break-before:\s*auto\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-wrapper\s*{[\s\S]*break-before:\s*auto\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-wrapper\s*{[\s\S]*page-break-inside:\s*auto\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-wrapper\s*{[\s\S]*break-inside:\s*auto\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-wrapper\s*{[\s\S]*box-sizing:\s*border-box\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table tr\s*{[\s\S]*page-break-inside:\s*avoid\s*!important;/);
+  it('keeps the summary premi appendix isolated on its own printable page', () => {
+    expect(css).toMatch(/#summary-premi-appendix-content\.wsp-document\s*{[\s\S]*page-break-before:\s*always\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content\.wsp-document\s*{[\s\S]*break-before:\s*page\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table tr\s*{[\s\S]*page-break-inside:\s*avoid\s*!important;/);
+  });
+
+  it('starts the summary premi appendix on a separate print page', () => {
+    expect(css).toMatch(/#summary-report-content\.wsp-document\s*{[\s\S]*page-break-after:\s*always\s*!important;/);
+    expect(css).toMatch(/#summary-report-content\.wsp-document\s*{[\s\S]*break-after:\s*page\s*!important;/);
   });
 
   it('uses compact summary report header and KPI spacing so detail rows can start on page one', () => {
@@ -47,14 +49,14 @@ describe('report print foundation CSS', () => {
   });
 
   it('prints grouped summary rows with description emphasized over gang code', () => {
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-print-desc\s*{[\s\S]*font-size:\s*8pt\s*!important;[\s\S]*font-weight:\s*900\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-print-code\s*{[\s\S]*font-size:\s*6\.8pt\s*!important;[\s\S]*font-weight:\s*600\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table \.summary-print-group-row td\s*{[\s\S]*border-top:\s*1\.4pt solid #000\s*!important;[\s\S]*text-align:\s*center\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-print-desc\s*{[\s\S]*font-size:\s*8pt\s*!important;[\s\S]*font-weight:\s*900\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-print-code\s*{[\s\S]*font-size:\s*6\.8pt\s*!important;[\s\S]*font-weight:\s*600\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table \.summary-print-group-row td\s*{[\s\S]*text-align:\s*left\s*!important;/);
   });
 
-  it('uses readable summary detail print font sizes', () => {
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table\s*{[\s\S]*font-size:\s*8pt\s*!important;/);
-    expect(css).toMatch(/#summary-report-content \.summary-detail-print-table tbody td,\s*[\s\S]*#summary-report-content \.summary-detail-print-table tfoot td\s*{[\s\S]*font-size:\s*8pt\s*!important;/);
+  it('uses readable summary premi appendix print font sizes', () => {
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table\s*{[\s\S]*font-size:\s*8pt\s*!important;/);
+    expect(css).toMatch(/#summary-premi-appendix-content \.summary-premi-appendix-table tbody td,\s*[\s\S]*#summary-premi-appendix-content \.summary-premi-appendix-table tfoot td\s*{[\s\S]*font-size:\s*8pt\s*!important;/);
   });
 
   it('prints a professional repeated symbol watermark above report backgrounds and below content', () => {

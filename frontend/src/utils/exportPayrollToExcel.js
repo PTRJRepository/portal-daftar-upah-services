@@ -65,10 +65,35 @@ const NEGATIVE_TOTAL_EXPORT_FIELDS = new Set([
     'total_potongan_bersih'
 ]);
 
+function isGrossKoreksiExportField(field) {
+    if (!field || field === 'koreksi_hk') return false;
+    return field === 'pot_koreksi'
+        || field.startsWith('koreksi_')
+        || field.startsWith('potongan_upah_kotor');
+}
+
+function isSignedDeductionExportField(field) {
+    if (!field) return false;
+    if (NEGATIVE_TOTAL_EXPORT_FIELDS.has(field) || isGrossKoreksiExportField(field)) return true;
+    if (field === 'total_pendapatan_lainnya_pengurang') return true;
+    if (isOtherIncomeDeductionField(field)) return true;
+    if (field === 'premi_pph' || field === 'pot_premi_pph') return false;
+    if (field.includes('_maj') || field.includes('majikan')) return false;
+    if (field.endsWith('_total') || field === 'pot_bpjs_pekerja_total') return false;
+    if (field.startsWith('potongan_')) return true;
+    return field.startsWith('pot_') && !field.startsWith('pot_koreksi');
+}
+
+// IMPORTANT DATA VALIDITY RULE:
+// Deductions in Excel must be stored as signed negative numbers, while formulas add them.
+// Do not build formulas like `gross minus deduction` or `negative ABS(deduction)` here. If deduction
+// already exports as -200, subtracting it creates -(-200) and incorrectly increases wages.
 function formatPayrollExportNumber(field, value) {
     const formatted = formatNumber(value);
     if (formatted === '-') return formatted;
-    return NEGATIVE_TOTAL_EXPORT_FIELDS.has(field) ? -Math.abs(formatted) : formatted;
+    return isSignedDeductionExportField(field)
+        ? -Math.abs(formatted)
+        : formatted;
 }
 
 export function cleanPayrollExportEmployeeName(value) {
@@ -82,7 +107,7 @@ export function cleanPayrollExportEmployeeName(value) {
 export function formatPayrollExportCellValue(row, col, variant = 'detail') {
     const field = col?.field;
     const normalizedVariant = normalizeExportVariant(variant);
-    const val = row?.[field];
+    const val = resolvePayrollExportCellRawValue(row, field);
 
     if (normalizedVariant === 'print' && field === 'nama') {
         return cleanPayrollExportEmployeeName(val);
@@ -97,6 +122,22 @@ export function formatPayrollExportCellValue(row, col, variant = 'detail') {
     }
 
     return val ?? '-';
+}
+
+function resolvePayrollExportCellRawValue(row, field) {
+    if (field === 'total_pendapatan_lainnya_pengurang') {
+        return row?.total_pendapatan_lainnya;
+    }
+
+    if (typeof field === 'string' && field.startsWith('pendapatan_') && field.endsWith('_pengurang')) {
+        return resolvePayrollExportCellRawValue(row, field.replace(/_pengurang$/, ''));
+    }
+
+    if (isOtherIncomeDetailField(field)) {
+        return row?.[field] ?? resolveOtherIncomeAmountFromRow(row, field);
+    }
+
+    return row?.[field];
 }
 
 /**
@@ -191,6 +232,16 @@ const TAX_DETAIL_EXPORT_FIELDS = new Set([
     'upah_kotor_pajak'
 ]);
 
+// Fields that should ALWAYS be included in export (even if not in columnDefs)
+const ALWAYS_INCLUDE_EXPORT_FIELDS = new Set([
+    'total_pendapatan_lainnya',
+    'pendapatan_lainnya',
+    'pendapatan_thr',
+    'pendapatan_bonus',
+    'pendapatan_custom',
+    'pendapatan_kontan'
+]);
+
 const OTHER_INCOME_TOTAL_FIELDS = new Set([
     'pendapatan_lainnya',
     'total_pendapatan_lainnya',
@@ -203,6 +254,13 @@ const OTHER_INCOME_FIELD_ORDER = [
     'pendapatan_kontan',
     'pendapatan_bonus',
     'pendapatan_custom'
+];
+
+const UPAH_KOTOR_BREAKDOWN_FIELDS = [
+    { field: 'gaji_pokok_aktual', fallbackField: 'gaji_pokok', label: 'GAJI POKOK' },
+    { field: 'total_tunjangan', label: 'TUNJANGAN' },
+    { field: 'total_premi', label: 'PREMI' },
+    { field: 'potongan_upah_kotor_total', label: 'POT. KOTOR (-)' }
 ];
 
 const SUMMARY_EXPORT_FIELDS = new Set([
@@ -286,11 +344,16 @@ function isOtherIncomeDetailField(field) {
     return true;
 }
 
+function isOtherIncomeDeductionField(field) {
+    return Boolean(field && field.startsWith('pendapatan_') && field.endsWith('_pengurang'));
+}
+
 function isPrintExportField(col) {
     const field = col?.field;
     if (!field) return false;
     if (PRINT_EXPORT_FIELDS.has(field)) return true;
     if (isOtherIncomeDetailField(field)) return true;
+    if (isOtherIncomeDeductionField(field)) return true;
     return field.startsWith('premi_') && field !== 'premi_pph';
 }
 
@@ -300,11 +363,48 @@ function hasPositiveFieldValue(rows, field) {
 
 function formatOtherIncomeExportLabel(field) {
     const raw = field.replace(/^pendapatan_/, '').replace(/_/g, ' ').trim().toUpperCase();
-    const normalized = raw === 'KONTAN' ? 'KONTANAN' : raw;
+    const compact = raw.replace(/\s/g, '');
+    const normalized = compact.includes('BONUS') || compact.includes('EXGRATIA')
+        ? 'PENDAPATAN BONUS'
+        : raw === 'KONTAN' ? 'KONTANAN' : raw;
     return `${normalized || 'LAINNYA'} (+)`;
 }
 
-function buildOtherIncomeExportColumns(rows, existingFields) {
+function formatOtherIncomeDeductionExportLabel(field) {
+    return formatOtherIncomeExportLabel(field).replace('(+)', '(-)');
+}
+
+function normalizeOtherIncomeTypeToField(value) {
+    const normalized = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    if (!normalized) return null;
+    const compact = normalized.replace(/_/g, '');
+    if (compact.includes('bonus') || compact.includes('exgratia')) return 'pendapatan_bonus';
+    if (compact.includes('thr')) return 'pendapatan_thr';
+    if (compact.includes('kontan')) return 'pendapatan_kontan';
+    return `pendapatan_${normalized}`;
+}
+
+function getOtherIncomeFieldFromIncome(income) {
+    return normalizeOtherIncomeTypeToField(income?.type || income?.income_type || income?.name || income?.income_name);
+}
+
+function getOtherIncomeAmount(income) {
+    return Number(income?.amount ?? income?.value ?? income?.jumlah ?? 0) || 0;
+}
+
+function resolveOtherIncomeAmountFromRow(row, field) {
+    if (!Array.isArray(row?.other_incomes)) return undefined;
+    const total = row.other_incomes.reduce((sum, income) => {
+        return getOtherIncomeFieldFromIncome(income) === field ? sum + getOtherIncomeAmount(income) : sum;
+    }, 0);
+    return total || undefined;
+}
+
+function collectOtherIncomeDetailFields(rows) {
     const fields = new Set();
     rows.forEach((row) => {
         if (row?.type !== 'employee') return;
@@ -313,20 +413,32 @@ function buildOtherIncomeExportColumns(rows, existingFields) {
                 fields.add(field);
             }
         });
+
+        if (Array.isArray(row.other_incomes)) {
+            row.other_incomes.forEach((income) => {
+                const field = getOtherIncomeFieldFromIncome(income);
+                if (field && isOtherIncomeDetailField(field) && getOtherIncomeAmount(income) !== 0) {
+                    fields.add(field);
+                }
+            });
+        }
     });
 
-    return Array.from(fields)
+    return Array.from(fields).sort((a, b) => {
+        const ai = OTHER_INCOME_FIELD_ORDER.indexOf(a);
+        const bi = OTHER_INCOME_FIELD_ORDER.indexOf(b);
+        if (ai !== -1 || bi !== -1) {
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+        }
+        return a.localeCompare(b);
+    });
+}
+
+function buildOtherIncomeExportColumns(rows, existingFields) {
+    return collectOtherIncomeDetailFields(rows)
         .filter((field) => !existingFields.has(field))
-        .sort((a, b) => {
-            const ai = OTHER_INCOME_FIELD_ORDER.indexOf(a);
-            const bi = OTHER_INCOME_FIELD_ORDER.indexOf(b);
-            if (ai !== -1 || bi !== -1) {
-                if (ai === -1) return 1;
-                if (bi === -1) return -1;
-                return ai - bi;
-            }
-            return a.localeCompare(b);
-        })
         .map((field) => ({
             field,
             headers: ['PENDAPATAN LAINNYA', 'URAIAN', null, formatOtherIncomeExportLabel(field)],
@@ -335,11 +447,161 @@ function buildOtherIncomeExportColumns(rows, existingFields) {
         }));
 }
 
+function buildOtherIncomeDeductionExportColumns(rows, existingFields) {
+    return collectOtherIncomeDetailFields(rows)
+        .map((field) => `${field}_pengurang`)
+        .filter((field) => !existingFields.has(field))
+        .map((field) => ({
+            field,
+            headers: ['POTONGAN UPAH BERSIH', 'PENDAPATAN LAINNYA', null, formatOtherIncomeDeductionExportLabel(field.replace(/_pengurang$/, ''))],
+            w: 90,
+            className: 'text-right'
+        }));
+}
+
+
+function buildUpahKotorBreakdownColumns(rows, existingFields) {
+    if (!hasPositiveFieldValue(rows, 'jumlah_upah_kotor')) return [];
+
+    return UPAH_KOTOR_BREAKDOWN_FIELDS
+        .filter(({ field, fallbackField }) => hasPositiveFieldValue(rows, field) || (fallbackField && hasPositiveFieldValue(rows, fallbackField)))
+        .map(({ field, fallbackField, label }) => ({
+            field: existingFields.has(field) || !fallbackField ? field : fallbackField,
+            headers: ['UPAH KOTOR', 'URAIAN', null, label],
+            w: 96,
+            className: 'text-right'
+        }));
+}
+
+function getExcelColumnName(columnNumber) {
+    let name = '';
+    let n = columnNumber;
+    while (n > 0) {
+        const mod = (n - 1) % 26;
+        name = String.fromCharCode(65 + mod) + name;
+        n = Math.floor((n - mod) / 26);
+    }
+    return name;
+}
+
+function buildColumnIndexMap(columns) {
+    return new Map(columns.map((col, idx) => [col.field, idx + 1]));
+}
+
+function cellRef(columnIndexMap, field, rowNumber) {
+    const col = columnIndexMap.get(field);
+    if (!col) return null;
+    return `${getExcelColumnName(col)}${rowNumber}`;
+}
+
+function numericRef(ref) {
+    return ref ? `N(${ref})` : null;
+}
+
+function sumRefs(refs) {
+    const cleanRefs = refs.filter(Boolean).map(numericRef);
+    if (cleanRefs.length === 0) return null;
+    return cleanRefs.join('+');
+}
+
+function isSelectedNetDeductionFormulaField(col, columns) {
+    const field = col?.field || '';
+    const headers = Array.isArray(col?.headers) ? col.headers : [];
+    const topHeader = String(headers[0] || '').toUpperCase();
+    if (!topHeader.includes('POTONGAN UPAH BERSIH') && !topHeader.includes('POTONGAN')) return false;
+
+    if (field === 'total_pendapatan_lainnya_pengurang') return true;
+    if (field.startsWith('pendapatan_') && field.endsWith('_pengurang')) {
+        return !columns.some((item) => item.field === 'total_pendapatan_lainnya_pengurang');
+    }
+
+    if (field === 'pot_astek' || field === 'pot_astek_pekerja') return true;
+    if (field === 'pot_bpjs_kesehatan_pekerja') return true;
+    if (field === 'pot_bpjs_pensiun_pekerja') return true;
+    if (field === 'pot_spsi' || field === 'pot_pph21') return true;
+
+    if (field === 'premi_pph' || field === 'pot_premi_pph') return false;
+    if (field === 'total_potongan' || field === 'total_potongan_bersih') return false;
+    if (field === 'potongan_upah_kotor_total' || field.startsWith('potongan_upah_kotor')) return false;
+    if (field.includes('_maj') || field.includes('majikan')) return false;
+    if (field.endsWith('_total') || field === 'pot_bpjs_pekerja_total') return false;
+
+    if (field.startsWith('potongan_')) return true;
+    return field.startsWith('pot_') && !field.startsWith('pot_koreksi');
+}
+
+function buildRowFormulaForField(field, columns, columnIndexMap, rowNumber) {
+    if (field === 'total_pendapatan_lainnya') {
+        const refs = columns
+            .filter((col) => isOtherIncomeDetailField(col.field))
+            .map((col) => cellRef(columnIndexMap, col.field, rowNumber));
+        const formula = sumRefs(refs);
+        return formula ? { formula } : null;
+    }
+
+
+    if (field === 'jumlah_upah_kotor') {
+        const baseField = ['gaji_pokok_aktual', 'gaji_pokok', 'upah_pokok'].find((candidate) => columnIndexMap.has(candidate));
+        const addRefs = [
+            baseField ? cellRef(columnIndexMap, baseField, rowNumber) : null,
+            cellRef(columnIndexMap, 'total_tunjangan', rowNumber),
+            cellRef(columnIndexMap, 'total_premi', rowNumber),
+            cellRef(columnIndexMap, 'total_pendapatan_lainnya', rowNumber)
+        ].filter(Boolean);
+        const subtractRef = cellRef(columnIndexMap, 'potongan_upah_kotor_total', rowNumber);
+        const sumFormula = sumRefs(addRefs);
+        if (!sumFormula && !subtractRef) return null;
+        // Koreksi gross is already negative in its cell, so adding it reduces gross.
+        return { formula: `${sumFormula || '0'}${subtractRef ? `+${numericRef(subtractRef)}` : ''}` };
+    }
+
+    if (field === 'total_potongan' || field === 'total_potongan_bersih') {
+        const refs = columns
+            .filter((col) => isSelectedNetDeductionFormulaField(col, columns))
+            .map((col) => cellRef(columnIndexMap, col.field, rowNumber));
+        const formula = sumRefs(refs);
+        if (!formula) return null;
+        const premiPphRef = field === 'total_potongan_bersih'
+            ? (cellRef(columnIndexMap, 'premi_pph', rowNumber) || cellRef(columnIndexMap, 'pot_premi_pph', rowNumber))
+            : null;
+        // Net deductions are signed negative; PREMI_PPH is positive addition, so formulas add both.
+        return { formula: `${formula}${premiPphRef ? `+${numericRef(premiPphRef)}` : ''}` };
+    }
+
+    if (field === 'upah_bersih') {
+        const grossRef = cellRef(columnIndexMap, 'jumlah_upah_kotor', rowNumber);
+        const deductionRef = cellRef(columnIndexMap, 'total_potongan_bersih', rowNumber) || cellRef(columnIndexMap, 'total_potongan', rowNumber);
+        if (!grossRef && !deductionRef) return null;
+        // Total potongan is negative, so Upah Bersih uses addition to avoid -(-potongan).
+        return { formula: `${numericRef(grossRef) || '0'}+${numericRef(deductionRef) || '0'}` };
+    }
+
+    return null;
+}
+
+function applyEmployeeRowFormulas(excelRow, columns, columnIndexMap) {
+    columns.forEach((col, idx) => {
+        const formula = buildRowFormulaForField(col.field, columns, columnIndexMap, excelRow.number);
+        if (!formula) return;
+        excelRow.getCell(idx + 1).value = formula;
+        excelRow.getCell(idx + 1).numFmt = '#,##0';
+    });
+}
+
+function buildTotalFormulaForColumn(field, columns, columnIndexMap, rowNumbers) {
+    if (!isPayrollNumericField(field) || isPayrollTotalDisplayOnlyField(field) || rowNumbers.length === 0) return null;
+    const col = columnIndexMap.get(field);
+    if (!col) return null;
+    const columnName = getExcelColumnName(col);
+    return { formula: rowNumbers.map((rowNumber) => `N(${columnName}${rowNumber})`).join('+') };
+}
+
 export function buildPayrollExportColumns(rows = [], columnDefs = [], options = {}) {
     const variant = normalizeExportVariant(options.variant || options.exportVariant);
     const baseColumns = columnDefs.filter((col) => {
         const field = col?.field;
         if (!field || UI_ONLY_EXPORT_FIELDS.has(field)) return false;
+        if (field === 'total_pendapatan_lainnya_pengurang') return false;
         if (field === 'pot_pph21') return true;
         if (variant === 'summary' && !SUMMARY_EXPORT_FIELDS.has(field)) return false;
         if (variant === 'print' && !isPrintExportField(col)) return false;
@@ -347,28 +609,81 @@ export function buildPayrollExportColumns(rows = [], columnDefs = [], options = 
     });
 
     const existingFields = new Set(baseColumns.map((col) => col.field));
+
+    // [FIX] Always include total_pendapatan_lainnya if it has positive values in rows
+    // This ensures the field is exported even when not in columnDefs (e.g., normal view mode)
+    const alwaysIncludeFields = new Set();
+    const totalPendapatanLainnya = Number(rows.find(r => r?.type === 'employee')?.total_pendapatan_lainnya || 0);
+    if (!existingFields.has('total_pendapatan_lainnya') && totalPendapatanLainnya !== 0) {
+        alwaysIncludeFields.add('total_pendapatan_lainnya');
+    }
+
     const otherIncomeColumns = buildOtherIncomeExportColumns(rows, existingFields);
-    if (otherIncomeColumns.length === 0) return baseColumns;
+    const otherIncomeDeductionColumns = buildOtherIncomeDeductionExportColumns(rows, existingFields);
+    const upahKotorBreakdownColumns = buildUpahKotorBreakdownColumns(rows, existingFields);
+
+    let resultColumns = baseColumns;
 
     const totalIncomeIndex = baseColumns.findIndex((col) => col.field === 'total_pendapatan_lainnya');
-    if (totalIncomeIndex !== -1) {
-        return [
+    if (otherIncomeColumns.length > 0 && totalIncomeIndex !== -1) {
+        resultColumns = [
             ...baseColumns.slice(0, totalIncomeIndex),
             ...otherIncomeColumns,
             ...baseColumns.slice(totalIncomeIndex)
         ];
-    }
-
-    const totalPremiIndex = baseColumns.findIndex((col) => col.field === 'total_premi');
-    if (totalPremiIndex !== -1) {
-        return [
+    } else if (otherIncomeColumns.length > 0) {
+        const totalPremiIndex = baseColumns.findIndex((col) => col.field === 'total_premi');
+        resultColumns = totalPremiIndex !== -1 ? [
             ...baseColumns.slice(0, totalPremiIndex + 1),
             ...otherIncomeColumns,
             ...baseColumns.slice(totalPremiIndex + 1)
+        ] : [...baseColumns, ...otherIncomeColumns];
+    }
+
+    // [FIX] Insert always-include fields (like total_pendapatan_lainnya) if not already in resultColumns
+    for (const field of alwaysIncludeFields) {
+        if (!resultColumns.some(col => col.field === field)) {
+            // Insert before total_premi if it exists, otherwise at the end of premi section
+            const totalPremiIdx = resultColumns.findIndex((col) => col.field === 'total_premi');
+            const insertCol = {
+                field,
+                headers: ['PENDAPATAN LAINNYA', null, 'TOTAL (+)'],
+                w: 100,
+                className: 'text-right font-bold'
+            };
+            if (totalPremiIdx !== -1) {
+                resultColumns.splice(totalPremiIdx + 1, 0, insertCol);
+            } else {
+                resultColumns.push(insertCol);
+            }
+        }
+    }
+
+    const grossIndex = resultColumns.findIndex((col) => col.field === 'jumlah_upah_kotor');
+    if (upahKotorBreakdownColumns.length > 0 && grossIndex !== -1) {
+        resultColumns = [
+            ...resultColumns.slice(0, grossIndex),
+            ...upahKotorBreakdownColumns,
+            ...resultColumns.slice(grossIndex)
         ];
     }
 
-    return [...baseColumns, ...otherIncomeColumns];
+    if (otherIncomeDeductionColumns.length > 0) {
+        const insertIndex = resultColumns.findIndex((col) =>
+            col.field === 'total_potongan'
+            || col.field === 'total_potongan_bersih'
+        );
+        if (insertIndex !== -1) {
+            resultColumns = [
+                ...resultColumns.slice(0, insertIndex),
+                ...otherIncomeDeductionColumns,
+                ...resultColumns.slice(insertIndex)
+            ];
+        }
+    }
+
+
+    return resultColumns;
 }
 
 /**
@@ -749,6 +1064,7 @@ async function exportPayrollSingleSheetToExcel(rows, columnDefs, grandTotal, met
 
 function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, meta, context, exportVariant) {
     const enhancedColumnDefs = buildPayrollExportColumns(rows, columnDefs, { variant: exportVariant });
+    const columnIndexMap = buildColumnIndexMap(enhancedColumnDefs);
     const variantLabel = EXPORT_VARIANT_LABELS[exportVariant] || EXPORT_VARIANT_LABELS.detail;
     const sheetName = EXPORT_VARIANT_SHEET_NAMES[exportVariant] || variantLabel;
 
@@ -832,8 +1148,12 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
         horizontalCentered: true
     };
 
+    const employeeExcelRows = [];
+    let currentGroupEmployeeRows = [];
+
     rows.forEach((row) => {
         if (row.type === 'gang_header') {
+            currentGroupEmployeeRows = [];
             const excelRow = worksheet.addRow(Array(enhancedColumnDefs.length).fill(''));
             excelRow.height = 24;
             worksheet.mergeCells(excelRow.number, 1, excelRow.number, enhancedColumnDefs.length);
@@ -858,6 +1178,21 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
         const excelRow = worksheet.addRow(rowData);
         excelRow.height = 22;
 
+        if (row.type === 'employee') {
+            applyEmployeeRowFormulas(excelRow, enhancedColumnDefs, columnIndexMap);
+            employeeExcelRows.push(excelRow.number);
+            currentGroupEmployeeRows.push(excelRow.number);
+        } else if (row.type === 'gang_total') {
+            enhancedColumnDefs.forEach((col, idx) => {
+                const formula = buildTotalFormulaForColumn(col.field, enhancedColumnDefs, columnIndexMap, currentGroupEmployeeRows);
+                if (formula) {
+                    excelRow.getCell(idx + 1).value = formula;
+                    excelRow.getCell(idx + 1).numFmt = '#,##0';
+                }
+            });
+            currentGroupEmployeeRows = [];
+        }
+
         enhancedColumnDefs.forEach((col, idx) => {
             const cell = excelRow.getCell(idx + 1);
             const colColor = getColumnColor(col.field);
@@ -876,7 +1211,7 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
                 right: { style: 'thin', color: { argb: COLORS.border } }
             };
 
-            if (typeof cell.value === 'number') {
+            if (typeof cell.value === 'number' || cell.value?.formula) {
                 cell.numFmt = '#,##0';
             }
 
@@ -914,14 +1249,7 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
             if (col.field === 'emp_code') return `${employeeCount} KARYAWAN`;
             if (isPayrollTotalDisplayOnlyField(col.field)) return '-';
 
-            if (isPayrollNumericField(col.field)) {
-                const numericValue = resolveGrandTotalNumericValue({
-                    grandTotal,
-                    rows,
-                    field: col.field
-                });
-                return formatPayrollExportNumber(col.field, numericValue);
-            }
+            if (isPayrollNumericField(col.field)) return 0;
 
             const val = grandTotal[col.field];
             if (val !== undefined && val !== null && val !== '') return val;
@@ -932,6 +1260,11 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
 
         enhancedColumnDefs.forEach((col, idx) => {
             const cell = gtRow.getCell(idx + 1);
+            const formula = buildTotalFormulaForColumn(col.field, enhancedColumnDefs, columnIndexMap, employeeExcelRows);
+            if (formula) {
+                cell.value = formula;
+                cell.numFmt = '#,##0';
+            }
             cell.fill = {
                 type: 'pattern',
                 pattern: 'solid',
@@ -949,7 +1282,7 @@ function addPayrollWorkbookWorksheet(workbook, rows, columnDefs, grandTotal, met
                 left: { style: 'thin', color: { argb: '2d4a6f' } },
                 right: { style: 'thin', color: { argb: '2d4a6f' } }
             };
-            if (typeof cell.value === 'number') {
+            if (typeof cell.value === 'number' || cell.value?.formula) {
                 cell.numFmt = '#,##0';
             }
         });

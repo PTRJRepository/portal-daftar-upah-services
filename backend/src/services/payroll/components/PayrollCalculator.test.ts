@@ -159,6 +159,17 @@ test('Manual adjustment deltas move gross, displayed gross, and net pay correctl
         assert('upah_bersih - potongan bersih', adjusted.upah_bersih, baseCalc.upah_bersih + 25_000 - 10_000 - 5_000);
 });
 
+test('Koreksi uses absolute amount and always reduces gross', () => {
+    const positive = PayrollCalculator.calculate({ ...base, pot_koreksi: 10_000 }, 'K/1', 2025);
+    const negative = PayrollCalculator.calculate({ ...base, pot_koreksi: -10_000 }, 'K/1', 2025);
+    const expectedJumlah = BASE_UPAH_KOTOR - 10_000 + base.pendapatan_lainnya;
+
+    return assert('positive jumlah_upah_kotor', positive.jumlah_upah_kotor, expectedJumlah) &&
+        assert('negative jumlah_upah_kotor', negative.jumlah_upah_kotor, expectedJumlah) &&
+        assert('negative potongan_upah_kotor absolute', negative.potongan_upah_kotor, 10_000) &&
+        assert('negative komponen koreksi absolute', negative.komponen_kotor.koreksi, 10_000);
+});
+
 // Edge: Zero koreksi & lainnya
 test('Edge: Zero koreksi & lainnya', () => {
     const z = PayrollCalculator.calculate({ ...base, pot_koreksi: 0, pendapatan_lainnya: 0 }, 'K/1', 2025);

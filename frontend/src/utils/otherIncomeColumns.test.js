@@ -35,5 +35,7 @@ describe('formatOtherIncomeColumnLabel', () => {
   it('builds readable uppercase labels with suffixes', () => {
     expect(formatOtherIncomeColumnLabel('pendapatan_thr', '(-)')).toBe('THR (-)');
     expect(formatOtherIncomeColumnLabel('pendapatan_kontanan', '(-)')).toBe('KONTANAN (-)');
+    expect(formatOtherIncomeColumnLabel('pendapatan_bonus', '(+)')).toBe('PENDAPATAN BONUS (+)');
+    expect(formatOtherIncomeColumnLabel('pendapatan_exgratia', '(+)')).toBe('PENDAPATAN BONUS (+)');
   });
 });

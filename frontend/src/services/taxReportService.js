@@ -44,18 +44,26 @@ const DOM_TAX_EXPORT_FIELDS = [
     'kehadiran',
     'hari_kerja',
     'upah_dasar',
+    'gaji_pokok',
+    'gaji_pokok_bulanan',
+    'gaji_pokok_standar',
     'gaji_pokok_ideal',
     'gaji_pokok_aktual',
     'gaji_pokok_dibayarkan',
     'koreksi_hk',
+    'pot_alpa',
+    'pot_alpa_cth',
     'tunjangan_beras',
     'beras_jumlah',
+    'rice_allow',
     'tunjangan_jabatan',
     'jabatan_jumlah',
+    'structural_allow',
     'tunjangan_masa_kerja',
     'masa_kerja_jumlah',
     'tunjangan_lembur',
     'lembur_jumlah',
+    'service_time_allow',
     'total_premi',
     'pot_koreksi',
     'pendapatan_thr',
@@ -64,9 +72,11 @@ const DOM_TAX_EXPORT_FIELDS = [
     'thr',
     'THR_AMOUNT',
     'pendapatan_kontan',
+    'pendapatan_bonus',
     'exgratia_amount',
     'kontanan_amount',
     'KONTANAN',
+    'bonus',
     'bonus_amount',
     'KONTAN',
     'bpjs_kes_majikan',
@@ -75,6 +85,7 @@ const DOM_TAX_EXPORT_FIELDS = [
     'BPJS_KESEHATAN',
     'astek_jht_majikan',
     'astek_084',
+    'astek_084pct',
     'ASTEK_INS',
     'upah_kotor',
     'penghasilan_bruto',
@@ -93,6 +104,7 @@ const DOM_TAX_EXPORT_FIELDS = [
     'pendapatan_tidak_tetap',
     'taxable_pendapatan_thr',
     'taxable_pendapatan_bonus',
+    'taxable_pendapatan_kontan',
     'taxable_pendapatan_custom'
 ];
 
@@ -120,9 +132,9 @@ function compactOtherIncomes(value) {
     if (!Array.isArray(value)) return undefined;
     const result = value
         .map((item) => ({
-            type: item?.type,
-            name: item?.name,
-            amount: Number(item?.amount) || 0
+            type: item?.type ?? item?.income_type ?? item?.category,
+            name: item?.name ?? item?.income_name ?? item?.description,
+            amount: Number(item?.amount ?? item?.taxable_amount ?? item?.income_amount ?? item?.value ?? 0) || 0
         }))
         .filter((item) => item.type || item.name || item.amount !== 0);
     return result.length > 0 ? result : undefined;
@@ -132,8 +144,18 @@ function compactDomTaxEmployeeRow(row, premiKeys = []) {
     const compact = {};
     copyDefinedFields(compact, row, DOM_TAX_EXPORT_FIELDS);
 
+    // Debug: Check pph21 fields
+    console.log(`[compactDomTaxEmployeeRow] row.pph21_ter=${row?.pph21_ter}, row.pot_pph21=${row?.pot_pph21}, compact.pph21_ter=${compact.pph21_ter}`);
+
     if (!compact.emp_name && row?.nama) compact.emp_name = row.nama;
     if (!compact.nama && row?.emp_name) compact.nama = row.emp_name;
+    if (compact.bonus === undefined) {
+        compact.bonus = row?.pendapatan_bonus
+            ?? row?.taxable_pendapatan_bonus
+            ?? row?.bonus_amount
+            ?? row?.exgratia_amount
+            ?? 0;
+    }
     if (compact.hk === undefined) {
         compact.hk = row?.hk ?? row?.jumlah_hk ?? row?.kehadiran ?? row?.hari_kerja ?? 0;
     }
@@ -167,7 +189,7 @@ function compactDomTaxEmployeeRow(row, premiKeys = []) {
 
 function compactDomTaxEmployeeRows(rows = [], premiKeys = []) {
     return (Array.isArray(rows) ? rows : [])
-        .filter((row) => row && row.type === 'employee')
+        .filter((row) => row && (!row.type || row.type === 'employee'))
         .map((row) => compactDomTaxEmployeeRow(row, premiKeys));
 }
 
@@ -400,6 +422,8 @@ export async function downloadMonthlyTaxReportExcel(token, year, month, division
 export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, employeesData, premiKeys) {
     try {
         const compactEmployees = compactDomTaxEmployeeRows(employeesData, premiKeys);
+        console.log('[downloadMonthlyTaxReportExcelFromDOM] compactEmployees:', compactEmployees.length, 'premiKeys:', premiKeys);
+        console.log('[downloadMonthlyTaxReportExcelFromDOM] First employee sample:', JSON.stringify(compactEmployees[0]).substring(0, 500));
         const payload = {
             year: String(year),
             month: String(month),
@@ -409,6 +433,7 @@ export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, d
             employees: compactEmployees,
             premiKeys: premiKeys
         };
+        console.log('[downloadMonthlyTaxReportExcelFromDOM] Payload size:', JSON.stringify(payload).length, 'bytes');
 
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
         // Need to pass headers to post if the axios instance needs it directly
@@ -417,6 +442,7 @@ export async function downloadMonthlyTaxReportExcelFromDOM(token, year, month, d
             responseType: 'blob',
             timeout: 300000 // 5 minutes
         });
+        console.log('[downloadMonthlyTaxReportExcelFromDOM] Response:', response.status, 'size:', response.data?.size);
         const isGroupOnly = gangPrefix && (!gang || gang === 'ALL');
         const displayGangLabel = isGroupOnly ? `G${gangPrefix}` : (gang || gangPrefix || 'ALL');
         await processBlobResponse(response, `PPH21_DOM_${division || 'ALL'}_${displayGangLabel}_${month}_${year}.xlsx`);

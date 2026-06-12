@@ -27,6 +27,8 @@ export function toEmployeePayrollNumber(value) {
   return 0;
 }
 
+const deductionMagnitude = (value) => Math.abs(toEmployeePayrollNumber(value));
+
 function titleizeKey(key, prefixToRemove = '') {
   const base = prefixToRemove && key.startsWith(prefixToRemove)
     ? key.slice(prefixToRemove.length)
@@ -190,23 +192,23 @@ export function buildEmployeePayrollBreakdown(data = {}, empInfo = {}) {
   const otherIncome = buildOtherIncomeList(data, getNum);
 
   const potKotorList = [];
-  if (getNum('pot_koreksi') > 0) {
-    potKotorList.push({ label: 'Koreksi', value: getNum('pot_koreksi') });
+  if (deductionMagnitude(data?.pot_koreksi ?? empInfo?.pot_koreksi) > 0) {
+    potKotorList.push({ label: 'Koreksi', value: deductionMagnitude(data?.pot_koreksi ?? empInfo?.pot_koreksi) });
   }
 
   Object.entries(data || {}).forEach(([key, value]) => {
-    const amount = toEmployeePayrollNumber(value);
+    const amount = deductionMagnitude(value);
     if (key.startsWith('koreksi_') && amount > 0) {
       potKotorList.push({ label: `Koreksi ${titleizeKey(key, 'koreksi_')}`, value: amount });
     }
   });
 
   const potBersihList = [
-    { label: 'BPJS Kesehatan', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
-    { label: 'BPJS Pensiun', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
-    { label: 'Astek Pekerja', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
-    { label: 'SPSI', value: getNum('pot_spsi') },
-    { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
+    { label: 'BPJS Kesehatan', value: deductionMagnitude(data?.pot_bpjs_kesehatan_pekerja ?? empInfo?.pot_bpjs_kesehatan_pekerja) || deductionMagnitude(data?.pot_bpjs_kesehatan ?? empInfo?.pot_bpjs_kesehatan) },
+    { label: 'BPJS Pensiun', value: deductionMagnitude(data?.pot_bpjs_pensiun_pekerja ?? empInfo?.pot_bpjs_pensiun_pekerja) || deductionMagnitude(data?.pot_bpjs_pensiun ?? empInfo?.pot_bpjs_pensiun) },
+    { label: 'Astek Pekerja', value: deductionMagnitude(data?.pot_astek_pekerja ?? empInfo?.pot_astek_pekerja) || deductionMagnitude(data?.pot_astek ?? empInfo?.pot_astek) },
+    { label: 'SPSI', value: deductionMagnitude(data?.pot_spsi ?? empInfo?.pot_spsi) },
+    { label: 'PPh 21', value: deductionMagnitude(data?.pot_pph21 ?? empInfo?.pot_pph21) || deductionMagnitude(data?.pph21_ter ?? empInfo?.pph21_ter) },
   ].filter((item) => item.value > 0);
 
   const standardPotKeys = new Set([
@@ -215,6 +217,8 @@ export function buildEmployeePayrollBreakdown(data = {}, empInfo = {}) {
     'pot_bpjs_pensiun_pekerja',
     'pot_bpjs_pensiun',
     'pot_astek',
+    'pot_astek_pekerja',
+    'pot_astek_majikan',
     'pot_astek_jumlah',
     'pot_spsi',
     'pot_pph21',
@@ -228,8 +232,8 @@ export function buildEmployeePayrollBreakdown(data = {}, empInfo = {}) {
   ]);
 
   Object.entries(data || {}).forEach(([key, value]) => {
-    const amount = toEmployeePayrollNumber(value);
-    if (key.startsWith('pot_') && !standardPotKeys.has(key) && !key.includes('total') && amount > 0) {
+    const amount = deductionMagnitude(value);
+    if (key.startsWith('pot_') && !standardPotKeys.has(key) && !key.includes('total') && !key.includes('majikan') && !key.includes('jumlah') && amount > 0) {
       potBersihList.push({ label: titleizeKey(key, 'pot_'), value: amount });
     }
   });
@@ -254,9 +258,9 @@ export function buildEmployeePayrollBreakdown(data = {}, empInfo = {}) {
     lemburJam: getNum('lembur_jam') || getNum('total_jam_lembur'),
     lemburJumlah: getNum('lembur_jumlah') || getNum('total_upah_lembur') || getNum('upah_lembur'),
     potKotorList,
-    totalPotKotor: getNum('potongan_upah_kotor_total') || potKotorList.reduce((sum, item) => sum + item.value, 0),
+    totalPotKotor: deductionMagnitude(data?.potongan_upah_kotor_total ?? empInfo?.potongan_upah_kotor_total) || potKotorList.reduce((sum, item) => sum + item.value, 0),
     potBersihList,
-    totalPotongan: getNum('total_potongan') || (
+    totalPotongan: deductionMagnitude(data?.total_potongan ?? empInfo?.total_potongan) || (
       potKotorList.reduce((sum, item) => sum + item.value, 0)
       + potBersihList.reduce((sum, item) => sum + item.value, 0)
     ),

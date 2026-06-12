@@ -6,6 +6,15 @@
 
 const DISPLAY_ONLY_TOTAL_FIELDS = new Set(['koreksi_hk']);
 
+const resolveGrossDeductionWithoutAutomaticHk = (emp, absVal) => {
+  const sourceTotal = absVal(emp.potongan_upah_kotor_total) || absVal(emp.pot_koreksi);
+  const automaticHk = absVal(emp.koreksi_hk);
+  if (sourceTotal > 0 && automaticHk > 0 && Math.abs(sourceTotal - automaticHk) <= 1) {
+    return 0;
+  }
+  return sourceTotal;
+};
+
 export const PayrollAggregator = {
   /**
    * Calculate derived fields for a single employee row.
@@ -15,6 +24,7 @@ export const PayrollAggregator = {
    */
   calculateEmployeeFields: (emp, dynamicHeaders = {}) => {
     const val = (v) => Number(v) || 0;
+    const absVal = (v) => Math.abs(val(v));
 
     // 1. FLATTEN NESTED STRUCTURES
     // Map backend res_address to alamat for UI and Exports
@@ -46,7 +56,7 @@ export const PayrollAggregator = {
         Object.entries(emp.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
           // Only add if key doesn't already exist at root level
           if (emp[key] === undefined || emp[key] === null) {
-            emp[key] = val(value);
+            emp[key] = absVal(value);
           }
         });
       }
@@ -56,11 +66,11 @@ export const PayrollAggregator = {
           // Only add if the key doesn't already exist at root level
           if (k !== 'koreksi') {
             // For non-koreksi fields, add directly if missing
-            emp[k] = val(v);
+            emp[k] = absVal(v);
           } else {
             // For koreksi, only add if pot_koreksi is missing or zero
             if (!emp.pot_koreksi || emp.pot_koreksi === 0) {
-              emp.pot_koreksi = val(v);
+              emp.pot_koreksi = absVal(v);
             }
           }
         }
@@ -122,7 +132,7 @@ export const PayrollAggregator = {
       val(emp.pot_tiket) +
       val(emp.pot_alat) +
       val(emp.pot_spsi) +
-      val(emp.pot_koreksi) +
+      absVal(emp.pot_koreksi) +
       emp.pot_bpjs_pekerja_total +
       val(emp.pot_astek);
 
@@ -138,7 +148,7 @@ export const PayrollAggregator = {
 
     // 3. Potongan Upah Kotor
     // Use backend provided value
-    let potongan_upah_kotor_total = val(emp.potongan_upah_kotor_total);
+    const potongan_upah_kotor_total = resolveGrossDeductionWithoutAutomaticHk(emp, absVal);
 
     // 4. Jumlah Upah Kotor (Gross Wage)
     // Use backend provided value
@@ -153,8 +163,10 @@ export const PayrollAggregator = {
 
     // 7. Upah Bersih (Net Wage) - adjust if Premi PPH exists
     // If we have premi_pph, we need to account for it being added to the net salary
-    // The backend calculates: upah_bersih = jumlah_upah_kotor - total_potongan + premi_pph
-    // So we use the backend value directly but acknowledge the special handling
+    // Guardrail: backend total_potongan is a magnitude for calculations.
+    // Excel exports may render it as signed negative, but UI aggregation must not
+    // subtract raw negative values and accidentally create -(-potongan).
+    // So we use the backend value directly and only normalize koreksi magnitudes above.
     const upah_bersih = val(emp.upah_bersih);
 
     // Return enriched object with calculated fields
@@ -221,14 +233,10 @@ export const PayrollAggregator = {
     // [PERATURAN BISNIS - ALWAYS ACTIVE FILTER]
     // FILTER: Selalu exclude karyawan dengan kehadiran = 0
     //
-    // Using hari_kerja (kehadiran) instead of jumlah_hk because:
-    // - hari_kerja = hk - seluruh cuti (tahunan, sakit, minggu, nasional)
-    // - This reflects actual work days after leave deductions
-    // - jumlah_hk is gross HK without leave deductions
-    //
-    // Rule: EXCLUDE if hari_kerja <= 0 (same logic as backend)
+    // Rule: EXCLUDE if jumlah_hk <= 0 (same logic as backend totals).
+    // Keep this aligned with payrollTotalsCalculator to avoid web/backend drift.
     // ============================================================
-    const filteredRows = flatRows.filter(row => (row.hari_kerja || row.kehadiran || 0) > 0);
+    const filteredRows = flatRows.filter(row => (row.jumlah_hk || 0) > 0);
     console.log(`[PayrollAggregator] 📤 flattenData OUT | flat=${flatRows.length} filtered=${filteredRows.length} (excluded ${flatRows.length - filteredRows.length})`);
     return filteredRows;
   },
@@ -324,7 +332,7 @@ export const PayrollAggregator = {
         if (flattenedRow.potongan_upah_kotor.dynamic && typeof flattenedRow.potongan_upah_kotor.dynamic === 'object') {
           Object.entries(flattenedRow.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
             if (typeof value === 'number') {
-              flattenedRow[key] = value;
+              flattenedRow[key] = Math.abs(value);
             }
           });
         }
@@ -332,9 +340,9 @@ export const PayrollAggregator = {
         Object.entries(flattenedRow.potongan_upah_kotor).forEach(([k, v]) => {
           if (k !== 'dynamic' && typeof v === 'number') {
             if (k === 'koreksi') {
-              if (!flattenedRow.pot_koreksi) flattenedRow.pot_koreksi = v;
+              if (!flattenedRow.pot_koreksi) flattenedRow.pot_koreksi = Math.abs(v);
             } else if (!flattenedRow[k]) {
-              flattenedRow[k] = v;
+              flattenedRow[k] = Math.abs(v);
             }
           }
         });
@@ -406,15 +414,15 @@ export const PayrollAggregator = {
       if (calcRow.potongan_upah_kotor && typeof calcRow.potongan_upah_kotor === 'object') {
         if (calcRow.potongan_upah_kotor.dynamic && typeof calcRow.potongan_upah_kotor.dynamic === 'object') {
           Object.entries(calcRow.potongan_upah_kotor.dynamic).forEach(([key, value]) => {
-            if (typeof value === 'number') calcRow[key] = value;
+            if (typeof value === 'number') calcRow[key] = Math.abs(value);
           });
         }
         Object.entries(calcRow.potongan_upah_kotor).forEach(([k, v]) => {
           if (k !== 'dynamic' && typeof v === 'number') {
             if (k === 'koreksi') {
-              if (!calcRow.pot_koreksi || calcRow.pot_koreksi === 0) calcRow.pot_koreksi = v;
+              if (!calcRow.pot_koreksi || calcRow.pot_koreksi === 0) calcRow.pot_koreksi = Math.abs(v);
             } else if (!calcRow[k]) {
-              calcRow[k] = v;
+              calcRow[k] = Math.abs(v);
             }
           }
         });

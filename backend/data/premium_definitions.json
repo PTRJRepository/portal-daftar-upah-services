@@ -27,6 +27,14 @@
     "input_type": "amount",
     "is_active": true
   },
+  
+  {
+    "adjustment_name": "PREMI TABUR PUPUK",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "input_type": "amount",
+    "is_active": true
+  },
   {
     "adjustment_name": "PREMI PRUNING",
     "ad_code": "(AL3PM0601P1A) (AL) TUNJANGAN PREMI ((PM) PRUNING)",
@@ -71,6 +79,13 @@
   },
   {
     "adjustment_name": "PREMI INSENTIF PANEN",
+    "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
+    "input_type": "blok",
+    "is_active": true
+  },
+ {
+    "adjustment_name": "PREMI INSENTIF",
     "ad_code": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
     "task_desc": "(AL) TUNJANGAN PREMI ((PM) HARVESTING LABOUR - HARVESTING)",
     "input_type": "blok",

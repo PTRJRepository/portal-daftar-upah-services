@@ -539,7 +539,7 @@ export default function ExecutivePayrollPage({ onBack, initialMonth, initialYear
         .sort((a, b) => b.totalWage - a.totalWage), [data?.gangBreakdown]);
 
     const handlePrintExecutiveReport = () => {
-        printReport({ orientation: 'landscape', margin: '7mm' });
+        printReport({ orientation: 'landscape', margin: '0' });
     };
 
     if (loading) return <LoadingScreen isLoading={true} message="Loading Executive Dashboard..." />;

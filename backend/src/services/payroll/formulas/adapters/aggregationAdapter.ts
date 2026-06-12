@@ -88,7 +88,7 @@ export function rowToPayrollCalculatorInput(row: any): PayrollFormulaInput {
         lembur_jumlah: getNumeric(row, 'lembur_jumlah'),
         total_tunjangan: totalTunjangan,
         total_premi: totalPremi,
-        pot_koreksi: getNumeric(row, 'pot_koreksi') || getNumeric(row, 'koreksi') || 0,
+        pot_koreksi: Math.abs(getNumeric(row, 'pot_koreksi') || getNumeric(row, 'koreksi') || 0),
         pendapatan_lainnya: getNumeric(row, 'pendapatan_lainnya')
             || getNumeric(row, 'pot_pendapatan_lainnya')
             || getNumeric(row, 'pendapatan_thr')

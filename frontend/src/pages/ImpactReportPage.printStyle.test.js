@@ -26,11 +26,12 @@ describe('ImpactReportPage print style hooks', () => {
   });
 
   it('has dedicated print CSS that keeps the impact report compact and readable', () => {
-    expect(source).toContain("printReport({ orientation: 'landscape', margin: '10mm' })");
-    expect(printCss).toMatch(/@page\s+report-impact\s*{[\s\S]*size:\s*A4 landscape;[\s\S]*margin:\s*10mm;/);
+    expect(source).toContain("printReport({ orientation: 'landscape', margin: '0' })");
+    expect(printCss).toMatch(/@page\s+report-impact\s*{[\s\S]*size:\s*A4 landscape;[\s\S]*margin:\s*0;/);
     expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*padding:\s*0\s*!important;/);
-    expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*width:\s*100%\s*!important;/);
-    expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*max-width:\s*100%\s*!important;/);
+    expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*width:\s*281mm\s*!important;/);
+    expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*max-width:\s*281mm\s*!important;/);
+    expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*margin:\s*8mm auto\s*!important;/);
     expect(printCss).toMatch(/#impact-report-content\.impact-print-document\s*{[\s\S]*box-sizing:\s*border-box\s*!important;/);
     expect(printCss).toMatch(/#impact-report-content \.impact-main-table\s*{[\s\S]*table-layout:\s*fixed\s*!important;/);
     expect(printCss).toMatch(/#impact-report-content \.impact-main-table \.impact-col-estate\s*{[\s\S]*width:\s*15%\s*!important;/);

@@ -299,7 +299,7 @@ export default function ImpactReportPage({ onBack, initialMonth, initialYear, in
 
     // Handle print
     const handlePrint = () => {
-        printReport({ orientation: 'landscape', margin: '10mm' });
+        printReport({ orientation: 'landscape', margin: '0' });
     };
 
     // Handle Luas Area Change

@@ -114,6 +114,7 @@ export class PayrollCalculator {
         statusPtkp: string = '-',
         periodYear: number = new Date().getFullYear()
     ): PayrollCalculatorResult {
+        const potKoreksi = Math.abs(Number(input.pot_koreksi) || 0);
 
         // ─────────────────────────────────────────────────────────
         // 1. UPAH KOTOR (Gross dasar - tanpa koreksi/lainnya)
@@ -125,7 +126,7 @@ export class PayrollCalculator {
             lembur: input.lembur_jumlah,
             premi: input.total_premi,          // excludes koreksi (koreksi shown separately)
             subtotal: 0, // computed below
-            koreksi: input.pot_koreksi,
+            koreksi: potKoreksi,
             lainnya: input.pendapatan_lainnya,
             grand_subtotal: 0, // computed below
         };
@@ -146,7 +147,7 @@ export class PayrollCalculator {
 
         const upah_kotor = komponen_kotor.subtotal;
         const jumlah_upah_kotor = komponen_kotor.grand_subtotal;
-        const potongan_upah_kotor = input.pot_koreksi;
+        const potongan_upah_kotor = potKoreksi;
 
         // ─────────────────────────────────────────────────────────
         // 3. UPAH KOTOR PAJAK (Taxable Gross for header/pajak display)
@@ -154,7 +155,7 @@ export class PayrollCalculator {
         // ─────────────────────────────────────────────────────────
         const upah_kotor_pajak =
             komponen_kotor.subtotal
-            - input.pot_koreksi
+            - potKoreksi
             + input.pendapatan_lainnya
             + input.pot_bpjs_kesehatan_pekerja;
 

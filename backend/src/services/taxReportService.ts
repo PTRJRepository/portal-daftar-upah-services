@@ -23,6 +23,15 @@ import { cacheService } from './cacheService';
 import { filterTaxReportRows, resolveTaxReportDivisionScope } from '../utils/taxReportDivisionScope';
 import { sortAndRenumberByEmpCode } from '../utils/employeeSort';
 import { collectNikLookupKeys, resolveReportIdentity } from '../utils/taxReportIdentity';
+import {
+    attachPayrollPeriodAdjustmentNotes,
+    resolveAdjustedJabatanJumlah,
+    shouldForcePotPph21ToTer
+} from '../utils/payrollPeriodAdjustments';
+import {
+    getCanonicalOtherIncomeType,
+    sumOtherIncomeByCanonicalType
+} from '../utils/otherIncomeCanonical';
 
 /**
  * Auto-derive jabatan (job title) from the last character of gang code.
@@ -565,23 +574,23 @@ class TaxReportService {
 
         // Fetch Other Incomes (THR, Bonus, Custom, KONTAN) for the year to get monthly breakdown
         const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, effectiveDivisionCode, gangCode);
-        const dbIncomeByMonthNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
+        const dbIncomeByMonthNik = new Map<string, { thr: number, bonus: number, kontan: number, custom: number }>();
 
         for (const inc of dbOtherIncomesYear) {
             if (inc.is_taxable) {
                 const nikKeys = collectNikLookupKeys(inc);
-                const type = String(inc.income_type || '').toUpperCase();
+                const type = getCanonicalOtherIncomeType(inc);
                 const amt = Number(inc.amount) || 0;
 
                 for (const nik of nikKeys) {
                     const monthKey = `${inc.period_month}_${nik}`;
-                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, bonus: 0, kontan: 0, custom: 0 });
                     const mData = dbIncomeByMonthNik.get(monthKey)!;
 
                     // Map income types correctly: THR, KONTAN/KONTANAN, BONUS/EXGRATIA, CUSTOM
                     if (type === 'THR') { mData.thr += amt; }
-                    else if (type === 'KONTAN' || type === 'KONTANAN') { mData.exgratia += amt; } // KONTAN goes to KONTANAN column
-                    else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; }
+                    else if (type === 'KONTAN') { mData.kontan += amt; }
+                    else if (type === 'BONUS') { mData.bonus += amt; }
                     else { mData.custom += amt; }
                 }
             }
@@ -597,8 +606,9 @@ class TaxReportService {
             const hasIncome = Number(r.jumlah_upah_kotor || 0) > 0;
             
             if (hk > 0 || hasIncome) {
-                // Use emp_code or fallback to nik/actual_nik for de-duplication
-                const key = (r.emp_code || r.nik || r.actual_nik || '').trim().toUpperCase();
+                // Prefer stable person identity so old/new emp_code rows do not double-count one employee.
+                const identity = resolveReportIdentity(r);
+                const key = String(identity.new_nik || identity.nik || r.actual_nik || r.nik || r.emp_code || '').trim().toUpperCase();
                 if (key) {
                     // If multiple records exist, we keep the latest one (or first one found)
                     // In history database, rows are usually sorted by ID, so last one is most recent.
@@ -625,7 +635,11 @@ class TaxReportService {
             const gajiPokokAktual = row.gaji_pokok_aktual || row.gaji_pokok || 0;
             const upahDasar = row.upah_dasar || 0;
             const tunjanganBeras = row.beras_jumlah || 0;
-            const tunjanganJabatan = row.jabatan_jumlah || 0;
+            const tunjanganJabatan = resolveAdjustedJabatanJumlah(
+                row,
+                { month, year, divisionCode: effectiveDivisionCode },
+                row.jabatan_jumlah || 0
+            );
             const tunjanganMasaKerja = row.masa_kerja_jumlah || 0;
             const tunjanganLembur = row.lembur_jumlah || 0;
             const totalPremi = row.total_premi || 0;
@@ -643,8 +657,12 @@ class TaxReportService {
             const penghasilanBruto = Number(row.penghasilan_bruto) || 0;
             // [FIXED 2026-04-08] Prioritize pph21_ter to match UI "Pajak" column exactly
             const pph21 = Number(row.pph21_ter) || Number(row.pot_pph21) || 0;
+            const potPph21Input = shouldForcePotPph21ToTer(row, { month, year, divisionCode: effectiveDivisionCode })
+                ? pph21
+                : Number(row.pot_pph21) || 0;
             const tarifPajakTer = Number(row.tarif_pajak_ter) || 0;
             const storedStatusPtkp = row.status_ptkp || masterPtkp;
+            attachPayrollPeriodAdjustmentNotes(row, { month, year, divisionCode: effectiveDivisionCode });
 
             totalPph21 += pph21;
 
@@ -674,9 +692,21 @@ class TaxReportService {
                 }
             }
 
-            const empThrAmount = empOtherIncomes.filter((i: any) => i.type === 'THR').reduce((s: number, i: any) => s + i.amount, 0);
-            const empKontanAmount = empOtherIncomes.filter((i: any) => i.type === 'KONTAN' || i.type === 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
-            const empOtherIncomeAmount = empOtherIncomes.filter((i: any) => i.type !== 'THR' && i.type !== 'KONTAN' && i.type !== 'KONTANAN').reduce((s: number, i: any) => s + i.amount, 0);
+            const empThrAmount = sumOtherIncomeByCanonicalType(empOtherIncomes, 'THR')
+                || Number(row.pendapatan_thr || row.taxable_pendapatan_thr || row.thr_amount || 0);
+            const empKontanAmount = sumOtherIncomeByCanonicalType(empOtherIncomes, 'KONTAN')
+                || Number(row.pendapatan_kontan || row.taxable_pendapatan_kontan || row.kontanan_amount || 0);
+            const bonusDirect = Number(row.pendapatan_bonus || row.taxable_pendapatan_bonus || row.bonus || row.bonus_amount || 0);
+            const exgratiaSeparate = Number(row.pendapatan_exgratia || row.taxable_pendapatan_exgratia || 0);
+            const exgratiaAlias = bonusDirect === 0 ? Number(row.exgratia_amount || 0) : 0;
+            const empBonusAmount = sumOtherIncomeByCanonicalType(empOtherIncomes, 'BONUS')
+                || (bonusDirect + exgratiaSeparate + exgratiaAlias);
+            const empOtherIncomeAmount = empOtherIncomes
+                .filter((i: any) => {
+                    const type = getCanonicalOtherIncomeType(i);
+                    return !['THR', 'KONTAN', 'BONUS'].includes(type);
+                })
+                .reduce((s: number, i: any) => s + (Number(i.amount) || 0), 0);
 
             // ============================================================
             // Build premiDetail: extract ALL individual premi items
@@ -839,12 +869,12 @@ class TaxReportService {
                 status_ptkp: masterPtkp,
                 kategori_ter: kategoriTer,
                 gang_code: row.gang_code || '',
-                upah_kotor: row.jumlah_upah_kotor || row.upah_kotor || 0,
+                upah_kotor: row.upah_kotor || row.jumlah_upah_kotor || 0,
                 penghasilan_bruto: row.penghasilan_bruto || penghasilanBruto,
                 tarif_pajak_ter: row.tarif_pajak_ter || tarifPajakTer,
                 pph21_ter: pph21,
                 // pot_pph21 is the actual PPh21 deduction from PR_ADTRANS (matches Daftar Upah column)
-                pot_pph21: row.pot_pph21 || 0,
+                pot_pph21: potPph21Input,
                 component_metadata: TAX_COMPONENT_METADATA,
 
                 // Detailed breakdowns
@@ -872,12 +902,19 @@ class TaxReportService {
 
                 other_incomes: empOtherIncomes,
                 thr_amount: empThrAmount,
-                exgratia_amount: empKontanAmount,
+                exgratia_amount: empBonusAmount,
+                bonus_amount: empBonusAmount,
+                kontanan_amount: empKontanAmount,
+                pendapatan_thr: empThrAmount,
+                pendapatan_bonus: empBonusAmount,
+                pendapatan_kontan: empKontanAmount,
+                taxable_pendapatan_lainnya: empThrAmount + empBonusAmount + empKontanAmount + empOtherIncomeAmount,
                 other_income_amount: empOtherIncomeAmount,
-                pendapatan_tidak_tetap_thp: empThrAmount + empKontanAmount + empOtherIncomeAmount,
+                pendapatan_tidak_tetap_thp: empThrAmount + empBonusAmount + empKontanAmount + empOtherIncomeAmount,
                 upah_dasar: upahDasar,
                 gaji_pokok_ideal: row.gaji_pokok_ideal || 0,
-                carumanBase: carumanBase
+                carumanBase: carumanBase,
+                period_adjustments: row.period_adjustments
             };
         });
 
@@ -1019,24 +1056,25 @@ class TaxReportService {
 
         // --- Fetch Database Other Incomes for the Year ---
         const dbOtherIncomesYear = await OtherIncomesService.getIncomesForYear(year, divisionScope.fetchDivisionCode, gangCode);
-        const dbIncomeByMonthNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
-        const dbIncomeByNik = new Map<string, { thr: number, exgratia: number, custom: number }>();
+        const dbIncomeByMonthNik = new Map<string, { thr: number, bonus: number, kontan: number, custom: number }>();
+        const dbIncomeByNik = new Map<string, { thr: number, bonus: number, kontan: number, custom: number }>();
 
         for (const inc of dbOtherIncomesYear) {
             if (inc.is_taxable) {
                 const nikKeys = collectNikLookupKeys(inc);
                 const amt = Number(inc.amount) || 0;
-                const type = String(inc.income_type || '').toUpperCase();
+                const type = getCanonicalOtherIncomeType(inc);
 
                 for (const nik of nikKeys) {
                     const monthKey = `${inc.period_month}_${nik}`;
-                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, exgratia: 0, custom: 0 });
+                    if (!dbIncomeByMonthNik.has(monthKey)) dbIncomeByMonthNik.set(monthKey, { thr: 0, bonus: 0, kontan: 0, custom: 0 });
                     const mData = dbIncomeByMonthNik.get(monthKey)!;
-                    if (!dbIncomeByNik.has(nik)) dbIncomeByNik.set(nik, { thr: 0, exgratia: 0, custom: 0 });
+                    if (!dbIncomeByNik.has(nik)) dbIncomeByNik.set(nik, { thr: 0, bonus: 0, kontan: 0, custom: 0 });
                     const yData = dbIncomeByNik.get(nik)!;
 
                     if (type === 'THR') { mData.thr += amt; yData.thr += amt; }
-                    else if (type === 'BONUS' || type === 'EXGRATIA') { mData.exgratia += amt; yData.exgratia += amt; }
+                    else if (type === 'KONTAN') { mData.kontan += amt; yData.kontan += amt; }
+                    else if (type === 'BONUS') { mData.bonus += amt; yData.bonus += amt; }
                     else { mData.custom += amt; yData.custom += amt; }
                 }
             }
@@ -1131,7 +1169,8 @@ class TaxReportService {
                 // Jika ada THR/Exgratia, tetap tambahkan ke bruto untuk keperluan perhitungan setahun
                 const isThrMonth = activeThr && activeThr.month === month && activeThr.year === year;
                 let thrAmount = 0;
-                let exgratiaAmount = 0;
+                let bonusAmount = 0;
+                let kontanAmount = 0;
                 let otherIncomeAmount = 0;
 
                 const rawEmpNik = String(reportIdentity.new_nik || reportIdentity.nik || row.nik_ktp || row.nik || '').trim().toUpperCase();
@@ -1149,13 +1188,13 @@ class TaxReportService {
                     const firstName = rawEmpName.split(' ')[0].trim();
 
                     if (exgratiaMap.has(rawEmpNik)) {
-                        exgratiaAmount = exgratiaMap.get(rawEmpNik)!;
+                        bonusAmount = exgratiaMap.get(rawEmpNik)!;
                     } else if (exgratiaMap.has(rawEmpName)) {
-                        exgratiaAmount = exgratiaMap.get(rawEmpName)!;
+                        bonusAmount = exgratiaMap.get(rawEmpName)!;
                     } else {
                         for (const [jsonName] of thrMap.entries()) {
                             if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                                exgratiaAmount = exgratiaMap.get(jsonName) || 0;
+                                bonusAmount = exgratiaMap.get(jsonName) || 0;
                                 break;
                             }
                         }
@@ -1167,11 +1206,12 @@ class TaxReportService {
                 if (dbIncomeByMonthNik.has(dbKey)) {
                     const dbData = dbIncomeByMonthNik.get(dbKey)!;
                     if (dbData.thr > 0) thrAmount = dbData.thr;
-                    if (dbData.exgratia > 0) exgratiaAmount = dbData.exgratia;
+                    if (dbData.bonus > 0) bonusAmount = dbData.bonus;
+                    if (dbData.kontan > 0) kontanAmount = dbData.kontan;
                     if (dbData.custom > 0) otherIncomeAmount = dbData.custom;
                 }
 
-                penghasilanBruto += (thrAmount + exgratiaAmount + otherIncomeAmount);
+                penghasilanBruto += (thrAmount + bonusAmount + kontanAmount + otherIncomeAmount);
 
                 // PPh21 TER calculation (untuk report pajak / kalkulasi)
                 const pphResult = pph21TerService.calculatePph21Ter(penghasilanBruto, masterPtkp);
@@ -1318,15 +1358,16 @@ class TaxReportService {
             }
 
             // 2. Fetch Exgratia (Bonus) from Static JSON (Fallback)
-            let exgratia = 0;
+            let bonus = 0;
+            let kontanIncomeYear = 0;
             if (exgratiaMap.has(rawEmpNik)) {
-                exgratia = exgratiaMap.get(rawEmpNik)!;
+                bonus = exgratiaMap.get(rawEmpNik)!;
             } else if (exgratiaMap.has(rawEmpName)) {
-                exgratia = exgratiaMap.get(rawEmpName)!;
+                bonus = exgratiaMap.get(rawEmpName)!;
             } else {
                 for (const [jsonName, jsonThr] of thrMap.entries()) {
                     if (jsonName === firstName || rawEmpName.startsWith(jsonName)) {
-                        exgratia = exgratiaMap.get(jsonName) || 0;
+                        bonus = exgratiaMap.get(jsonName) || 0;
                         break;
                     }
                 }
@@ -1336,7 +1377,8 @@ class TaxReportService {
             if (dbIncomeByNik.has(rawEmpNik)) {
                 const dbData = dbIncomeByNik.get(rawEmpNik)!;
                 if (dbData.thr > 0) thr = dbData.thr;
-                if (dbData.exgratia > 0) exgratia = dbData.exgratia;
+                if (dbData.bonus > 0) bonus = dbData.bonus;
+                if (dbData.kontan > 0) kontanIncomeYear = dbData.kontan;
                 if (dbData.custom > 0) customIncomeYear = dbData.custom;
             }
 
@@ -1350,7 +1392,7 @@ class TaxReportService {
             const astekJht = Object.values(emp.monthly_astek_jumlah).reduce((sum, v) => sum + v, 0);
 
             // Total penghasilan setahun (Gaji + Masa Kerja + BPJS 4% + Astek 0.84% + THR + Bonus) as per image structure calculation
-            const totalPenghasilanSetahun = gajiJanNov + masaKerjaJanNov + bpjsKes4pct + astek084pct + thr + exgratia + customIncomeYear;
+            const totalPenghasilanSetahun = gajiJanNov + masaKerjaJanNov + bpjsKes4pct + astek084pct + thr + bonus + kontanIncomeYear + customIncomeYear;
 
             // Biaya Jabatan: 5% of Total Penghasilan Setahun, max 6.000.000
             const biayaJabatan = Math.min(totalPenghasilanSetahun * 0.05, 6000000);
@@ -1392,7 +1434,8 @@ class TaxReportService {
                 gaji_jan_nov: gajiJanNov,
                 masa_kerja_jan_nov: masaKerjaJanNov,
                 thr: thr, // Fetched from static JSON / Dynamic formula
-                bonus: exgratia, // Mapped Exgratia
+                bonus,
+                kontanan: kontanIncomeYear,
                 medical_claim: 0, // Header only
                 bpjs_kesehatan_4pct: bpjsKes4pct,
                 astek_084pct: astek084pct,

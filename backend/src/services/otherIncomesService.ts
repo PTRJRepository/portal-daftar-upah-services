@@ -5,6 +5,7 @@ import { employeeHrDataService } from "./employeeHrDataService";
 import { gangService } from "./gangService";
 import { debug, info, warn, error as logError } from "../utils/logger";
 import { resolveThrCompatibleEffectiveStartDate } from "../utils/payrollProfileRules";
+import { resolveCanonicalOtherIncomeType } from "../utils/otherIncomeCanonical";
 
 const CATEGORY = "OtherIncomes";
 
@@ -36,6 +37,36 @@ export interface OtherIncome {
 }
 
 export class OtherIncomesService {
+    public static deduplicateIncomeRows(rows: any[]): OtherIncome[] {
+        const uniqueMap = new Map<string, OtherIncome>();
+
+        [...rows].sort((a, b) => Number(a?.id || 0) - Number(b?.id || 0)).forEach(r => {
+            if (r.details_json) {
+                try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
+            }
+
+            const empCodeKey = (r.emp_code || '').trim().toUpperCase();
+            const newNikKey = (r.new_nik || '').trim().toUpperCase();
+            const nikKey = (r.nik || '').trim().toUpperCase();
+            const incomeType = resolveCanonicalOtherIncomeType(r.income_type || r.income_name);
+            const periodYear = String(r.period_year || '').trim();
+            const periodMonth = String(r.period_month || '').trim();
+            const periodKey = periodYear || periodMonth ? `${periodYear}-${periodMonth}` : '';
+
+            // EmpCode is the stable payroll row key when available. NIK can differ between
+            // old imports and current HR data, as seen in B0097, causing double income rows.
+            const employeeKey = empCodeKey || newNikKey || nikKey;
+            const key = `${periodKey}|${employeeKey}|${incomeType}`;
+
+            if (key && employeeKey) {
+                // Always keep only the latest record. The sort above makes larger id win.
+                uniqueMap.set(key, r);
+            }
+        });
+
+        return Array.from(uniqueMap.values());
+    }
+
     private static chunkArray<T>(array: T[], size: number): T[][] {
         const chunks: T[][] = [];
         for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
@@ -337,7 +368,7 @@ export class OtherIncomesService {
         const mainDb = Database.getInstance(); // For HR_PAYROLL bank account lookup
         
         try {
-            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ?`;
+            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND period_month = ? ORDER BY id`;
             const params: any[] = [year, month];
 
             debug(CATEGORY, `[getRawIncomes] Fetching for ${month}/${year}, divisionCode: ${divisionCode || 'ALL'}, gangCode: ${gangCode || 'ALL'}`);
@@ -417,34 +448,9 @@ export class OtherIncomesService {
                 }
             }
 
-            // DEDUPLICATION: Ensure one record per emp_code/nik + income_type combination
-            // Previously keyed only by emp_code/nik which dropped KONTAN when THR already existed
-            const uniqueMap = new Map<string, OtherIncome>();
-            rows.forEach(r => {
-                // Parse details_json back into details object
-                if (r.details_json) {
-                    try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
-                }
-                
-                // Priority: nik > emp_code (THR semua record punya nik terisi, emp_code kosong)
-                const empCodeKey = (r.emp_code || '').trim().toUpperCase();
-                const nikKey = (r.nik || '').trim().toUpperCase();
-                const incomeType = (r.income_type || '').trim().toUpperCase();
-
-                // Composite key: employee identifier + income_type
-                // This ensures THR, KONTAN, BONUS etc. for the same employee are all preserved
-                const employeeKey = nikKey || empCodeKey;
-                const key = `${employeeKey}|${incomeType}`;
-                
-                if (key && employeeKey) {
-                    // [APPEND-INSERT FIX] Always overwrite with the latest record found in the array.
-                    // If the database returns records in insertion order, the last one is the newest.
-                    uniqueMap.set(key, r);
-                }
-            });
-
-            debug(CATEGORY, `[getRawIncomes] After deduplication: ${uniqueMap.size} unique records`);
-            return Array.from(uniqueMap.values());
+            const uniqueRows = this.deduplicateIncomeRows(rows);
+            debug(CATEGORY, `[getRawIncomes] After deduplication: ${uniqueRows.length} unique records`);
+            return uniqueRows;
         } catch (e) {
             logError(CATEGORY, `[getRawIncomes] Error:`, e);
             return [];
@@ -466,7 +472,7 @@ export class OtherIncomesService {
     static async getIncomesForYear(year: number, divisionCode?: string, gangCode?: string): Promise<OtherIncome[]> {
         const db = Database.getExtendedInstance();
         try {
-            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND is_taxable = 1`;
+            let sql = `SELECT * FROM employee_other_incomes WHERE period_year = ? AND is_taxable = 1 ORDER BY id`;
             const params: any[] = [year];
 
             // If we have specific division or gang, we filter
@@ -477,14 +483,7 @@ export class OtherIncomesService {
             const rows = (await db.query(sql, params)) as any[];
             if (rows.length === 0) return [];
 
-            // Parse details_json
-            rows.forEach(r => {
-                if (r.details_json) {
-                    try { r.details = JSON.parse(r.details_json); } catch { r.details = null; }
-                }
-            });
-
-            return this.enrichWithHrData(rows, gangCode);
+            return this.enrichWithHrData(this.deduplicateIncomeRows(rows), gangCode);
         } catch (e) {
             logError(CATEGORY, `[getIncomesForYear] Error:`, e);
             return [];

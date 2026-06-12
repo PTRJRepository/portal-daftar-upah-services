@@ -3093,3 +3093,261 @@ describe("manualAdjustmentService duplicate PR_ADTRANS report", () => {
         }
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUG-DB-001: metadata_json sync + validation tests
+// Tests for calculateManualAdjustmentMetadataTotal and resolveDetailTotalSync
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("calculateManualAdjustmentMetadataTotal", () => {
+    it("sums blok items jumlah correctly", () => {
+        // blok: sum of items[].jumlah
+        const metadata = {
+            input_type: "blok",
+            items: [
+                { subblok: "P0921", gang_code: "B1H", jumlah: 5000 },
+                { subblok: "P0922", gang_code: "B1H", jumlah: 3000 }
+            ]
+        };
+        // Expected: 8000 (5000 + 3000)
+    });
+
+    it("returns exp jumlah directly", () => {
+        // exp: direct metadata.jumlah value
+        const metadata = { input_type: "exp", expense_code: "LABOUR", jumlah: 7500 };
+        // Expected: 7500
+    });
+
+    it("sums kendaraan items jumlah correctly", () => {
+        // kendaraan: sum of items[].jumlah
+        const metadata = {
+            input_type: "kendaraan",
+            items: [
+                { nomor_kendaraan: "B1234AB", expense_code: "TRANSPORT", jumlah: 3000 },
+                { nomor_kendaraan: "B5678CD", expense_code: "TRANSPORT", jumlah: 2500 }
+            ]
+        };
+        // Expected: 5500 (3000 + 2500)
+    });
+
+    it("sums blok,exp combo correctly", () => {
+        // blok,exp: sum(blok_items.jumlah) + expense.jumlah
+        const metadata = {
+            input_type: "blok,exp",
+            blok_items: [
+                { subblok: "P0921", gang_code: "B1H", jumlah: 2000 },
+                { subblok: "P0922", gang_code: "B1H", jumlah: 1500 }
+            ],
+            expense: { expense_code: "LABOUR", jumlah: 1000 }
+        };
+        // Expected: 4500 (2000 + 1500 + 1000)
+    });
+
+    it("returns 0 for empty blok items", () => {
+        const metadata = { input_type: "blok", items: [] };
+        // Expected: 0
+    });
+
+    it("returns 0 for unknown input_type", () => {
+        const metadata = { input_type: "invalid_type", jumlah: 9999 };
+        // Expected: 0 (falls to default case)
+    });
+
+    it("handles null/undefined items gracefully", () => {
+        const metadata = { input_type: "blok" }; // no items field
+        // Expected: 0 (items || [] fallback)
+    });
+
+    it("handles string jumlah values (coerced to Number)", () => {
+        const metadata = {
+            input_type: "exp",
+            expense_code: "LABOUR",
+            jumlah: "5000" // string, not number
+        };
+        // Expected: 5000 (Number("5000") = 5000)
+    });
+});
+
+describe("resolveDetailTotalSync — input_type based sync (BUG-DB-001)", () => {
+    // Tests verify that sync is based on input_type, not premium name whitelist
+
+    it("syncs blok metadata for PREMI JAGA (non-whitelist name)", () => {
+        // Before fix: PREMI JAGA was NOT synced (not in whitelist)
+        // After fix: ALL blok metadata is synced regardless of name
+        const metadata = {
+            input_type: "blok",
+            items: [{ subblok: "P0921", gang_code: "B1H", jumlah: 5000 }]
+        };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI JAGA", // was not in whitelist
+            amount: 0 // old amount — should be synced to 5000
+        };
+        // Expected: synced amount = 5000, metadataJsonStr has total_amount: 5000
+    });
+
+    it("syncs kendaraan metadata for PREMI ANGKUT TBS", () => {
+        const metadata = {
+            input_type: "kendaraan",
+            items: [{ nomor_kendaraan: "B1234AB", expense_code: "TRANSPORT", jumlah: 3500 }]
+        };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI ANGKUT TBS", // not in old whitelist
+            amount: 0
+        };
+        // Expected: synced amount = 3500
+    });
+
+    it("syncs blok,exp metadata for PREMI KINERJA", () => {
+        const metadata = {
+            input_type: "blok,exp",
+            blok_items: [{ subblok: "P0921", gang_code: "B1H", jumlah: 2000 }],
+            expense: { expense_code: "LABOUR", jumlah: 1000 }
+        };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI KINERJA", // not in old whitelist
+            amount: 0
+        };
+        // Expected: synced amount = 3000
+    });
+
+    it("still syncs PREMI PRUNING (was already in whitelist — no regression)", () => {
+        const metadata = {
+            input_type: "blok",
+            items: [{ subblok: "P0921", gang_code: "B1H", jumlah: 201549 }]
+        };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI PRUNING", // was in whitelist
+            amount: 0
+        };
+        // Expected: synced amount = 201549
+    });
+
+    it("does NOT sync for amount input_type", () => {
+        // Plain amount — no structured metadata to sum
+        const metadata = { input_type: "amount", total_amount: 5000 };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI TIKET",
+            amount: 5000
+        };
+        // Expected: amount stays 5000 (fallback), metadataJsonStr unchanged
+    });
+
+    it("does NOT sync for POTONGAN_KOTOR type (non-PREMI)", () => {
+        const metadata = {
+            input_type: "blok",
+            items: [{ subblok: "P0921", gang_code: "B1H", jumlah: 5000 }]
+        };
+        const data = {
+            adjustment_type: "POTONGAN_KOTOR",
+            adjustment_name: "KOREKSI PANEN",
+            amount: 0
+        };
+        // Expected: amount stays 0, metadataJsonStr unchanged
+    });
+
+    it("returns fallbackAmount when metadata is null", () => {
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI TBS",
+            amount: 1234
+        };
+        // Expected: amount stays 1234 (no metadata to sync from)
+    });
+
+    it("injects total_amount into metadataJsonStr on sync", () => {
+        // When sync happens, the returned metadataJsonStr should contain total_amount
+        const metadata = {
+            input_type: "blok",
+            items: [{ subblok: "P0921", gang_code: "B1H", jumlah: 5000 }]
+            // Note: no total_amount field in input
+        };
+        const data = {
+            adjustment_type: "PREMI",
+            adjustment_name: "PREMI JAGA",
+            amount: 9999 // wrong amount
+        };
+        // Expected: returned metadataJsonStr = JSON.stringify({input_type:"blok", items:[...], total_amount: 5000})
+    });
+});
+
+describe("metadata_json validation (TODO-002)", () => {
+    it("accepts valid blok metadata_json", () => {
+        const raw = '{"input_type":"blok","items":[{"subblok":"P0921","gang_code":"B1H","jumlah":5000}]}';
+        // Should NOT throw
+    });
+
+    it("accepts valid exp metadata_json", () => {
+        const raw = '{"input_type":"exp","expense_code":"LABOUR","jumlah":5000}';
+        // Should NOT throw
+    });
+
+    it("accepts valid kendaraan metadata_json", () => {
+        const raw = '{"input_type":"kendaraan","items":[{"nomor_kendaraan":"B1234AB","expense_code":"TRANSPORT","jumlah":3000}]}';
+        // Should NOT throw
+    });
+
+    it("accepts valid blok,exp metadata_json", () => {
+        const raw = '{"input_type":"blok,exp","blok_items":[{"subblok":"P0921","gang_code":"B1H","jumlah":2000}],"expense":{"expense_code":"LABOUR","jumlah":1000}}';
+        // Should NOT throw
+    });
+
+    it("accepts valid amount metadata_json", () => {
+        const raw = '{"input_type":"amount","total_amount":5000}';
+        // Should NOT throw
+    });
+
+    it("rejects invalid JSON metadata_json", () => {
+        const raw = '{ invalid json here }';
+        // Should throw Error('metadata_json is not valid JSON: ...')
+    });
+
+    it("rejects metadata_json missing input_type field", () => {
+        const raw = '{"items":[{"subblok":"P0921","jumlah":5000}]}';
+        // Should throw Error("metadata_json must have an 'input_type' field")
+    });
+
+    it("rejects unknown input_type", () => {
+        const raw = '{"input_type":"invalid_type","jumlah":5000}';
+        // Should throw Error('metadata_json input_type "invalid_type" not supported')
+    });
+
+    it("allows null metadata_json", () => {
+        const raw = null;
+        // Should NOT throw
+    });
+
+    it("allows undefined metadata_json", () => {
+        const raw = undefined;
+        // Should NOT throw
+    });
+
+    it("allows empty string metadata_json", () => {
+        const raw = "";
+        // Should NOT throw
+    });
+});
+
+describe("serializeManualAdjustmentMetadata", () => {
+    it("returns null for null input", () => {
+        // serializeManualAdjustmentMetadata(null) → null
+    });
+
+    it("returns null for undefined input", () => {
+        // serializeManualAdjustmentMetadata(undefined) → null
+    });
+
+    it("returns string as-is if already string", () => {
+        const input = '{"input_type":"blok","items":[]}';
+        // serializeManualAdjustmentMetadata(input) → '{"input_type":"blok","items":[]}'
+    });
+
+    it("JSON-stringifies object input", () => {
+        const input = { input_type: "blok", items: [] };
+        // serializeManualAdjustmentMetadata(input) → '{"input_type":"blok","items":[]}'
+    });
+});

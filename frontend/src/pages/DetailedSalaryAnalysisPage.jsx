@@ -100,6 +100,13 @@ const DetailedSalaryAnalysisPage = ({ onBack, initialMonth, initialYear, initial
         return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value || 0);
     };
 
+    const formatSignedDeductionCurrency = (value) => {
+        // Guardrail: render one explicit minus from ABS magnitude. Never concatenate
+        // '-' with raw values because negative raw values become confusing --200 output.
+        const amount = Math.abs(Number(value) || 0);
+        return amount === 0 ? formatCurrency(0) : `-${formatCurrency(amount)}`;
+    };
+
     const formatNumber = (value) => {
         return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value || 0);
     };
@@ -254,7 +261,7 @@ const DetailedSalaryAnalysisPage = ({ onBack, initialMonth, initialYear, initial
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>BPJS Kesehatan (Pekerja)</span><span style={{ fontWeight: '500', color: '#b91c1c' }}>{formatCurrency(data.summary_breakdown.total_bpjs_pekerja)}</span></div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>PPh21</span><span style={{ fontWeight: '500', color: '#b91c1c' }}>{formatCurrency(data.summary_breakdown.total_pph21)}</span></div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>SPSI</span><span style={{ fontWeight: '500', color: '#b91c1c' }}>{formatCurrency(data.summary_breakdown.total_spsi)}</span></div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: '0.75rem', fontWeight: 'bold' }}><span>Total Potongan</span><span style={{ color: '#b91c1c' }}>-{formatCurrency(data.summary_breakdown.total_potongan)}</span></div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #cbd5e1', paddingTop: '0.75rem', fontWeight: 'bold' }}><span>Total Potongan</span><span style={{ color: '#b91c1c' }}>{formatSignedDeductionCurrency(data.summary_breakdown.total_potongan)}</span></div>
                                 </div>
                             </div>
                         </div>

@@ -485,8 +485,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     const aggOtherIncomes = (type) => {
       return filteredRows.reduce((sum, row) => {
         if (row.other_incomes && Array.isArray(row.other_incomes)) {
-          const found = row.other_incomes.find(oi => oi.type === type);
-          if (found) sum += Number(found.amount || 0);
+          const target = String(type || '').toUpperCase();
+          row.other_incomes.forEach((oi) => {
+            const rawType = String(oi.type || oi.income_type || oi.name || oi.income_name || '').toUpperCase();
+            const normalizedType = rawType.includes('EXGRATIA') || rawType.includes('BONUS') ? 'BONUS' : rawType.includes('KONTAN') ? 'KONTAN' : rawType;
+            if (normalizedType === target) sum += Number(oi.amount || 0);
+          });
         }
         return sum;
       }, 0);
@@ -501,6 +505,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       // [DYNAMIC] Pendapatan Lainnya
       pendapatan_thr: Math.round(aggOtherIncomes('THR')),
       pendapatan_bonus: Math.round(aggOtherIncomes('BONUS')),
+      pendapatan_kontan: Math.round(aggOtherIncomes('KONTAN')),
       pendapatan_custom: Math.round(aggOtherIncomes('CUSTOM')),
       // Dynamic custom types aggregation
       ...Object.fromEntries(
@@ -560,8 +565,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     const aggOtherIncomesGrand = (type) => {
       return dataRows.reduce((sum, row) => {
         if (row.other_incomes && Array.isArray(row.other_incomes)) {
-          const found = row.other_incomes.find(oi => oi.type === type);
-          if (found) sum += Number(found.amount || 0);
+          const target = String(type || '').toUpperCase();
+          row.other_incomes.forEach((oi) => {
+            const rawType = String(oi.type || oi.income_type || oi.name || oi.income_name || '').toUpperCase();
+            const normalizedType = rawType.includes('EXGRATIA') || rawType.includes('BONUS') ? 'BONUS' : rawType.includes('KONTAN') ? 'KONTAN' : rawType;
+            if (normalizedType === target) sum += Number(oi.amount || 0);
+          });
         }
         return sum;
       }, 0);
@@ -574,6 +583,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
       gaji_pokok: agg('gaji_pokok'), beras_rate: '', beras_jumlah: agg('beras_jumlah'), jabatan_rate: '', jabatan_jumlah: agg('jabatan_jumlah'), masa_kerja_tahun: '', masa_kerja_jumlah: agg('masa_kerja_jumlah'), lembur_jam: '', lembur_jumlah: agg('lembur_jumlah'), total_tunjangan: agg('total_tunjangan'),
       pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
       pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
+      pendapatan_kontan: Math.round(aggOtherIncomesGrand('KONTAN')),
       pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
       ...Object.fromEntries(
         customPendapatanTypes.map(t => [`pendapatan_${t.type.toLowerCase()}`, agg(`pendapatan_${t.type.toLowerCase()}`)])
@@ -1119,8 +1129,12 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
             const aggOtherIncomesGrand = (type) => {
               return safe.reduce((sum, row) => {
                 if (row.other_incomes && Array.isArray(row.other_incomes)) {
-                  const found = row.other_incomes.find(oi => oi.type === type);
-                  if (found) sum += Number(found.amount || 0);
+                  const target = String(type || '').toUpperCase();
+                  row.other_incomes.forEach((oi) => {
+                    const rawType = String(oi.type || oi.income_type || oi.name || oi.income_name || '').toUpperCase();
+                    const normalizedType = rawType.includes('EXGRATIA') || rawType.includes('BONUS') ? 'BONUS' : rawType.includes('KONTAN') ? 'KONTAN' : rawType;
+                    if (normalizedType === target) sum += Number(oi.amount || 0);
+                  });
                 }
                 return sum;
               }, 0);
@@ -1135,6 +1149,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
                 // [DYNAMIC] Pendapatan Lainnya
                 pendapatan_thr: Math.round(aggOtherIncomesGrand('THR')),
                 pendapatan_bonus: Math.round(aggOtherIncomesGrand('BONUS')),
+                pendapatan_kontan: Math.round(aggOtherIncomesGrand('KONTAN')),
                 pendapatan_custom: Math.round(aggOtherIncomesGrand('CUSTOM')),
                 // Dynamic custom types aggregation
                 ...Object.fromEntries(
@@ -1279,7 +1294,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
   // Enhanced column definitions with proper formatting
   const formatLeaf = useCallback((col) => {
     const cfg = { ...col, ...baseCol }
-    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+    const moneyFields = ['upah_dasar', 'upah_pokok', 'gaji_pokok', 'beras_jumlah', 'jabatan_jumlah', 'masa_kerja_jumlah', 'lembur_jumlah', 'total_tunjangan', 'premi_brondol', 'premi_pruning', 'premi_angkut_material', 'premi_angkut_tbs', 'premi_harvesting', 'premi_harvesting_incentive', 'premi_pupuk', 'total_premi', 'jumlah_upah_kotor', 'pot_pph21', 'pot_koreksi', 'total_potongan', 'upah_bersih', 'premi_dynamic_1', 'premi_dynamic_2', 'premi_dynamic_3', 'premi_dynamic_4', 'premi_dynamic_5', 'premi_dynamic_6', 'premi_dynamic_7', 'pot_dynamic_1', 'pot_dynamic_2', 'pot_dynamic_3', 'pot_dynamic_4', 'pot_dynamic_5', 'pot_dynamic_6', 'pot_dynamic_7', 'pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_pekerja_total', 'pot_spsi', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_kontan', 'pendapatan_custom', 'pendapatan_lainnya',
       // Dynamic custom pendapatan types
       ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
     ]
@@ -1388,7 +1403,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     }
 
     // 7. Dynamic Pendapatan Lainnya Edit Mode
-    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
+    const customPendapatanField = f.startsWith('pendapatan_') && !['pendapatan_bonus', 'pendapatan_kontan', 'pendapatan_custom', 'pendapatan_lainnya'].includes(f);
     if (customPendapatanField) {
       const fieldType = f.replace('pendapatan_', '').toUpperCase();
       const typeInfo = (params) => {
@@ -1531,7 +1546,7 @@ function ReportContent({ token, user, month, year, gang_code, division, onLoad, 
     try {
       const neverHide = new Set([
         'no', 'nik', 'nama', 'jenis_kelamin', 'upah_bersih', 'jumlah_upah_kotor', 'total_tunjangan', 'total_premi', 'gaji_pokok', 'upah_pokok', 'hari_kerja', 'jumlah_hk',
-        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_custom', 'pendapatan_lainnya',
+        'total_potongan', 'pendapatan_thr', 'pendapatan_bonus', 'pendapatan_kontan', 'pendapatan_custom', 'pendapatan_lainnya',
         ...customPendapatanTypes.map(t => `pendapatan_${t.type.toLowerCase()}`)
       ])
 

@@ -20,7 +20,6 @@ import {
 const EMPTY_BLOK_ROW = { subblok: '', gang_code: '', jumlah: 0 };
 const EMPTY_KENDARAAN_ROW = { nomor_kendaraan: '', expense_code: '', jumlah: 0 };
 const EMPTY_EXPENSE = { expense_code: '', jumlah: 0 };
-const DETAIL_TOTAL_SYNC_DEFINITION_NAMES = new Set(['PREMI PRUNING', 'PREMI RAKING']);
 
 function normalizeGangCode(value) {
     return String(value || '').trim().toUpperCase();
@@ -449,7 +448,6 @@ export default function PremiumDetailPopup({
     const [comboBlokItems, setComboBlokItems] = useState(initialEditorState.comboBlokItems);
     const [comboExpense, setComboExpense] = useState(initialEditorState.comboExpense);
     const [amountDraft, setAmountDraft] = useState(() => resolveInitialStoredAmount(initialEditorState.parsed, storedAmount));
-    const [isAmountEditable, setIsAmountEditable] = useState(false);
 
     // Initialize from existing data
     useEffect(() => {
@@ -461,7 +459,6 @@ export default function PremiumDetailPopup({
         setComboBlokItems(nextState.comboBlokItems);
         setComboExpense(nextState.comboExpense);
         setAmountDraft(resolveInitialStoredAmount(nextState.parsed, storedAmount));
-        setIsAmountEditable(false);
     }, [isOpen, initialData, inputType, defaultGangCode, storedAmount]);
 
     // Calculate total based on input type
@@ -521,35 +518,23 @@ export default function PremiumDetailPopup({
         resolveInitialStoredAmount(initialEditorState.parsed, storedAmount),
         adjustmentType
     );
-    const shouldAutoSyncDetailAmount = inputType !== 'amount' && DETAIL_TOTAL_SYNC_DEFINITION_NAMES.has(normalizeDefinitionName(definitionName));
-    const amountToSave = inputType === 'amount'
-        ? totalAmount
-        : shouldAutoSyncDetailAmount
-            ? totalAmount
-            : (isAmountEditable ? normalizeDetailAmount(amountDraft) : storedAmountNumber);
+    const shouldAutoSyncDetailAmount = inputType !== 'amount';
+    const amountToSave = totalAmount;
     const diffFromStored = totalAmount - storedAmountNumber;
-    const diffFromDraft = totalAmount - amountToSave;
     const detailDiffersFromStored = hasAmountDifference(totalAmount, storedAmountNumber);
-    const detailDiffersFromDraft = hasAmountDifference(totalAmount, amountToSave);
     const isLegacyFallback = !!initialEditorState.parsed?.legacy_source;
     const canEdit = !readOnly;
     const hasStoredAmountToCompare = Math.abs(storedAmountNumber) > 0.01;
-    const shouldShowAmountComparison = shouldAutoSyncDetailAmount && hasStoredAmountToCompare;
-    const shouldShowEmptyStoredAmountInfo = shouldAutoSyncDetailAmount && !hasStoredAmountToCompare && Math.abs(totalAmount) > 0.01;
-    const visibleMismatch = shouldAutoSyncDetailAmount && mismatch && Math.abs(Number(mismatch.amount || 0)) > 0.01
+    const shouldShowAmountComparison = inputType !== 'amount' && hasStoredAmountToCompare;
+    const shouldShowEmptyStoredAmountInfo = inputType !== 'amount' && !hasStoredAmountToCompare && Math.abs(totalAmount) > 0.01;
+    const visibleMismatch = inputType !== 'amount' && mismatch && Math.abs(Number(mismatch.amount || 0)) > 0.01
         ? mismatch
-        : null;
+        : (inputType !== 'amount' && detailDiffersFromStored && hasStoredAmountToCompare ? { amount: storedAmountNumber, detail_total: totalAmount, diff: diffFromStored, reason: 'Total detail berbeda dari amount tersimpan' } : null);
     const mismatchAmount = Number(visibleMismatch?.amount ?? storedAmountNumber) || 0;
     const mismatchDetailTotal = Number(visibleMismatch?.detail_total ?? totalAmount) || 0;
     const mismatchDiff = Number.isFinite(Number(visibleMismatch?.diff))
         ? Number(visibleMismatch.diff)
         : mismatchDetailTotal - mismatchAmount;
-
-    const handleSyncAmount = useCallback(() => {
-        if (!canEdit || shouldAutoSyncDetailAmount) return;
-        setAmountDraft(totalAmount);
-        setIsAmountEditable(true);
-    }, [canEdit, shouldAutoSyncDetailAmount, totalAmount]);
 
     const handleSave = useCallback(() => {
         if (!canEdit) {
@@ -599,11 +584,11 @@ export default function PremiumDetailPopup({
         }
 
         onSave?.(metadataJson, amountToSave, {
-            amountEdited: isAmountEditable,
-            amountSyncedToDetail: !detailDiffersFromDraft
+            amountEdited: false,
+            amountSyncedToDetail: true
         });
         onClose?.();
-    }, [canEdit, showDetailValidation, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, isAmountEditable, detailDiffersFromDraft, normalizeDetailAmount, normalizeDetailItems, normalizeDetailExpense, onSave, onClose]);
+    }, [canEdit, showDetailValidation, inputType, blokItems, expense, kendaraanItems, comboBlokItems, comboExpense, totalAmount, amountToSave, normalizeDetailAmount, normalizeDetailItems, normalizeDetailExpense, onSave, onClose]);
 
     if (!isOpen) return null;
 
@@ -671,13 +656,9 @@ export default function PremiumDetailPopup({
                             </div>
                         ) : (
                             <div style={infoPanelStyle}>
-                                {shouldAutoSyncDetailAmount
-                                    ? (canEdit
-                                        ? 'Detail terbaru akan dipakai saat simpan. Amount awal hanya informasi pembanding.'
-                                        : 'Mode lihat saja. Detail terbaru dibaca dari payroll_manual_adjustments metadata_json.')
-                                    : (canEdit
-                                        ? 'Detail dibaca dari database payroll_manual_adjustments metadata_json.'
-                                        : 'Mode lihat saja. Detail dibaca dari database payroll_manual_adjustments metadata_json, dan perubahan hanya bisa dilakukan dari mode edit.')}
+                                {canEdit
+                                    ? 'Total detail terbaru akan dipakai saat simpan (auto-sync aktif untuk semua tipe detail).'
+                                    : 'Mode lihat saja. Detail dibaca dari payroll_manual_adjustments metadata_json.'}
                             </div>
                         )}
 
@@ -717,7 +698,7 @@ export default function PremiumDetailPopup({
 
                         {visibleMismatch && (
                             <div style={infoPanelStyle}>
-                                <strong>Alasan tanda merah:</strong> total detail terbaru {formatAmount(mismatchDetailTotal)} berbeda dari amount awal {formatAmount(mismatchAmount)} dengan selisih {formatAmount(Math.abs(mismatchDiff))}. {visibleMismatch.reason || 'Untuk PREMI PRUNING/RAKING, ini hanya informasi pembanding.'} Saat disimpan, amount akan mengikuti total detail terbaru.
+                                <strong>Info:</strong> total detail terbaru {formatAmount(mismatchDetailTotal)} berbeda dari amount awal {formatAmount(mismatchAmount)} dengan selisih {formatAmount(Math.abs(mismatchDiff))}. {visibleMismatch.reason || 'Ini hanya informasi pembanding.'} Saat disimpan, amount akan mengikuti total detail terbaru.
                             </div>
                         )}
 
@@ -739,46 +720,6 @@ export default function PremiumDetailPopup({
                                     onChange={(event) => setAmountDraft(Number(event.target.value) || 0)}
                                     placeholder="0"
                                 />
-                            </div>
-                        )}
-
-                        {canEdit && inputType !== 'amount' && !shouldAutoSyncDetailAmount && (
-                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={isAmountEditable}
-                                        onChange={(event) => setIsAmountEditable(event.target.checked)}
-                                    />
-                                    Amount simpan manual
-                                </label>
-                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                                    <input
-                                        style={{ ...numberInputStyle, maxWidth: 180, background: isAmountEditable ? '#ffffff' : '#e2e8f0' }}
-                                        type="number"
-                                        value={amountDraft}
-                                        disabled={!isAmountEditable}
-                                        onChange={(event) => setAmountDraft(Number(event.target.value) || 0)}
-                                    />
-                                    {detailDiffersFromDraft && (
-                                        <button
-                                            type="button"
-                                            onClick={handleSyncAmount}
-                                            style={{
-                                                border: '1px solid #16a34a',
-                                                background: '#dcfce7',
-                                                color: '#166534',
-                                                borderRadius: 8,
-                                                padding: '7px 10px',
-                                                cursor: 'pointer',
-                                                fontSize: 12,
-                                                fontWeight: 800
-                                            }}
-                                        >
-                                            Gunakan total detail
-                                        </button>
-                                    )}
-                                </div>
                             </div>
                         )}
                     </div>

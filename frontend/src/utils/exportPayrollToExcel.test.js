@@ -1,9 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('exceljs', () => ({
+  default: { Workbook: class Workbook {} },
+}));
+vi.mock('file-saver', () => ({ saveAs: vi.fn() }));
+
 import {
   buildPayrollExportColumns,
   formatPayrollExportCellValue,
   resolvePayrollWorkbookSheetVariants,
 } from './exportPayrollToExcel';
+
+const source = readFileSync(new URL('./exportPayrollToExcel.js', import.meta.url), 'utf8');
 
 describe('buildPayrollExportColumns', () => {
   it('uses portal columns without appending raw row fields', () => {
@@ -120,6 +129,8 @@ describe('buildPayrollExportColumns', () => {
       'pendapatan_kontan',
       'total_pendapatan_lainnya',
       'pot_pph21',
+      'pendapatan_thr_pengurang',
+      'pendapatan_kontan_pengurang',
       'total_potongan',
       'upah_bersih',
     ]);
@@ -189,6 +200,8 @@ describe('buildPayrollExportColumns', () => {
       'pot_astek',
       'pot_spsi',
       'pot_pph21',
+      'pendapatan_thr_pengurang',
+      'pendapatan_kontan_pengurang',
       'total_potongan_bersih',
       'upah_bersih',
     ]);
@@ -202,6 +215,180 @@ describe('buildPayrollExportColumns', () => {
     );
 
     expect(value).toBe('Sari Lestari');
+  });
+
+  it('expands gross breakdowns and exports after-gross other-income deductions as detail columns', () => {
+    const rows = [
+      {
+        type: 'employee',
+        nama: 'Sari',
+        gaji_pokok_aktual: 1000000,
+        total_tunjangan: 200000,
+        total_premi: 300000,
+        pendapatan_thr: 500000,
+        pendapatan_kontan: 125000,
+        pendapatan_bonus: 75000,
+        total_pendapatan_lainnya: 700000,
+        total_pendapatan_lainnya_pengurang: 700000,
+        potongan_upah_kotor_total: 50000,
+        jumlah_upah_kotor: 2150000,
+      },
+    ];
+    const columnDefs = [
+      { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 120 },
+      { field: 'total_pendapatan_lainnya', headers: ['PENDAPATAN LAINNYA', null, null, 'TOTAL (+)'], w: 100 },
+      { field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 118 },
+      { field: 'total_pendapatan_lainnya_pengurang', headers: ['POTONGAN UPAH BERSIH', 'SETELAH UPAH KOTOR', null, 'PEND. LAIN (-)'], w: 90 },
+      { field: 'total_potongan', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL'], w: 90 },
+    ];
+
+    const columns = buildPayrollExportColumns(rows, columnDefs);
+    const fields = columns.map((col) => col.field);
+
+    expect(fields).toEqual([
+      'nama',
+      'pendapatan_thr',
+      'pendapatan_kontan',
+      'pendapatan_bonus',
+      'total_pendapatan_lainnya',
+      'gaji_pokok',
+      'total_tunjangan',
+      'total_premi',
+      'potongan_upah_kotor_total',
+      'jumlah_upah_kotor',
+      'pendapatan_thr_pengurang',
+      'pendapatan_kontan_pengurang',
+      'pendapatan_bonus_pengurang',
+      'total_potongan',
+    ]);
+    expect(fields).not.toContain('total_pendapatan_lainnya_pengurang');
+    expect(columns.find((col) => col.field === 'pendapatan_bonus')?.headers).toEqual([
+      'PENDAPATAN LAINNYA',
+      'URAIAN',
+      null,
+      'PENDAPATAN BONUS (+)',
+    ]);
+    expect(columns.find((col) => col.field === 'pendapatan_bonus_pengurang')?.headers).toEqual([
+      'POTONGAN UPAH BERSIH',
+      'PENDAPATAN LAINNYA',
+      null,
+      'PENDAPATAN BONUS (-)',
+    ]);
+  });
+
+  it('exports other-income deduction cells from their source income values', () => {
+    const row = {
+      type: 'employee',
+      pendapatan_thr: 500000,
+      other_incomes: [{ type: 'KONTAN', name: 'Kontan Manual', amount: 125000 }],
+      total_pendapatan_lainnya: 625000,
+    };
+
+    expect(formatPayrollExportCellValue(row, { field: 'pendapatan_thr_pengurang' })).toBe(-500000);
+    expect(formatPayrollExportCellValue(row, { field: 'pendapatan_kontan_pengurang' })).toBe(-125000);
+    expect(formatPayrollExportCellValue(row, { field: 'total_pendapatan_lainnya_pengurang' })).toBe(-625000);
+  });
+
+  it('exports net deduction cells as negative values so formulas can add them', () => {
+    expect(formatPayrollExportCellValue({ pot_spsi: 20000 }, { field: 'pot_spsi' })).toBe(-20000);
+    expect(formatPayrollExportCellValue({ pot_pph21: -30000 }, { field: 'pot_pph21' })).toBe(-30000);
+    expect(formatPayrollExportCellValue({ total_potongan_bersih: 50000 }, { field: 'total_potongan_bersih' })).toBe(-50000);
+  });
+
+  it('exports koreksi gross deductions as negative values even when source is positive or negative', () => {
+    expect(formatPayrollExportCellValue({ pot_koreksi: 10000 }, { field: 'pot_koreksi' })).toBe(-10000);
+    expect(formatPayrollExportCellValue({ koreksi_denda_panen: -10000 }, { field: 'koreksi_denda_panen' })).toBe(-10000);
+    expect(formatPayrollExportCellValue({ potongan_upah_kotor_total: 10000 }, { field: 'potongan_upah_kotor_total' })).toBe(-10000);
+  });
+
+  it('builds gross-deduction other-income details from other_incomes arrays', () => {
+    const rows = [
+      {
+        type: 'employee',
+        nama: 'Sari',
+        other_incomes: [
+          { type: 'THR', name: 'THR', amount: 500000 },
+          { type: 'KONTAN', name: 'Kontan Manual', amount: 125000 },
+          { type: 'BONUS', name: 'Bonus Produksi', amount: 75000 },
+        ],
+        total_pendapatan_lainnya: 700000,
+        jumlah_upah_kotor: 1700000,
+      },
+    ];
+    const columnDefs = [
+      { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 120 },
+      { field: 'total_pendapatan_lainnya', headers: ['PENDAPATAN LAINNYA', null, null, 'TOTAL (+)'], w: 100 },
+      { field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 118 },
+      { field: 'total_potongan', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL'], w: 90 },
+    ];
+
+    const columns = buildPayrollExportColumns(rows, columnDefs);
+    const fields = columns.map((col) => col.field);
+
+    expect(fields).toEqual([
+      'nama',
+      'pendapatan_thr',
+      'pendapatan_kontan',
+      'pendapatan_bonus',
+      'total_pendapatan_lainnya',
+      'jumlah_upah_kotor',
+      'pendapatan_thr_pengurang',
+      'pendapatan_kontan_pengurang',
+      'pendapatan_bonus_pengurang',
+      'total_potongan',
+    ]);
+  });
+
+  it('canonicalizes exgratia into bonus columns in the browser Daftar Upah export', () => {
+    const rows = [
+      {
+        type: 'employee',
+        nama: 'Rina',
+        other_incomes: [
+          { type: 'BONUS', name: 'Bonus Produksi', amount: 75000 },
+          { type: 'EXGRATIA', name: 'Exgratia', amount: 125000 },
+        ],
+        total_pendapatan_lainnya: 200000,
+        jumlah_upah_kotor: 1200000,
+      },
+    ];
+    const columnDefs = [
+      { field: 'nama', headers: ['IDENTITAS', null, null, 'NAMA'], w: 120 },
+      { field: 'total_pendapatan_lainnya', headers: ['PENDAPATAN LAINNYA', null, null, 'TOTAL (+)'], w: 100 },
+      { field: 'jumlah_upah_kotor', headers: ['UPAH KOTOR', null, null, 'JUMLAH'], w: 118 },
+      { field: 'total_potongan', headers: ['POTONGAN UPAH BERSIH', null, null, 'TOTAL'], w: 90 },
+    ];
+
+    const columns = buildPayrollExportColumns(rows, columnDefs);
+    const fields = columns.map((col) => col.field);
+
+    expect(fields).toContain('pendapatan_bonus');
+    expect(fields).toContain('pendapatan_bonus_pengurang');
+    expect(fields).not.toContain('pendapatan_exgratia');
+    expect(fields).not.toContain('pendapatan_exgratia_pengurang');
+    expect(formatPayrollExportCellValue(rows[0], { field: 'pendapatan_bonus' })).toBe(200000);
+    expect(formatPayrollExportCellValue(rows[0], { field: 'pendapatan_bonus_pengurang' })).toBe(-200000);
+  });
+
+  it('uses Excel formulas for row totals, gang totals, and grand totals in workbook export', () => {
+    expect(source).toContain('function buildRowFormulaForField');
+    expect(source).toContain('function isSelectedNetDeductionFormulaField');
+    expect(source).toContain('function numericRef(ref)');
+    expect(source).toContain('refs.filter(Boolean).map(numericRef)');
+    expect(source).toContain("field === 'total_potongan' || field === 'total_potongan_bersih'");
+    expect(source).toContain("field.includes('_maj') || field.includes('majikan')");
+    expect(source).toContain("field.endsWith('_total') || field === 'pot_bpjs_pekerja_total'");
+    expect(source).toContain("field === 'total_potongan_bersih'");
+    expect(source).toContain('`+${numericRef(premiPphRef)}`');
+    expect(source).toContain('`+${numericRef(subtractRef)}`');
+    expect(source).toContain("`${numericRef(grossRef) || '0'}+${numericRef(deductionRef) || '0'}`");
+    expect(source).not.toContain('-ABS(');
+    expect(source).not.toContain('`-${numericRef(subtractRef)}`');
+    expect(source).not.toContain("`${numericRef(grossRef) || '0'}-${numericRef(deductionRef) || '0'}`");
+    expect(source).toContain('`N(${columnName}${rowNumber})`');
+    expect(source).toContain('applyEmployeeRowFormulas(excelRow, enhancedColumnDefs, columnIndexMap);');
+    expect(source).toContain('buildTotalFormulaForColumn(col.field, enhancedColumnDefs, columnIndexMap, currentGroupEmployeeRows);');
+    expect(source).toContain('buildTotalFormulaForColumn(col.field, enhancedColumnDefs, columnIndexMap, employeeExcelRows);');
   });
 
   it('uses one workbook with Detail as the first sheet, then Ringkas and Print', () => {

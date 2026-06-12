@@ -13,6 +13,12 @@ const safeNumber = (value) => {
     return isNaN(num) ? 0 : num;
 };
 
+const deductionMagnitude = (value) => Math.abs(safeNumber(value));
+
+const isNetPayAdditionPremi = (key) => key === 'premi_pph' || key === 'pot_premi_pph';
+
+const isGrossKoreksiDeduction = (key) => key === 'pot_koreksi' || key === 'koreksi' || key.startsWith('koreksi_');
+
 /**
  * Calculate total tunjangan (allowances) for a row
  * Formula: beras_jumlah + jabatan_jumlah + masa_kerja_jumlah + lembur_jumlah
@@ -34,7 +40,7 @@ export const calculateTotalPremi = (row) => {
     let total = 0;
 
     Object.keys(row).forEach(key => {
-        if (key.startsWith('premi_') && key !== 'total_premi') {
+        if (key.startsWith('premi_') && key !== 'total_premi' && !isNetPayAdditionPremi(key)) {
             total += safeNumber(row[key]);
         }
     });
@@ -44,17 +50,28 @@ export const calculateTotalPremi = (row) => {
 
 /**
  * Calculate potongan upah kotor total
- * Formula: pot_koreksi + sum of potongan_upah_kotor.dynamic
- * This is used to reduce upah kotor (gross wage)
+ * Formula: ABS(pot_koreksi) dari POTONGAN (bukan dari HK difference)
+ *
+ * [FIX] JANGAN include koreksi_hk karena itu sudah termasuk di gaji_pokok_aktual.
+ * gaji_pokok_aktual dari PR_TASKREGLN SUDAH termasuk koreksi dari scan HK.
+ * Jika kita kurangkan lagi koreksi_hk, maka akan terjadi double deduction.
  */
 export const calculatePotonganUpahKotorTotal = (row) => {
-    let total = safeNumber(row.pot_koreksi);
+    // pot_koreksi adalah koreksi dari POTONGAN (jika ada), BUKAN dari HK difference
+    let total = Math.abs(safeNumber(row.pot_koreksi));
 
-    // Add all dynamic potongan from the nested structure
+    // [FIX] JANGAN tambahkan koreksi_hk karena sudah termasuk dalam gaji_pokok_aktual
+    // koreksi_hk = gaji_pokok_aktual - gaji_pokok_ideal (sudah termasuk di gp_aktual)
+
+    // Add all dynamic potongan from the nested structure (exclude koreksi which is already in gp_aktual)
     if (row.potongan_upah_kotor && row.potongan_upah_kotor.dynamic) {
-        Object.values(row.potongan_upah_kotor.dynamic).forEach(value => {
-            total += safeNumber(value);
-        });
+        for (const [key, value] of Object.entries(row.potongan_upah_kotor.dynamic)) {
+            // Exclude koreksi keys - they're already in gaji_pokok_aktual
+            if (key === 'koreksi' || key.startsWith('koreksi')) {
+                continue; // Skip koreksi - already in gp_aktual
+            }
+            total += Math.abs(safeNumber(value));
+        }
     }
 
     return total;
@@ -85,6 +102,10 @@ export const calculateTotalPotongan = (row) => {
 
         if (!isDeduction) return;
 
+        // Koreksi gross is already applied in jumlah_upah_kotor. Including it
+        // here would deduct the same correction twice from upah_bersih.
+        if (isGrossKoreksiDeduction(k)) return;
+
         // 2. Exclusion: Exclude majikan, total, jumlah fields from "Total Potongan Upah Bersih" calculation
         if (k.includes('majikan') || k.includes('total') || k.includes('jumlah')) return;
 
@@ -97,7 +118,7 @@ export const calculateTotalPotongan = (row) => {
         // 4. For Caruman ASTEK specifically, only include pekerja portion (bpjs_pek)
         // The exclusion logic above already handles this by excluding 'majikan' and 'jumlah'
 
-        total += safeNumber(row[key]);
+        total += deductionMagnitude(row[key]);
     });
 
     return total;
@@ -105,7 +126,7 @@ export const calculateTotalPotongan = (row) => {
 
 /**
  * Calculate upah kotor (gross wage)
- * Formula: gaji_pokok + total_tunjangan + total_premi - potongan_upah_kotor_total
+ * Formula: gaji_pokok + total_tunjangan + total_premi - ABS(potongan_upah_kotor_total)
  */
 export const calculateUpahKotor = (row) => {
     const gajiPokok = safeNumber(row.gaji_pokok);
@@ -124,12 +145,11 @@ export const calculateUpahKotor = (row) => {
  * Using (Upah Kotor - Total Potongan) would double-subtract those components.
  */
 export const calculateUpahBersih = (row) => {
-    const gajiPokok = safeNumber(row.gaji_pokok);
-    const totalTunjangan = calculateTotalTunjangan(row);
-    const totalPremi = calculateTotalPremi(row);
+    const jumlahUpahKotor = calculateUpahKotor(row);
     const totalPotongan = calculateTotalPotongan(row);
+    const premiPph = safeNumber(row.premi_pph) || safeNumber(row.pot_premi_pph);
 
-    return (gajiPokok + totalTunjangan + totalPremi) - totalPotongan;
+    return jumlahUpahKotor - totalPotongan + premiPph;
 };
 
 /**

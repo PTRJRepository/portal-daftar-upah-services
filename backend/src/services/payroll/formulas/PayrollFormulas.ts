@@ -69,6 +69,7 @@ export function calculateKomponenKotor(input: {
     pendapatan_lainnya: number;
 }): KomponenKotor {
     const { gaji_pokok_aktual, total_tunjangan, lembur_jumlah, total_premi, pot_koreksi, pendapatan_lainnya } = input;
+    const koreksiAmount = Math.abs(Number(pot_koreksi) || 0);
 
     // tunjangan display excludes lembur (lembur shown separately)
     const tunjangan = total_tunjangan - lembur_jumlah;
@@ -76,7 +77,7 @@ export function calculateKomponenKotor(input: {
     const subtotal = gaji_pokok_aktual + tunjangan + lembur_jumlah + total_premi;
 
     // koreksi di-SUBTRACT, lainnya di-ADD untuk Grand Subtotal (jumlah_upah_kotor)
-    const grand_subtotal = subtotal - pot_koreksi + pendapatan_lainnya;
+    const grand_subtotal = subtotal - koreksiAmount + pendapatan_lainnya;
 
     return {
         gaji_pokok: gaji_pokok_aktual,
@@ -84,7 +85,7 @@ export function calculateKomponenKotor(input: {
         lembur: lembur_jumlah,
         premi: total_premi,
         subtotal,
-        koreksi: pot_koreksi,
+        koreksi: koreksiAmount,
         lainnya: pendapatan_lainnya,
         grand_subtotal,
     };
@@ -102,7 +103,7 @@ export function calculateKomponenKotor(input: {
  * @returns jumlah_upah_kotor
  */
  export function calculateJumlahUpahKotor(upahKotor: number, potKoreksi: number, pendapatanLainnya: number): number {
-    return upahKotor - potKoreksi + pendapatanLainnya;
+    return upahKotor - Math.abs(Number(potKoreksi) || 0) + pendapatanLainnya;
  }
 
 /**
@@ -182,7 +183,7 @@ export function calculateUpahKotorPajak(
     pendapatanLainnya: number,
     bpjsPekerja: number
 ): number {
-    return upahKotor - potKoreksi + pendapatanLainnya + bpjsPekerja;
+    return upahKotor - Math.abs(Number(potKoreksi) || 0) + pendapatanLainnya + bpjsPekerja;
 }
 
 /**
@@ -204,7 +205,7 @@ export function calculatePenghasilanBruto(
     astekMajikan: number,
     bpjsMajikan: number
 ): number {
-    return upahKotor - potKoreksi + pendapatanLainnya + astekMajikan + bpjsMajikan;
+    return upahKotor - Math.abs(Number(potKoreksi) || 0) + pendapatanLainnya + astekMajikan + bpjsMajikan;
 }
 
 /**

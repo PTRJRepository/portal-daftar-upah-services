@@ -64,7 +64,7 @@ import WagesComparisonPage from './pages/WagesComparisonPage'
 import ImpactReportPage from './pages/ImpactReportPage'
 import TaxReportPage from './pages/TaxReportPage'
 import OtherIncomesPage from './pages/OtherIncomesPage'
-import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
+import { downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
 import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGangPrefixState'
@@ -101,11 +101,11 @@ const OperationalReportWrapper = () => {
   const [fontSize, setFontSize] = useState(100);
   const [exportHandler, setExportHandler] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
-  const [taxExportLoading, setTaxExportLoading] = useState(false);
   const [taxDomExportLoading, setTaxDomExportLoading] = useState(false);
   const [payrollRowsGetter, setPayrollRowsGetter] = useState(null);
   const [dbPtrjCompareReport, setDbPtrjCompareReport] = useState(null);
   const [domPremiKeys, setDomPremiKeys] = useState([]);
+  const [payrollDataLoaded, setPayrollDataLoaded] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [useHistoryDb, setUseHistoryDb] = useState(false);
@@ -195,6 +195,8 @@ const OperationalReportWrapper = () => {
     setSnapshotVersion('');
     setResolvedSnapshotVersion(null);
     setAvailableSnapshotVersions([]);
+    setPayrollDataLoaded(false); // Reset when period changes
+    setDomPremiKeys([]); // Clear old premi keys when period changes
   }, [division, month, year, gang, gangPrefix, effectiveUseHistoryDb]);
 
   // Sync state with global context if props were passed (usually via SummaryReportWrapper style logic)
@@ -258,6 +260,7 @@ const OperationalReportWrapper = () => {
 
   const handlePayrollDataLoaded = useCallback((payload) => {
     setDomPremiKeys(payload?.dynamic_premi_headers || [])
+    setPayrollDataLoaded(true) // Mark that payroll data has been loaded
     const meta = payload?.meta || {}
     setResolvedSnapshotVersion(meta.snapshot_version ?? null)
     setAvailableSnapshotVersions(Array.isArray(meta.available_snapshot_versions) ? meta.available_snapshot_versions : [])
@@ -277,28 +280,33 @@ const OperationalReportWrapper = () => {
   }
   const daftarUpahDownloadAction = getDaftarUpahDownloadActionCopy(exportLoading)
 
-  const handleExportTaxExcel = async () => {
-    setTaxExportLoading(true)
-    try {
-      await downloadTaxReportExcel(token, year, month, division, gang, gangPrefix, effectiveUseHistoryDb, effectiveSnapshotVersion, headerValuePriorityMode)
-    } catch (err) {
-      alert('Gagal mengunduh pajak: ' + (err.message || 'Unknown error'))
-    } finally {
-      setTaxExportLoading(false)
-    }
-  }
-
   const handleExportTaxExcelDom = async () => {
     const rows = payrollRowsGetter ? payrollRowsGetter() : []
     const domEmployeesData = getEmployeeRows(rows)
-    if (!domEmployeesData || domEmployeesData.length === 0) {
-      alert('Data Daftar Upah belum siap atau kosong.');
+    console.log('[handleExportTaxExcelDom] payrollRowsGetter is:', payrollRowsGetter ? 'SET' : 'NULL');
+    console.log('[handleExportTaxExcelDom] payrollDataLoaded:', payrollDataLoaded);
+    console.log('[handleExportTaxExcelDom] raw rows:', rows?.length || 0, 'employees:', domEmployeesData?.length || 0);
+
+    // Validate that data is ready
+    if (!payrollDataLoaded) {
+      alert('Data masih dimuat. Silakan tunggu hingga data selesai dimuat.');
       return;
     }
+
+    if (!domEmployeesData || domEmployeesData.length === 0) {
+      alert('Data Daftar Upah belum siap atau kosong. Pastikan data sudah tampil di tabel.');
+      return;
+    }
+
     setTaxDomExportLoading(true);
     try {
+      console.log('[handleExportTaxExcelDom] Calling downloadMonthlyTaxReportExcelFromDOM with', domEmployeesData.length, 'employees')
+      // Debug: log first employee structure
+      console.log('[handleExportTaxExcelDom] First employee:', JSON.stringify(domEmployeesData[0]).substring(0, 800));
       await downloadMonthlyTaxReportExcelFromDOM(token, year, month, division, gang, gangPrefix, domEmployeesData, domPremiKeys);
+      console.log('[handleExportTaxExcelDom] Export completed successfully');
     } catch (err) {
+      console.error('[handleExportTaxExcelDom] Export failed:', err);
       alert('Gagal mengunduh pajak DOM: ' + (err.message || 'Unknown error'));
     } finally {
       setTaxDomExportLoading(false);
@@ -812,23 +820,13 @@ const OperationalReportWrapper = () => {
                 {openActionSubmenu === 'downloads' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0 6px 8px', borderLeft: '2px solid #e2e8f0' }}>
                     <button
-                      onClick={handleExportTaxExcel}
-                      disabled={taxExportLoading}
-                      style={actionMenuItemStyle(!taxExportLoading, 'navy')}
-                      title="Unduh file pajak PPh21 dari endpoint pajak"
-                    >
-                      <span style={actionMenuBadgeStyle(!taxExportLoading, 'navy')}>P21</span>
-                      <span>{taxExportLoading ? 'Mengunduh Pajak...' : 'Unduh Pajak'}</span>
-                    </button>
-
-                    <button
                       onClick={handleExportTaxExcelDom}
-                      disabled={taxDomExportLoading}
-                      style={actionMenuItemStyle(!taxDomExportLoading, 'navy')}
-                      title="Unduh report pajak akunting dari data yang tampil di Daftar Upah"
+                      disabled={taxDomExportLoading || !payrollDataLoaded}
+                      style={actionMenuItemStyle(payrollDataLoaded && !taxDomExportLoading, 'navy')}
+                      title={!payrollDataLoaded ? 'Tunggu data selesai dimuat terlebih dahulu' : 'Unduh report pajak akunting dari data yang tampil di Daftar Upah'}
                     >
-                      <span style={actionMenuBadgeStyle(!taxDomExportLoading, 'navy')}>TAX</span>
-                      <span>{taxDomExportLoading ? 'Mengunduh Report...' : 'Unduh Report Pajak'}</span>
+                      <span style={actionMenuBadgeStyle(payrollDataLoaded && !taxDomExportLoading, 'navy')}>TAX</span>
+                      <span>{taxDomExportLoading ? 'Mengunduh Report...' : (!payrollDataLoaded ? 'Memuat Data...' : 'Unduh Report Pajak')}</span>
                     </button>
 
                     <button

@@ -273,6 +273,65 @@ const isGrossDeductionFieldKey = (value) => {
     return isDynamicGrossDeductionFieldKey(normalized) || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
 };
 
+const resolveGrossDeductionWithoutAutomaticHk = (row) => {
+    if (!row || typeof row !== 'object') return { total: 0, excludedHk: 0 };
+
+    const rawTotal = Math.abs(toFiniteNumber(row.potongan_upah_kotor_total));
+    const potKoreksi = Math.abs(toFiniteNumber(row.pot_koreksi));
+    const automaticHk = Math.abs(toFiniteNumber(row.koreksi_hk));
+    let dynamicTotal = 0;
+
+    Object.keys(row).forEach((key) => {
+        if (isDynamicGrossDeductionFieldKey(key)) {
+            dynamicTotal += Math.abs(toFiniteNumber(row[key]));
+        }
+    });
+
+    const dynamicGross = row.potongan_upah_kotor?.dynamic;
+    if (dynamicGross && typeof dynamicGross === 'object') {
+        Object.entries(dynamicGross).forEach(([key, value]) => {
+            if (isDynamicGrossDeductionFieldKey(key)) {
+                dynamicTotal += Math.abs(toFiniteNumber(value));
+            }
+        });
+    }
+
+    const sourceTotal = rawTotal || potKoreksi;
+    if (dynamicTotal > 0) {
+        return {
+            total: dynamicTotal,
+            excludedHk: Math.max(0, sourceTotal - dynamicTotal)
+        };
+    }
+
+    if (sourceTotal > 0 && automaticHk > 0 && Math.abs(sourceTotal - automaticHk) <= 1) {
+        return { total: 0, excludedHk: sourceTotal };
+    }
+
+    return { total: sourceTotal, excludedHk: 0 };
+};
+
+const normalizeGrossDeductionForDisplay = (row) => {
+    if (!row || typeof row !== 'object') return row;
+    if (row.type && !['employee', 'gang_total', 'grand_total'].includes(row.type)) return row;
+
+    const { total, excludedHk } = resolveGrossDeductionWithoutAutomaticHk(row);
+    if (total === Math.abs(toFiniteNumber(row.potongan_upah_kotor_total)) && excludedHk === 0) {
+        return row;
+    }
+
+    // [FIX] Do NOT add excludedHk back to jumlah_upah_kotor
+    // koreksi_hk is already embedded in gaji_pokok_aktual (from PR_TASKREGLN scan)
+    // Adding excludedHk back causes double counting where koreksi_hk is counted twice:
+    // once in gaji_pokok_aktual and again in the gross calculation
+    // pot_koreksi is a separate deduction from POTONGAN table, not derived from koreksi_hk
+    return {
+        ...row,
+        potongan_upah_kotor_total: total
+        // REMOVED: excludedHk adjustments - koreksi_hk already in gaji_pokok_aktual
+    };
+};
+
 const isPotonganFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
     return !isStaticPotonganFieldKey(normalized) && !isGrossDeductionFieldKey(normalized) && normalized.startsWith('potongan_');
@@ -455,6 +514,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     // Kontan (Other Income) State - Always editable column
     const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
+    // Pendapatan Lainnya (Bonus, THR) State - Editable in edit mode
+    const [editedPendapatanCells, setEditedPendapatanCells] = useState({}); // { 'nik-pendapatan_field': { value, originalValue, gang_code } }
     const [payrollToast, setPayrollToast] = useState(null);
     const [payrollConfirm, setPayrollConfirm] = useState(null);
 
@@ -513,18 +574,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const kontanValues = Object.values(editedKontanCells);
         const kontanCount = kontanValues.length;
         const kontanDeleteCount = kontanValues.filter((item) => item.value === 0).length;
+        const pendapatanValues = Object.values(editedPendapatanCells);
+        const pendapatanCount = pendapatanValues.length;
+        const pendapatanDeleteCount = pendapatanValues.filter((item) => item.value === 0).length;
         const addedColumnCount = addedColumns.filter((item) => !item.placeholder_saved).length;
         const deletedColumnCount = pendingDeletedColumns.length;
         return {
             manualCount,
             kontanCount,
-            deleteCount: manualDeleteCount + kontanDeleteCount + deletedColumnCount,
+            pendapatanCount,
+            deleteCount: manualDeleteCount + kontanDeleteCount + pendapatanDeleteCount + deletedColumnCount,
             manualDeleteCount,
             addedColumnCount,
             deletedColumnCount,
-            totalCount: manualCount + kontanCount + addedColumnCount + deletedColumnCount
+            totalCount: manualCount + kontanCount + pendapatanCount + addedColumnCount + deletedColumnCount
         };
-    }, [addedColumns, editedCells, editedKontanCells, pendingDeletedColumns.length]);
+    }, [addedColumns, editedCells, editedKontanCells, editedPendapatanCells, pendingDeletedColumns.length]);
     const hasPendingEdits = pendingSaveSummary.totalCount > 0;
 
     const tableRef = useRef(null);
@@ -978,6 +1043,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         merged.pendapatan_kontan = toFiniteNumber(kontanEdit.value);
                     }
 
+                    // Apply pendapatan (bonus/thr) edits
+                    Object.entries(editedPendapatanCells).forEach(([key, edit]) => {
+                        if (key.startsWith(`${empCode}-`)) {
+                            const field = edit.field;
+                            if (field) {
+                                merged[field] = toFiniteNumber(edit.value);
+                            }
+                        }
+                    });
+
                     return {
                         ...merged
                     };
@@ -988,6 +1063,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         } else {
             resultRows = rows;
         }
+
+        resultRows = resultRows.map(normalizeGrossDeductionForDisplay);
 
         // Cek apakah streaming masih berjalan
         const isStreaming = !stream.isComplete || (stream.progress && stream.progress.stage !== 'complete');
@@ -1925,6 +2002,70 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return { changedCount: successCount, deleteCount };
     };
 
+    const saveEditedPendapatanCells = async () => {
+        const pendapatanEdits = Object.values(editedPendapatanCells);
+        if (pendapatanEdits.length === 0) return { changedCount: 0, deleteCount: 0 };
+
+        let successCount = 0;
+        let deleteCount = 0;
+
+        for (const p of pendapatanEdits) {
+            const adjustmentName = p.field ? p.field.replace('pendapatan_', 'PENDAPATAN ').toUpperCase() : 'PENDAPATAN LAINNYA';
+            const payload = {
+                period_month: month,
+                period_year: year,
+                nik: p.nik,
+                emp_code: p.emp_code,
+                emp_name: p.emp_name || null,
+                gang_code: p.gang_code,
+                division_code: division,
+                adjustment_type: 'PENDAPATAN_LAINNYA',
+                adjustment_name: adjustmentName,
+                amount: p.value,
+                remarks: p.value === 0
+                    ? `${adjustmentName} | DELETED | 0 | sync:MANUAL | match:MANUAL`
+                    : `${adjustmentName} | PENDAPATAN LAINNYA | ${p.value} | sync:MANUAL | match:MANUAL`
+            };
+
+            let resOk = false;
+            let resJson = null;
+
+            if (isProdMode()) {
+                try {
+                    resJson = await saveLockedManualEdit(token, payload);
+                    resOk = true;
+                } catch (err) {
+                    console.error('Prod Mode pendapatan save failed:', err);
+                }
+            } else {
+                const res = await fetch('/payroll/manual-edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
+                }
+            }
+
+            if (resOk && resJson?.success) {
+                successCount++;
+                if (p.value === 0) deleteCount++;
+            }
+        }
+
+        if (successCount !== pendapatanEdits.length) {
+            throw new Error(`${successCount}/${pendapatanEdits.length} perubahan Pendapatan Lainnya berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
+        }
+
+        setEditedPendapatanCells({});
+        return { changedCount: successCount, deleteCount };
+    };
+
     const performSaveAllEdits = async () => {
         setIsSavingEdits(true);
         try {
@@ -1945,6 +2086,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
             if (Object.keys(editedKontanCells).length > 0) {
                 const result = await saveEditedKontanCells();
+                savedCount += result.changedCount;
+                deleteCount += result.deleteCount;
+            }
+
+            if (Object.keys(editedPendapatanCells).length > 0) {
+                const result = await saveEditedPendapatanCells();
                 savedCount += result.changedCount;
                 deleteCount += result.deleteCount;
             }
@@ -1978,13 +2125,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         const manualDeleteRows = Object.values(editedCells).filter(isManualCellDeleteEdit);
         const deleteRows = Object.values(editedKontanCells).filter(k => k.value === 0);
-        if (manualDeleteRows.length > 0 || deleteRows.length > 0 || pendingDeletedColumns.length > 0) {
+        const deletePendapatanRows = Object.values(editedPendapatanCells).filter(p => p.value === 0);
+        if (manualDeleteRows.length > 0 || deleteRows.length > 0 || deletePendapatanRows.length > 0 || pendingDeletedColumns.length > 0) {
             const manualNames = manualDeleteRows.map(item => `${item.name || item.field} (${item.emp_code || item.nik})`).join(', ');
             const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
+            const pendapatanNames = deletePendapatanRows.map(p => `${p.field || 'PENDAPATAN'} (${p.emp_code || p.nik})`).join(', ');
             const columnNames = pendingDeletedColumns.map(item => item.name || item.field).join(', ');
             const messages = [];
             if (manualDeleteRows.length > 0) messages.push(`${manualDeleteRows.length} nilai manual adjustment akan dihapus: ${manualNames}.`);
             if (deleteRows.length > 0) messages.push(`${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}.`);
+            if (deletePendapatanRows.length > 0) messages.push(`${deletePendapatanRows.length} nilai Pendapatan Lainnya akan dihapus untuk: ${pendapatanNames}.`);
             if (pendingDeletedColumns.length > 0) messages.push(`${pendingDeletedColumns.length} kolom manual adjustment akan dihapus: ${columnNames}.`);
             openPayrollConfirm({
                 variant: 'danger',
@@ -3173,6 +3323,42 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     className: 'text-right font-bold',
                     render: (row) => {
                         const val = Number(row[field] || 0);
+                        const empCode = row.emp_code || row.nik;
+                        const editKey = `${empCode}-${field}`;
+                        const cellEdit = editedPendapatanCells[editKey];
+                        const displayVal = cellEdit ? toFiniteNumber(cellEdit.value) : val;
+                        const isEdited = !!cellEdit;
+
+                        if (isEditMode && row.type === 'employee') {
+                            return (
+                                <DeferredPayrollNumberInput
+                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
+                                    value={displayVal}
+                                    onCommit={(rawVal) => {
+                                        const newVal = parsePayrollInputNumber(rawVal);
+                                        if (newVal === null) return;
+                                        setEditedPendapatanCells(prev => {
+                                            const existingEdit = prev[editKey];
+                                            const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, val);
+                                            return {
+                                                ...prev,
+                                                [editKey]: {
+                                                    nik: row.nik,
+                                                    emp_code: row.emp_code,
+                                                    emp_name: row.nama || row.emp_name || null,
+                                                    field: field,
+                                                    value: newVal,
+                                                    originalValue: persistedOriginal,
+                                                    gang_code: row.gang_code
+                                                }
+                                            };
+                                        });
+                                    }}
+                                    placeholder="0"
+                                    style={{ width: '70px' }}
+                                />
+                            );
+                        }
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
@@ -4674,6 +4860,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <div className="payroll-edit-save-dock__metrics" aria-label="Ringkasan perubahan">
                         <span className="payroll-edit-save-dock__metric">Manual/Profile <b>{pendingSaveSummary.manualCount}</b></span>
                         <span className="payroll-edit-save-dock__metric">KONTAN <b>{pendingSaveSummary.kontanCount}</b></span>
+                        <span className="payroll-edit-save-dock__metric">Bonus/THR <b>{pendingSaveSummary.pendapatanCount}</b></span>
                         <span className="payroll-edit-save-dock__metric">Kolom Baru <b>{pendingSaveSummary.addedColumnCount}</b></span>
                         {pendingSaveSummary.deleteCount > 0 && (
                             <span className="payroll-edit-save-dock__metric is-danger">Hapus <b>{pendingSaveSummary.deleteCount}</b></span>
@@ -4694,13 +4881,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             className="payroll-edit-save-dock__secondary"
                             onClick={() => openPayrollConfirm({
                                 title: 'Batalkan semua perubahan?',
-                                message: 'Semua edit manual, KONTAN, dan kolom baru yang belum disimpan akan dikosongkan dari layar.',
+                                message: 'Semua edit manual, KONTAN, Bonus/THR, dan kolom baru yang belum disimpan akan dikosongkan dari layar.',
                                 confirmText: 'Batal Semua',
                                 variant: 'danger',
                                 onConfirm: () => {
                                     setEditedCells({});
                                     setAddedColumns([]);
                                     setEditedKontanCells({});
+                                    setEditedPendapatanCells({});
                                     onRefresh?.();
                                     showPayrollToast('info', 'Perubahan dibatalkan', 'Semua perubahan yang belum disimpan sudah dikosongkan.');
                                 }

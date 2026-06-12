@@ -19,6 +19,8 @@ describe('WagesSummaryRebinmasPage print style hooks', () => {
   });
 
   it('uses a dedicated simplified print table for comparison mode', () => {
+    expect(source).toContain("margin: comparisonMode ? '0' : '8mm'");
+    expect(source).toContain("wages-comparison-page");
     expect(source).toContain('wages-comparison-screen-wrapper no-print');
     expect(source).toContain('wages-comparison-print-wrapper print-only');
     expect(source).toContain('wages-comparison-print-table');

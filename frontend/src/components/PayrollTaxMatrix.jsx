@@ -27,6 +27,13 @@ const formatNumber = (amount) => {
     return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(amount))
 }
 
+const formatSignedDeduction = (amount) => {
+    const value = Math.abs(Number(amount) || 0)
+    if (value === 0) return '-'
+    // Guardrail: use one minus plus ABS magnitude. Never concatenate '-' with raw values.
+    return `-${formatNumber(value)}`
+}
+
 const formatPercent = (val) => {
     if (val == null || val === 0) return '0%'
     return `${Number(val).toFixed(2)}%`
@@ -478,7 +485,7 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
 
                                         {/* Pendapatan */}
                                         <td style={{ textAlign: 'right', color: '#059669' }}>{formatNumber(emp.total_premi)}</td>
-                                        <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatNumber(emp.pot_koreksi)}</td>
+                                        <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatSignedDeduction(emp.pot_koreksi)}</td>
                                         <td style={{ textAlign: 'right' }}>{formatNumber(emp.taxable_pendapatan_thr)}</td>
                                         <td style={{ textAlign: 'right' }}>{formatNumber(emp.taxable_pendapatan_bonus)}</td>
                                         <td style={{ textAlign: 'right', fontWeight: 700, background: '#f5f3ff' }}>{formatNumber(emp.taxable_pendapatan_lainnya)}</td>
@@ -542,7 +549,7 @@ export default function PayrollTaxMatrix({ token, gangCodes, month, year, divisi
                                 {formatNumber(summaryStats.total_premi)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px', color: '#fca5a5' }}>
-                                {formatNumber(summaryStats.pot_koreksi)}
+                                {formatSignedDeduction(summaryStats.pot_koreksi)}
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 6px' }}>
                                 {formatNumber(summaryStats.taxable_pendapatan_thr)}

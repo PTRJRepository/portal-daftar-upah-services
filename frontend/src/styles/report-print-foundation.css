@@ -181,7 +181,7 @@
 
 @page report-impact {
   size: A4 landscape;
-  margin: 10mm;
+  margin: 0;
 }
 
 @media print {
@@ -1164,10 +1164,10 @@
 
   #impact-report-content.impact-print-document {
     page: report-impact !important;
-    width: 100% !important;
+    width: 281mm !important;
     min-width: 0 !important;
-    max-width: 100% !important;
-    margin: 0 !important;
+    max-width: 281mm !important;
+    margin: 8mm auto !important;
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;

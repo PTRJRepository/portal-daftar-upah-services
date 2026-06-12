@@ -22,9 +22,13 @@ export function getOtherIncomeDetailFields(activeFields = [], options = {}) {
 }
 
 export function formatOtherIncomeColumnLabel(field, suffix = '') {
-  const baseLabel = String(field || '')
+  const rawLabel = String(field || '')
     .replace(/^pendapatan_/, '')
     .toUpperCase();
+  const compactLabel = rawLabel.replace(/[^A-Z0-9]+/g, '');
+  const baseLabel = compactLabel.includes('BONUS') || compactLabel.includes('EXGRATIA')
+    ? 'PENDAPATAN BONUS'
+    : rawLabel;
 
   return suffix ? `${baseLabel} ${suffix}` : baseLabel;
 }

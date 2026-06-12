@@ -230,4 +230,59 @@ describe('EmployeeDetailPage hook stability', () => {
       root.unmount();
     });
   });
+
+  it('renders payroll deductions from magnitudes and keeps ASTEK worker-only in employee detail', async () => {
+    getEmployeeHistoryMock.mockResolvedValue({ data: [] });
+    getEmployeeCheckrollMock.mockResolvedValueOnce({
+      employee: { nama: 'Tester', actual_nik: '123', gang_code: 'A1' },
+      payroll_data: {
+        emp_code: 'B001',
+        jumlah_hk: 20,
+        upah_dasar: 100000,
+        gaji_pokok: 2000000,
+        total_premi: 100000,
+        premi_panen: 100000,
+        premi_pph: 20000,
+        pot_koreksi: -10000,
+        koreksi_denda_panen: -5000,
+        pot_astek_pekerja: 30000,
+        pot_astek_majikan: 40000,
+        pot_astek_jumlah: 70000,
+        pot_spsi: -2000,
+        total_potongan: 0,
+        jumlah_upah_kotor: 2090000,
+        upah_bersih: 2078000,
+      },
+      attendance: { summary: {}, list: [] },
+      overtime: { summary: {}, list: [] },
+      harvest: [],
+    });
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <EmployeeDetailPage
+          employeeData={{ emp_code: 'B001' }}
+          month={4}
+          year={2026}
+          division="PG2B"
+          onBack={() => {}}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain('Koreksi DENDA PANEN');
+    expect(container.textContent).toContain('10.000');
+    expect(container.textContent).toContain('5.000');
+    expect(container.textContent).toContain('Astek Pekerja');
+    expect(container.textContent).toContain('30.000');
+    expect(container.textContent).not.toContain('70.000');
+    expect(container.textContent).not.toContain('Premi PPH');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

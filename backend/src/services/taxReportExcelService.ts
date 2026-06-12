@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { MonthlyTaxRow, DecemberTaxRow } from './taxReportService';
 import { CARUMAN_RATES } from './carumanDefinitions';
+import { sumOtherIncomeByCanonicalType } from '../utils/otherIncomeCanonical';
 
 // Helper: convert column index (1-based) to Excel letter(s)
 function colLetter(n: number): string {
@@ -11,6 +12,56 @@ function colLetter(n: number): string {
         n = Math.floor((n - 1) / 26);
     }
     return letter;
+}
+
+function firstNonZeroNumber(...values: unknown[]): number {
+    for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric !== 0) return numeric;
+    }
+    return 0;
+}
+
+function firstFiniteNumberValue(...values: unknown[]): number {
+    for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) return numeric;
+    }
+    return 0;
+}
+
+function resolvePotonganAlpa(emp: any, fallbackDiff: number): number {
+    const explicitPotonganAlpa = firstFiniteNumberValue(emp?.pot_alpa_cth, emp?.pot_alpa);
+    if (explicitPotonganAlpa !== 0) {
+        return explicitPotonganAlpa > 0 ? -explicitPotonganAlpa : explicitPotonganAlpa;
+    }
+    return Math.min(0, fallbackDiff);
+}
+
+function resolveLebihHk(emp: any, fallbackDiff: number): number {
+    const explicitLebihHk = firstFiniteNumberValue(emp?.lebih_hk, emp?.lebih_hk_cth, emp?.koreksi_hk_lebih, emp?.koreksi_hk_plus);
+    if (explicitLebihHk !== 0) return Math.max(0, explicitLebihHk);
+
+    const explicitKoreksiHk = firstFiniteNumberValue(emp?.koreksi_hk);
+    const koreksiHk = explicitKoreksiHk !== 0 ? explicitKoreksiHk : fallbackDiff;
+    return Math.max(0, koreksiHk);
+}
+
+function resolveTaxOtherIncomeAmounts(emp: any): { thr: number; bonus: number; kontan: number } {
+    const thrFromItems = sumOtherIncomeByCanonicalType(emp?.other_incomes, 'THR');
+    const bonusFromItems = sumOtherIncomeByCanonicalType(emp?.other_incomes, 'BONUS');
+    const kontanFromItems = sumOtherIncomeByCanonicalType(emp?.other_incomes, 'KONTAN');
+    const bonusDirect = firstNonZeroNumber(emp?.pendapatan_bonus, emp?.taxable_pendapatan_bonus, emp?.bonus, emp?.bonus_amount);
+    const exgratiaSeparate = Number(emp?.pendapatan_exgratia || emp?.taxable_pendapatan_exgratia || 0) || 0;
+    const exgratiaAlias = bonusDirect === 0 ? (Number(emp?.exgratia_amount || 0) || 0) : 0;
+
+    return {
+        thr: firstNonZeroNumber(emp?.pendapatan_thr, emp?.taxable_pendapatan_thr, emp?.thr_amount, emp?.THR, emp?.thr, emp?.THR_AMOUNT, thrFromItems),
+        bonus: firstNonZeroNumber(bonusDirect + exgratiaSeparate + exgratiaAlias, bonusFromItems),
+        kontan: firstNonZeroNumber(emp?.pendapatan_kontan, emp?.taxable_pendapatan_kontan, emp?.kontanan_amount, emp?.KONTANAN, emp?.KONTAN, kontanFromItems)
+    };
 }
 
 /**
@@ -28,7 +79,8 @@ export const generateMonthlyTaxExcel = async (
     month: number,
     division: string,
     gang: string,
-    premiKeys?: string[]
+    premiKeys?: string[],
+    labels?: { divisionLabel?: string; gangLabel?: string }
 ): Promise<Buffer> => {
     console.log(`[generateMonthlyTaxExcel] START - employees=${data?.employees?.length}, year=${year}, month=${month}, division=${division}, gang=${gang}`);
     console.log(`[generateMonthlyTaxExcel] First emp keys: ${data?.employees?.[0] ? Object.keys(data.employees[0]).join(', ') : 'NONE'}`);
@@ -133,7 +185,7 @@ export const generateMonthlyTaxExcel = async (
     // Dynamic premi cols (19 .. 18+N) → URAIAN PREMI
     //  18+N+1: TOTAL PREMI
     // Fixed after premi:
-    //  POT KOREKSI, THR, KONTANAN, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
+    //  POT KOREKSI, THR, BONUS, KONTANAN, BPJS KES 4%, ASTEK 0.84%, UPAH KOTOR, PENGHASILAN BRUTO, TARIF TER, PPH21
 
     const COL_NO = 1;
     const COL_EMP_CODE = 2;
@@ -152,20 +204,22 @@ export const generateMonthlyTaxExcel = async (
     const COL_GP_AKTUAL = 15;
     const COL_KOREKSI = 16;
     const COL_POT_ALPA = 17; // Potongan Alpa (between KOREKSI and TUNJANGAN)
-    const COL_BERAS = 18;
-    const COL_JABATAN = 19;
-    const COL_MASA_KERJA = 20;
-    const COL_SERVICE_TIME = 21; // Service Time Allow = Lembur value
+    const COL_LEBIH_HK = 18; // Positive HK correction, displayed as income
+    const COL_BERAS = 19;
+    const COL_JABATAN = 20;
+    const COL_MASA_KERJA = 21;
+    const COL_SERVICE_TIME = 22; // Service Time Allow = Lembur value
 
     // Dynamic premi columns
-    const COL_PREMI_START = 22;
-    const COL_PREMI_END = 20 + allPremiKeys.length;  // inclusive
+    const COL_PREMI_START = COL_SERVICE_TIME + 1;
+    const COL_PREMI_END = COL_PREMI_START + allPremiKeys.length - 1;  // inclusive
     const COL_TOTAL_PREMI = COL_PREMI_END + 1;
 
-    // Fixed after premi (THR and KONTAN shown for reference)
+    // Fixed after premi (THR and Bonus/Exgratia shown for reference)
     const COL_POT_KOREKSI = COL_TOTAL_PREMI + 1;
     const COL_THR = COL_POT_KOREKSI + 1;
-    const COL_KONTAN = COL_THR + 1;
+    const COL_BONUS = COL_THR + 1;
+    const COL_KONTAN = COL_BONUS + 1;
     const COL_BPJS_KES = COL_KONTAN + 1;
     const COL_ASTEK = COL_BPJS_KES + 1;
     const COL_UPAH_KOTOR = COL_ASTEK + 1;
@@ -182,8 +236,9 @@ export const generateMonthlyTaxExcel = async (
     for (let i = 1; i <= TOTAL_COLS; i++) {
         if (i <= 10) colWidths.push(i === 2 ? 15 : i === 3 ? 25 : i === 4 ? 20 : i === 6 ? 30 : i <= 10 ? 8 : 5);
         else if (i <= 16) colWidths.push(15);
-        else if (i <= 19) colWidths.push(12);
         else if (i === COL_POT_ALPA) colWidths.push(13); // pot_alpa column
+        else if (i === COL_LEBIH_HK) colWidths.push(13); // lebih_hk column
+        else if (i <= COL_SERVICE_TIME) colWidths.push(12);
         else if (i < COL_TOTAL_PREMI) colWidths.push(13); // premi columns
         else if (i === COL_TOTAL_PREMI) colWidths.push(15);
         else if (i <= COL_KONTAN) colWidths.push(15);
@@ -197,7 +252,9 @@ export const generateMonthlyTaxExcel = async (
     // ─────────────────────────────────────────────────────────
     sheet.mergeCells(`A1:${L(TOTAL_COLS)}1`);
     const titleCell = sheet.getCell('A1');
-    titleCell.value = `DAFTAR RINCIAN KALKULASI PPH21 - DIVISI: ${division} | GANG: ${gang || 'ALL'} | PERIODE: ${month}/${year}`;
+    const divisionTitle = labels?.divisionLabel || division;
+    const gangTitle = labels?.gangLabel || gang || 'ALL';
+    titleCell.value = `DAFTAR RINCIAN KALKULASI PPH21 - DIVISI: ${divisionTitle} | GANG: ${gangTitle} | PERIODE: ${month}/${year}`;
     titleCell.font = { size: 14, bold: true, name: 'Arial' };
     titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
@@ -225,6 +282,7 @@ export const generateMonthlyTaxExcel = async (
         { col: COL_GP_AKTUAL, label: 'GP AKTUAL', bg: 'F1F5F9', fg: '0F172A', meta_key: 'gaji_pokok' },
         { col: COL_KOREKSI, label: 'KOREKSI\n(Aktual-Ideal)', bg: 'F1F5F9', fg: '0F172A' },
         { col: COL_POT_ALPA, label: 'POT. ALPA (-)', bg: 'F1F5F9', fg: '0F172A' },
+        { col: COL_LEBIH_HK, label: 'LEBIH HK (+)', bg: 'F1F5F9', fg: '0F172A' },
         { col: COL_BERAS, label: 'BERAS', bg: 'E2E8F0', fg: '0F172A', meta_key: 'tunjangan_beras' },
         { col: COL_JABATAN, label: 'JABATAN', bg: 'E2E8F0', fg: '0F172A', meta_key: 'tunjangan_jabatan' },
         { col: COL_MASA_KERJA, label: 'MASA KERJA', bg: 'E2E8F0', fg: '0F172A', meta_key: 'masa_kerja' },
@@ -241,10 +299,11 @@ export const generateMonthlyTaxExcel = async (
     subHeaders.push({ col: COL_TOTAL_PREMI, label: 'TOTAL PREMI\n(SUM Premi)', bg: 'CBD5E1', fg: '0F172A' });
     subHeaders.push({ col: COL_POT_KOREKSI, label: 'POT KOREKSI (-)', bg: 'FCA5A5', fg: '0F172A' });
     subHeaders.push({ col: COL_THR, label: 'THR', bg: 'FEF3C7', fg: '0F172A', meta_key: 'thr' });
-    subHeaders.push({ col: COL_KONTAN, label: 'KONTANAN', bg: 'FEF3C7', fg: '0F172A', meta_key: 'bonus' });
+    subHeaders.push({ col: COL_BONUS, label: 'BONUS', bg: 'FEF3C7', fg: '0F172A', meta_key: 'bonus' });
+    subHeaders.push({ col: COL_KONTAN, label: 'KONTANAN', bg: 'FEF3C7', fg: '0F172A' });
     subHeaders.push({ col: COL_BPJS_KES, label: `BPJS KES\n${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A', meta_key: 'bpjs_kes_majikan' });
     subHeaders.push({ col: COL_ASTEK, label: `ASTEK\n${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%\n(×GPStandar+MK)`, bg: 'F1F5F9', fg: '0F172A', meta_key: 'astek_jht_majikan' });
-    subHeaders.push({ col: COL_UPAH_KOTOR, label: 'UPAH KOTOR\n(Aktual+Tunj+Premi-Pot)', bg: '0F172A', fg: 'FFFFFF' });
+    subHeaders.push({ col: COL_UPAH_KOTOR, label: 'UPAH KOTOR\n(GP_Aktual+Tunj+Premi)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_BRUTO, label: 'PENGHASILAN\nBRUTO', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_TARIF_TER, label: 'TARIF TER (%)', bg: '0F172A', fg: 'FFFFFF' });
     subHeaders.push({ col: COL_PPH21, label: 'PPH21\n(ROUND Bruto×Tarif)', bg: '0F172A', fg: 'FFFFFF', meta_key: 'pph21' });
@@ -297,7 +356,7 @@ export const generateMonthlyTaxExcel = async (
     applyHeaderStyle(sheet.getCell('A4'), '1E3A8A', 'FFFFFF');
 
     // STRUKTUR UPAH
-    sheet.mergeCells(`${L(COL_HK)}4:${L(COL_KOREKSI)}4`);
+    sheet.mergeCells(`${L(COL_HK)}4:${L(COL_LEBIH_HK)}4`);
     sheet.getCell(`${L(COL_HK)}4`).value = 'STRUKTUR UPAH';
     applyHeaderStyle(sheet.getCell(`${L(COL_HK)}4`), 'F1F5F9', '0F172A');
 
@@ -322,7 +381,7 @@ export const generateMonthlyTaxExcel = async (
     sheet.getCell(`${L(COL_POT_KOREKSI)}4`).value = 'POTONGAN';
     applyHeaderStyle(sheet.getCell(`${L(COL_POT_KOREKSI)}4`), 'FCA5A5', '0F172A');
 
-    // PENDAPATAN LAINNYA (THR, KONTAN)
+    // PENDAPATAN LAINNYA (THR, Bonus, Kontanan)
     if (COL_THR !== COL_KONTAN) {
         sheet.mergeCells(`${L(COL_THR)}4:${L(COL_KONTAN)}4`);
     }
@@ -355,10 +414,25 @@ export const generateMonthlyTaxExcel = async (
     const numFormat = '#.##0';
     const DATA_START = 6;
     let currentRowIndex = DATA_START;
+    let rowsAdded = 0;
 
-    data.employees.forEach((emp) => {
+    console.log(`[generateMonthlyTaxExcel MAIN] About to loop through ${data.employees.length} employees`);
+
+    data.employees.forEach((emp, idx) => {
         const row = sheet.getRow(currentRowIndex);
         const r = currentRowIndex;
+
+        // Log first 3 employees being processed
+        if (idx < 3) {
+            console.log(`[generateMonthlyTaxExcel MAIN] Processing employee ${idx + 1}:`, {
+                emp_code: emp.emp_code,
+                nama: emp.emp_name || emp.nama,
+                emp_name: emp.emp_name,
+                no: emp.no,
+                hk: emp.hk,
+                status_ptkp: emp.status_ptkp
+            });
+        }
 
         // Identity
         const rawNameMain = emp.emp_name || '';
@@ -397,7 +471,6 @@ export const generateMonthlyTaxExcel = async (
         const lPremiEnd = L(COL_PREMI_END);
         const lPotKor = L(COL_POT_KOREKSI);
         const lTHR = L(COL_THR);
-        const lKontan = L(COL_KONTAN);
         const lBpjs = L(COL_BPJS_KES);
         const lAstek = L(COL_ASTEK);
         const lUK = L(COL_UPAH_KOTOR);
@@ -412,10 +485,13 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(COL_KOREKSI).value = emp.koreksi_hk || 0;
 
         // Potongan Alpa (from gaji difference: GP_IDEAL - GP_AKTUAL when negative)
-        const potAlpa = (emp.gaji_pokok_ideal || 0) > (emp.gaji_pokok_aktual || 0)
-            ? -((emp.gaji_pokok_ideal || 0) - (emp.gaji_pokok_aktual || 0))
-            : 0;
+        const hkDiffMainFromFields = (Number(emp.gaji_pokok_aktual) || 0) - (Number(emp.gaji_pokok_ideal) || 0);
+        const explicitKoreksiHkMain = firstFiniteNumberValue(emp.koreksi_hk);
+        const hkDiffMain = explicitKoreksiHkMain !== 0 ? explicitKoreksiHkMain : hkDiffMainFromFields;
+        const potAlpa = resolvePotonganAlpa(emp, hkDiffMain);
+        const lebihHk = resolveLebihHk(emp, hkDiffMain);
         row.getCell(COL_POT_ALPA).value = potAlpa;
+        row.getCell(COL_LEBIH_HK).value = lebihHk;
 
         // Tunjangan — Service Time Allow = Lembur
         // [ROBUST] Handle multiple field names (Daftar Upah vs Tax Report mapped names)
@@ -476,21 +552,25 @@ export const generateMonthlyTaxExcel = async (
         }
 
         // Potongan Koreksi (displayed as negative — it's a deduction)
-        row.getCell(COL_POT_KOREKSI).value = -(emp.pot_koreksi || 0);
+        // Signed deduction invariant: write koreksi as -ABS(amount). Formulas must ADD
+        // this cell, never subtract it, to avoid invalid -(-200) sign flips.
+        row.getCell(COL_POT_KOREKSI).value = -Math.abs(Number(emp.pot_koreksi || 0));
 
 
 
-        // Pendapatan Lainnya (THR and KONTAN)
+        // Pendapatan Lainnya (THR, Bonus, Kontanan)
         // [DOM DATA] Use values directly from DOM - these are what the user sees in UI
-        const thrVal = Number(emp.pendapatan_thr ?? emp.thr_amount ?? emp.THR ?? emp.thr ?? emp.THR_AMOUNT ?? 0) || 0;
+        const otherIncomeAmounts = resolveTaxOtherIncomeAmounts(emp);
+        const thrVal = otherIncomeAmounts.thr;
+        const bonusVal = otherIncomeAmounts.bonus;
+        const kontanVal = otherIncomeAmounts.kontan;
         row.getCell(COL_THR).value = thrVal;
-
-        const kontananVal = Number(emp.pendapatan_kontan ?? emp.exgratia_amount ?? emp.kontanan_amount ?? emp.KONTANAN ?? emp.bonus_amount ?? emp.KONTAN ?? 0) || 0;
-        row.getCell(COL_KONTAN).value = kontananVal;
+        row.getCell(COL_BONUS).value = bonusVal;
+        row.getCell(COL_KONTAN).value = kontanVal;
 
         // Debug first employee
         if ((emp.no || 1) === 1) {
-            console.log(`[generateMonthlyTaxExcel MAIN SHEET] First employee THR/kontanan:`, {
+            console.log(`[generateMonthlyTaxExcel MAIN SHEET] First employee THR/bonus:`, {
                 emp_name: emp.emp_name,
                 thr_amount: emp.thr_amount,
                 THR: emp.THR,
@@ -498,7 +578,9 @@ export const generateMonthlyTaxExcel = async (
                 exgratia_amount: emp.exgratia_amount,
                 kontanan_amount: emp.kontanan_amount,
                 KONTANAN: emp.KONTANAN,
-                finalKontanan: kontananVal
+                bonus: emp.bonus,
+                finalBonus: bonusVal,
+                finalKontan: kontanVal
             });
         }
 
@@ -545,6 +627,8 @@ export const generateMonthlyTaxExcel = async (
         currentRowIndex++;
     });
 
+    console.log(`[generateMonthlyTaxExcel MAIN] Loop complete. Processed ${data.employees.length} employees, last row index: ${currentRowIndex - 1}`);
+
     // ─────────────────────────────────────────────────────────
     // Footer: Grand Total row
     // ─────────────────────────────────────────────────────────
@@ -556,10 +640,10 @@ export const generateMonthlyTaxExcel = async (
 
     const numericCols = [
         COL_HK, COL_UPAH_DASAR, COL_GAJI_STANDAR, COL_GP_IDEAL, COL_GP_AKTUAL, COL_KOREKSI,
-        COL_POT_ALPA,
+        COL_POT_ALPA, COL_LEBIH_HK,
         COL_BERAS, COL_JABATAN, COL_MASA_KERJA, COL_SERVICE_TIME,
         ...Array.from({ length: allPremiKeys.length }, (_, i) => COL_PREMI_START + i),
-        COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_KONTAN,
+        COL_TOTAL_PREMI, COL_POT_KOREKSI, COL_THR, COL_BONUS, COL_KONTAN,
         COL_BPJS_KES, COL_ASTEK, COL_UPAH_KOTOR, COL_BRUTO, COL_PPH21
     ];
 
@@ -669,9 +753,9 @@ export const generateMonthlyTaxExcel = async (
         row.getCell(5).value = avg;
 
         // Format numbers
-        row.getCell(3).numFmt = '#,##0';
-        row.getCell(4).numFmt = '#,##0';
-        row.getCell(5).numFmt = '#,##0';
+        row.getCell(3).numFmt = '#.##0';
+        row.getCell(4).numFmt = '#.##0';
+        row.getCell(5).numFmt = '#.##0';
 
         // Style
         for (let c = 1; c <= 5; c++) {
@@ -698,7 +782,7 @@ export const generateMonthlyTaxExcel = async (
         cell.font = { bold: true, color: { argb: '0F5132' } };
         cell.border = { top: { style: 'medium' }, left: { style: 'thin' }, bottom: { style: 'medium' }, right: { style: 'thin' } };
         cell.alignment = { vertical: 'middle', horizontal: c === 2 ? 'left' : 'right' };
-        cell.numFmt = c >= 3 ? '#,##0' : 'General';
+        cell.numFmt = c >= 3 ? '#.##0' : 'General';
     }
 
     // Add note below table
@@ -748,20 +832,22 @@ export const generateMonthlyTaxExcel = async (
 
     const STD_COL_GAJI_POKOK = 11;
     const STD_COL_POT_ALPA = 12;
-    const STD_COL_ASTEK = 13;
-    const STD_COL_BPJS_KES = 14;
-    const STD_COL_BERAS = 15;
-    const STD_COL_JAB = 16;
-    const STD_COL_SERVICE_TIME = 17;
-    const STD_COL_MK = 18;
+    const STD_COL_LEBIH_HK = 13;
+    const STD_COL_ASTEK = 14;
+    const STD_COL_BPJS_KES = 15;
+    const STD_COL_BERAS = 16;
+    const STD_COL_JAB = 17;
+    const STD_COL_SERVICE_TIME = 18;
+    const STD_COL_MK = 19;
 
-    const STD_COL_PREMI_START = 19;
-    const STD_COL_PREMI_END = 18 + allPremiKeys.length;
+    const STD_COL_PREMI_START = STD_COL_MK + 1;
+    const STD_COL_PREMI_END = STD_COL_PREMI_START + allPremiKeys.length - 1;
 
     const STD_COL_POT_KOR = STD_COL_PREMI_END + 1;
     const STD_COL_THR = STD_COL_POT_KOR + 1;
-    const STD_COL_EXGRATIA = STD_COL_THR + 1;
-    const STD_COL_BRUTO = STD_COL_EXGRATIA + 1;
+    const STD_COL_BONUS = STD_COL_THR + 1;
+    const STD_COL_OTHER_INCOME = STD_COL_BONUS + 1;
+    const STD_COL_BRUTO = STD_COL_OTHER_INCOME + 1;
     const STD_COL_TARIF = STD_COL_BRUTO + 1;
     const STD_COL_PPH21 = STD_COL_TARIF + 1;
     const STD_TOTAL_COLS = STD_COL_PPH21;
@@ -780,6 +866,7 @@ export const generateMonthlyTaxExcel = async (
         { header: 'TER', width: 8 },
         { header: 'Gaji Pokok', width: 15, meta_key: 'gaji_pokok' },
         { header: 'Pot. Alpa (-)', width: 15 },
+        { header: 'Lebih HK (+)', width: 15 },
         { header: `Astek Ins\n(${(CARUMAN_RATES.ASTEK_MAJIKAN_JKK_JKM * 100).toFixed(2)}%)`, width: 15, meta_key: 'astek_jht_majikan' },
         { header: `BPJS KES\n(${(CARUMAN_RATES.BPJS_KES_MAJIKAN * 100).toFixed(0)}%)`, width: 15, meta_key: 'bpjs_kes_majikan' },
         { header: 'Rice Allow', width: 15, meta_key: 'tunjangan_beras' },
@@ -795,7 +882,8 @@ export const generateMonthlyTaxExcel = async (
 
     stdHeaders.push({ header: 'Potongan\nKoreksi (-)', width: 15 });
     stdHeaders.push({ header: 'THR', width: 15, meta_key: 'thr' });
-    stdHeaders.push({ header: 'KONTANAN', width: 15, meta_key: 'bonus' });
+    stdHeaders.push({ header: 'Bonus', width: 15, meta_key: 'bonus' });
+    stdHeaders.push({ header: 'Kontanan', width: 15 });
     stdHeaders.push({ header: 'Penghasilan\nBruto', width: 18 });
     stdHeaders.push({ header: 'Tarif\nTER', width: 10 });
     stdHeaders.push({ header: 'PPh 21', width: 15, meta_key: 'pph21' });
@@ -807,7 +895,7 @@ export const generateMonthlyTaxExcel = async (
     // --- Row 1: Title ---
     stdSheet.mergeCells(`A1:${sL(STD_TOTAL_COLS)}1`);
     const stdTitleCell = stdSheet.getCell('A1');
-    stdTitleCell.value = `DAFTAR RINCIAN PPH21 - ${division} - PERIODE ${month}/${year}`;
+    stdTitleCell.value = `DAFTAR RINCIAN PPH21 - ${divisionTitle} - ${gangTitle} - PERIODE ${month}/${year}`;
     stdTitleCell.font = { size: 16, bold: true, name: 'Arial', color: { argb: '1E293B' } };
     stdTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
     stdSheet.getRow(1).height = 35;
@@ -855,12 +943,10 @@ export const generateMonthlyTaxExcel = async (
     const sJab = sL(STD_COL_JAB);
     const sST = sL(STD_COL_SERVICE_TIME);
     const sMK = sL(STD_COL_MK);
-    const sPotAlpa = sL(STD_COL_POT_ALPA);
     const sPremiStart = sL(STD_COL_PREMI_START);
     const sPremiEnd = sL(STD_COL_PREMI_END);
     const sPotKor = sL(STD_COL_POT_KOR);
     const sTHR = sL(STD_COL_THR);
-    const sExg = sL(STD_COL_EXGRATIA);
     const sBruto = sL(STD_COL_BRUTO);
     const sTarif = sL(STD_COL_TARIF);
     const sPph = sL(STD_COL_PPH21);
@@ -875,28 +961,35 @@ export const generateMonthlyTaxExcel = async (
 
             // [ROBUST] Safe logging for debug - avoid logging the whole object to prevent crashes on circular/massive data
             if (i < 2) {
-                const gpIdeal = Number(emp.gaji_pokok_ideal || emp.upah_dasar * new Date(year, month, 0).getDate()) || 0;
+                const gpIdeal = Number(emp.gaji_pokok_ideal || (Number(emp.upah_dasar) || 0) * new Date(year, month, 0).getDate()) || 0;
                 const gpActual = Number(emp.gaji_pokok_dibayarkan || emp.gaji_pokok_aktual || 0) || 0;
                 console.log(`[TaxReport Excel DOM] Processing employee ${i + 1}: Name=${(emp.emp_name || '').substring(0, 20)}, Code=${emp.emp_code}, GP_Ideal=${gpIdeal}, GP_Actual=${gpActual}`);
             }
 
             const daysInMonth = new Date(year, month, 0).getDate();
 
-            // [REVISED] Map UI field names correctly
             const upahDasar = Number(emp.upah_dasar || 0);
-            const gajiPokokStandar = upahDasar * daysInMonth;
-            const gajiPokokHkTarget = Number(emp.gaji_pokok_ideal) || gajiPokokStandar; // fallback if needed
-            const gajiPokokDibayarkan = Number(emp.gaji_pokok_dibayarkan || emp.gaji_pokok_aktual || 0) || 0;
-            const potonganAlpa = Math.max(0, gajiPokokStandar - gajiPokokDibayarkan);
+            const gajiPokokDibayar = firstFiniteNumberValue(emp.gaji_pokok_dibayarkan, emp.gaji_pokok_aktual, emp.gaji_pokok);
+            const explicitPotonganAlpa = firstFiniteNumberValue(emp.pot_alpa_cth, emp.pot_alpa);
+            const gajiPokokFallback = upahDasar > 0
+                ? upahDasar * daysInMonth
+                : explicitPotonganAlpa !== 0
+                    ? gajiPokokDibayar - (explicitPotonganAlpa > 0 ? -explicitPotonganAlpa : explicitPotonganAlpa)
+                    : gajiPokokDibayar;
+            const gajiPokokValue = firstFiniteNumberValue(emp.gaji_pokok_bulanan, emp.gaji_pokok_standar, gajiPokokFallback);
+            const explicitKoreksiHkStd = firstFiniteNumberValue(emp.koreksi_hk);
+            const hkDiffStd = explicitKoreksiHkStd !== 0 ? explicitKoreksiHkStd : gajiPokokDibayar - gajiPokokValue;
+            const potonganAlpa = resolvePotonganAlpa(emp, hkDiffStd);
+            const lebihHk = resolveLebihHk(emp, hkDiffStd);
 
             // Debug first employee
             if (i === 0) {
                 console.log(`[generateMonthlyTaxExcel STD SHEET] First employee:`, {
                     emp_name: emp.emp_name || emp.NAMA_KARYAWAN || emp.nama || '',
                     upahDasar,
-                    gajiPokokStandar,
-                    gajiPokokDibayarkan,
-                    potonganAlpa
+                    gajiPokokValue,
+                    potonganAlpa,
+                    lebihHk
                 });
             }
 
@@ -915,15 +1008,15 @@ export const generateMonthlyTaxExcel = async (
             row.getCell(STD_COL_PTKP).value = emp.status_ptkp || emp.ptkp || emp.PTKP || '';
             row.getCell(STD_COL_TER).value = emp.kategori_ter || emp.kategori || emp.TER || '';
 
-            // [REVISED] PURE GAJI POKOK = Upah Dasar * DaysInMonth
-            row.getCell(STD_COL_GAJI_POKOK).value = gajiPokokStandar;
-            row.getCell(STD_COL_POT_ALPA).value = potonganAlpa > 0 ? -potonganAlpa : 0;
-            row.getCell(STD_COL_ASTEK).value = Number(emp.astek_084 || emp.astek_jht_majikan || emp.ASTEK_INS || 0);
-            row.getCell(STD_COL_BPJS_KES).value = Number(emp.pot_bpjs_kesehatan_majikan || emp.bpjs_kes_majikan || emp.BPJS_KESEHATAN || 0);
-            row.getCell(STD_COL_BERAS).value = Number(emp.beras_jumlah || emp.tunjangan_beras || emp.rice_allow || 0);
-            row.getCell(STD_COL_JAB).value = Number(emp.jabatan_jumlah || emp.tunjangan_jabatan || emp.structural_allow || 0);
-            row.getCell(STD_COL_SERVICE_TIME).value = Number(emp.lembur_jumlah || emp.tunjangan_lembur || emp.service_time_allow || 0);
-            row.getCell(STD_COL_MK).value = Number(emp.masa_kerja_jumlah || emp.tunjangan_masa_kerja || emp.masa_kerja || 0);
+            row.getCell(STD_COL_GAJI_POKOK).value = gajiPokokValue;
+            row.getCell(STD_COL_POT_ALPA).value = potonganAlpa;
+            row.getCell(STD_COL_LEBIH_HK).value = lebihHk;
+            row.getCell(STD_COL_ASTEK).value = firstFiniteNumberValue(emp.astek_084, emp.astek_084pct, emp.astek_jht_majikan, emp.ASTEK_INS);
+            row.getCell(STD_COL_BPJS_KES).value = firstFiniteNumberValue(emp.pot_bpjs_kesehatan_majikan, emp.bpjs_kes_majikan, emp.bpjs_kesehatan_majikan_4_pct, emp.BPJS_KESEHATAN);
+            row.getCell(STD_COL_BERAS).value = firstFiniteNumberValue(emp.beras_jumlah, emp.tunjangan_beras, emp.rice_allow);
+            row.getCell(STD_COL_JAB).value = firstFiniteNumberValue(emp.jabatan_jumlah, emp.tunjangan_jabatan, emp.structural_allow);
+            row.getCell(STD_COL_SERVICE_TIME).value = firstFiniteNumberValue(emp.lembur_jumlah, emp.tunjangan_lembur, emp.service_time_allow);
+            row.getCell(STD_COL_MK).value = firstFiniteNumberValue(emp.masa_kerja_jumlah, emp.tunjangan_masa_kerja, emp.masa_kerja);
 
             for (let pi = 0; pi < allPremiKeys.length; pi++) {
                 const colIdx = STD_COL_PREMI_START + pi;
@@ -949,18 +1042,23 @@ export const generateMonthlyTaxExcel = async (
             }
 
             // [FIX] Potongan Koreksi - should be NEGATIVE (e.g., -12)
-            const potKoreksiVal = Number(emp.pot_koreksi || 0);
-            row.getCell(STD_COL_POT_KOR).value = potKoreksiVal > 0 ? -potKoreksiVal : potKoreksiVal;
+            // Signed deduction invariant: write koreksi as -ABS(amount). Formulas must ADD
+            // this cell, never subtract it, to avoid invalid -(-200) sign flips.
+            const potKoreksiVal = Math.abs(Number(emp.pot_koreksi || 0));
+            row.getCell(STD_COL_POT_KOR).value = -potKoreksiVal;
 
-            // Pendapatan Lainnya (THR and KONTAN)
-            const thrValue = Number(emp.pendapatan_thr ?? emp.thr_amount ?? emp.THR ?? emp.thr ?? 0);
-            row.getCell(STD_COL_THR).value = thrValue;
+            // Pendapatan Lainnya (THR, Bonus, Kontanan)
+            const otherIncomeAmounts = resolveTaxOtherIncomeAmounts(emp);
+            // [FIX] Use direct values from DataExtractor for consistency with Daftar Upah
+            const thrVal = Number(emp.thr_amount ?? emp.pendapatan_thr ?? otherIncomeAmounts.thr ?? 0);
+            const bonusVal = Number(emp.exgratia_amount ?? emp.bonus_amount ?? emp.bonus ?? otherIncomeAmounts.bonus ?? 0);
+            const kontanVal = Number(emp.kontanan_amount ?? emp.pendapatan_kontan ?? otherIncomeAmounts.kontan ?? 0);
+            row.getCell(STD_COL_THR).value = thrVal;
+            row.getCell(STD_COL_BONUS).value = bonusVal;
+            row.getCell(STD_COL_OTHER_INCOME).value = kontanVal;
 
-            const kontanValue = Number(emp.pendapatan_kontan ?? emp.exgratia_amount ?? emp.kontanan_amount ?? emp.KONTANAN ?? emp.KONTAN ?? 0);
-            row.getCell(STD_COL_EXGRATIA).value = kontanValue;
-
-            // PENGHASILAN BRUTO — use DIRECT value from UI
-            row.getCell(STD_COL_BRUTO).value = Number(emp.penghasilan_bruto || emp.PENGHASILAN_BRUTO || emp.bruto || 0);
+            // PENGHASILAN BRUTO — use direct value from UI/DB (not reconstructed)
+            row.getCell(STD_COL_BRUTO).value = emp.penghasilan_bruto || 0;
 
             row.getCell(STD_COL_TARIF).value = (Number(emp.tarif_pajak_ter || emp.TARIF_TER || emp.tarif || 0)) / 100;
             row.getCell(STD_COL_TARIF).numFmt = '0.00%';

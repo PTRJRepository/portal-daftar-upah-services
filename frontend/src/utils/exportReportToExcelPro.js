@@ -357,6 +357,20 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                     const parsed = Number(val);
                     val = isNaN(parsed) ? 0 : parsed;
                 }
+                if (col.field === 'pot_koreksi') {
+                    // Signed deduction invariant: write -amount, then formulas add the cell.
+                    val = -Math.abs(Number(val) || 0);
+                } else if (
+                    col.field !== 'premi_pph'
+                    && col.field !== 'pot_premi_pph'
+                    && (col.field.startsWith('pot_') || col.field.startsWith('POTONGAN_'))
+                    && !col.field.includes('_maj')
+                    && !col.field.includes('majikan')
+                    && !col.field.endsWith('_total')
+                ) {
+                    // Never let Excel formulas do -(-deduction). Deduction cells carry the sign.
+                    val = -Math.abs(Number(val) || 0);
+                }
 
                 cell.font = { size: 9 };
                 // CRITICAL: Text wrap MUST BE FALSE for all data per user request
@@ -397,7 +411,8 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                             const sumFormula = tunjanganCols
                                 ? `SUM(${gp}${excelRow.number},${tunjanganCols},${tp}${excelRow.number})`
                                 : `SUM(${gp}${excelRow.number},${tp}${excelRow.number})`;
-                            cell.value = { formula: `${sumFormula}-${kor}${excelRow.number}` };
+                            // Koreksi is already negative in Excel, so add it to reduce gross.
+                            cell.value = { formula: `${sumFormula}+${kor}${excelRow.number}` };
                             return;
                         }
                     } else if (col.field === 'total_potongan') {
@@ -411,7 +426,8 @@ export async function exportReportToExcelPro(rows, colDefsOriginal, meta) {
                         const pphPlus = colMap['premi_pph'];
                         const potTot = colMap['total_potongan'];
                         if (uk && pphPlus && potTot) {
-                            cell.value = { formula: `SUM(${uk}${excelRow.number},${pphPlus}${excelRow.number})-${potTot}${excelRow.number}` };
+                            // Total potongan is negative; adding it avoids -(-potongan).
+                            cell.value = { formula: `SUM(${uk}${excelRow.number},${pphPlus}${excelRow.number},${potTot}${excelRow.number})` };
                             return;
                         }
                     }

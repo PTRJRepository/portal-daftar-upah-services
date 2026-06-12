@@ -27,6 +27,8 @@ describe('wages summary simple print CSS', () => {
   });
 
   it('uses a dedicated fixed print table for Wages Rebinmas comparison mode', () => {
+    expect(css).toMatch(/\.wsp-container:has\(\.wages-comparison-page\)\s*{[\s\S]*width:\s*297mm\s*!important;[\s\S]*max-width:\s*297mm\s*!important;/);
+    expect(css).toMatch(/\.wages-comparison-page\s*{[\s\S]*width:\s*281mm\s*!important;[\s\S]*margin:\s*8mm auto\s*!important;/);
     expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-print-table\s*{[\s\S]*table-layout:\s*fixed\s*!important;[\s\S]*font-size:\s*8\.5pt\s*!important;/);
     expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-print-table \.wages-print-col-division\s*{[\s\S]*width:\s*18%\s*!important;/);
     expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-print-table \.wages-print-col-selisih\s*{[\s\S]*width:\s*8%\s*!important;/);
@@ -35,9 +37,20 @@ describe('wages summary simple print CSS', () => {
     expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-cell-value\s*{[\s\S]*display:\s*inline-flex\s*!important;/);
   });
 
-  it('keeps wages print headers light with black separator borders', () => {
-    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-rebinmas-summary-table thead th\s*{[\s\S]*background:\s*white\s*!important;[\s\S]*color:\s*#000\s*!important;[\s\S]*border:\s*1pt solid #000\s*!important;/);
-    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-print-table thead th\s*{[\s\S]*background:\s*white\s*!important;[\s\S]*color:\s*#000\s*!important;[\s\S]*border:\s*1pt solid #000\s*!important;/);
-    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-comparison-print-table thead tr\.wsp-header-master th\s*{[\s\S]*border-bottom:\s*1\.5pt solid #000\s*!important;/);
+  it('uses Professional Grid navy headers for standard Wages Rebinmas print', () => {
+    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-rebinmas-summary-table thead th,[\s\S]*background:\s*#081f3a\s*!important;[\s\S]*color:\s*#ffffff\s*!important;/);
+    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-rebinmas-summary-table tr\.estate-header td\s*{[\s\S]*background:\s*#eaf2ff\s*!important;[\s\S]*color:\s*#081f3a\s*!important;/);
+    expect(css).toMatch(/\.wages-rebinmas-print-document \.wages-rebinmas-summary-table tfoot tr\.wsp-grand-total td\s*{[\s\S]*background:\s*#071326\s*!important;[\s\S]*color:\s*#ffffff\s*!important;/);
+  });
+
+  it('defines A4 landscape print pages for tabulation and infographic appendix', () => {
+    expect(css).toMatch(/\.wages-summary-page,[\s\S]*\.wages-infographic-page\s*{[\s\S]*width:\s*297mm\s*!important;[\s\S]*height:\s*210mm\s*!important;[\s\S]*page-break-after:\s*always\s*!important;/);
+    expect(css).toMatch(/\.wages-last-print-page\s*{[\s\S]*page-break-after:\s*auto\s*!important;/);
+    expect(css).toMatch(/\.wages-report-footer\s*{[\s\S]*grid-template-columns:\s*1fr auto 1fr\s*!important;/);
+  });
+  it('keeps browser PDF export pointed at the full tabulation and infographic print set', () => {
+    expect(css).toMatch(/\.pdf-export-active\.wages-report-print-set \.wages-summary-page,[\s\S]*\.pdf-export-active\.wages-report-print-set \.wages-infographic-page\s*{[\s\S]*width:\s*297mm\s*!important;[\s\S]*height:\s*210mm\s*!important;[\s\S]*page-break-after:\s*always\s*!important;/);
+    expect(css).toMatch(/\.pdf-export-active\.wages-report-print-set \.wages-infographic-page\s*{[\s\S]*width:\s*297mm\s*!important;[\s\S]*height:\s*210mm\s*!important;/);
+    expect(css).toMatch(/@media print\s*{[\s\S]*\.wages-report-print-set\s*{[\s\S]*display:\s*contents\s*!important;/);
   });
 });

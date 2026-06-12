@@ -32,6 +32,90 @@ import { debug, info, warn, error } from "./utils/logger";
 // Initialize Database access
 Database.getInstance();
 
+const DIST_ROOT = "../frontend/dist";
+const COMPRESSIBLE_ASSET_EXTENSIONS = new Set(["js", "css", "html", "json", "svg", "txt", "map"]);
+const compressedAssetCache = new Map<string, { lastModified: number; bytes: Uint8Array; contentType: string }>();
+const noCacheHeaders = (set: any) => {
+    set.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    set.headers['Pragma'] = 'no-cache';
+    set.headers['Expires'] = '0';
+};
+const assetCacheHeaders = (set: any) => {
+    set.headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+    set.headers['Vary'] = 'Accept-Encoding';
+};
+
+const getAssetContentType = (filePath: string): string | undefined => {
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        case "js": return "application/javascript; charset=utf-8";
+        case "css": return "text/css; charset=utf-8";
+        case "json": return "application/json; charset=utf-8";
+        case "svg": return "image/svg+xml";
+        case "png": return "image/png";
+        case "jpg":
+        case "jpeg": return "image/jpeg";
+        case "webp": return "image/webp";
+        case "woff": return "font/woff";
+        case "woff2": return "font/woff2";
+        default: return undefined;
+    }
+};
+
+const isSafeDistPath = (relativePath: string): boolean => {
+    return !!relativePath &&
+        !relativePath.startsWith("/") &&
+        !relativePath.startsWith("\\") &&
+        !relativePath.includes("..") &&
+        !relativePath.includes("\\");
+};
+
+const serveDistAsset = async (relativePath: string, request: Request, set: any) => {
+    if (!isSafeDistPath(relativePath)) {
+        set.status = 400;
+        return "Invalid asset path";
+    }
+
+    const filePath = `${DIST_ROOT}/${relativePath}`;
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) {
+        set.status = 404;
+        return "Asset not found";
+    }
+
+    assetCacheHeaders(set);
+    const contentType = getAssetContentType(filePath);
+    if (contentType) {
+        set.headers['Content-Type'] = contentType;
+    }
+
+    const ext = filePath.split('.').pop()?.toLowerCase() || "";
+    const acceptsGzip = request.headers.get("accept-encoding")?.includes("gzip") || false;
+    if (!acceptsGzip || !COMPRESSIBLE_ASSET_EXTENSIONS.has(ext)) {
+        return file;
+    }
+
+    const lastModified = file.lastModified;
+    const cached = compressedAssetCache.get(filePath);
+    if (cached && cached.lastModified === lastModified) {
+        set.headers['Content-Encoding'] = 'gzip';
+        set.headers['Content-Type'] = cached.contentType;
+        return new Response(cached.bytes);
+    }
+
+    const rawBytes = new Uint8Array(await file.arrayBuffer());
+    const gzipped = Bun.gzipSync(rawBytes);
+    const cachedAsset = {
+        lastModified,
+        bytes: gzipped,
+        contentType: contentType || "application/octet-stream"
+    };
+    compressedAssetCache.set(filePath, cachedAsset);
+    set.headers['Content-Encoding'] = 'gzip';
+    set.headers['Content-Type'] = cachedAsset.contentType;
+    return new Response(cachedAsset.bytes);
+};
+
 // Background initialization
 setTimeout(() => {
     employeeHrDataService.ensureTablesExist().catch(err => error("Init", "Failed to ensure HR tables", err));
@@ -96,8 +180,14 @@ const app = new Elysia()
     })
     // Root endpoints
     // Serve Frontend Static Files
-    .get("/", () => Bun.file("../frontend/dist/index.html"))
-    .get("/index.html", () => Bun.file("../frontend/dist/index.html"))
+    .get("/", ({ set }) => {
+        noCacheHeaders(set);
+        return Bun.file("../frontend/dist/index.html");
+    })
+    .get("/index.html", ({ set }) => {
+        noCacheHeaders(set);
+        return Bun.file("../frontend/dist/index.html");
+    })
     .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
 
     // Serve all static files from dist root (handles /assets, /images, etc. naturally)
@@ -107,65 +197,48 @@ const app = new Elysia()
     }))
 
     // Explicit fallback for /assets in case static plugin doesn't work
-    .get("/assets/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/assets/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Asset not found";
+    .get("/assets/*", async ({ params, request, set }) => {
+        return serveDistAsset(`assets/${params["*"]}`, request, set);
     })
 
     // Explicit fallback for /images in case static plugin doesn't work
-    .get("/images/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/images/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Image not found";
+    .get("/images/*", async ({ params, request, set }) => {
+        return serveDistAsset(`images/${params["*"]}`, request, set);
     })
 
     // ========================
     // PROXY MODE STATIC FILES
     // When frontend is built with base: '/upah/', assets are requested at /upah/assets/...
     // ========================
-    .get("/upah", () => Bun.file("../frontend/dist/index.html"))
-    .get("/upah/", () => Bun.file("../frontend/dist/index.html"))
-    .get("/upah/index.html", () => Bun.file("../frontend/dist/index.html"))
+    .get("/upah", ({ set }) => {
+        noCacheHeaders(set);
+        return Bun.file("../frontend/dist/index.html");
+    })
+    .get("/upah/", ({ set }) => {
+        noCacheHeaders(set);
+        return Bun.file("../frontend/dist/index.html");
+    })
+    .get("/upah/index.html", ({ set }) => {
+        noCacheHeaders(set);
+        return Bun.file("../frontend/dist/index.html");
+    })
 
     // Serve /upah/assets/* - main chunk files, CSS, JS
-    .get("/upah/assets/*", async ({ params, set }) => {
-        const p = params["*"];
-        const filePath = `../frontend/dist/assets/${p}`;
-        const file = Bun.file(filePath);
-        const exists = await file.exists();
-
-        if (exists) {
-            // Set correct content-type based on extension
-            const ext = filePath.split('.').pop()?.toLowerCase();
-            if (ext === 'js') {
-                set.headers['Content-Type'] = 'application/javascript';
-            } else if (ext === 'css') {
-                set.headers['Content-Type'] = 'text/css';
-            }
-            return file;
-        }
-        set.status = 404;
-        return "Asset not found";
+    .get("/upah/assets/*", async ({ params, request, set }) => {
+        return serveDistAsset(`assets/${params["*"]}`, request, set);
     })
 
     // Serve /upah/images/*
-    .get("/upah/images/*", async ({ params, set }) => {
-        const filePath = `../frontend/dist/images/${params["*"]}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "Image not found";
+    .get("/upah/images/*", async ({ params, request, set }) => {
+        return serveDistAsset(`images/${params["*"]}`, request, set);
+    })
+
+    // Serve static files when the reverse proxy keeps the /backend/upah prefix.
+    .get("/backend/upah/assets/*", async ({ params, request, set }) => {
+        return serveDistAsset(`assets/${params["*"]}`, request, set);
+    })
+    .get("/backend/upah/images/*", async ({ params, request, set }) => {
+        return serveDistAsset(`images/${params["*"]}`, request, set);
     })
 
     // Serve any other /upah/* static files (like fonts, etc)
@@ -174,17 +247,12 @@ const app = new Elysia()
 
         // If it's a SPA route (no extension), serve index.html
         if (!pathname.includes('.')) {
+            noCacheHeaders(set);
             return Bun.file("../frontend/dist/index.html");
         }
 
         // Otherwise try to serve the static file
-        const filePath = `../frontend/dist/${pathname}`;
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            return file;
-        }
-        set.status = 404;
-        return "File not found";
+        return serveDistAsset(pathname, request, set);
     })
 
     .get("/api-info", () => ({
@@ -306,6 +374,7 @@ const app = new Elysia()
         }
 
         // Otherwise, serve index.html for SPA routing
+        noCacheHeaders(set);
         return Bun.file("../frontend/dist/index.html");
     })
     // Start server

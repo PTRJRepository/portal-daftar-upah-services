@@ -297,8 +297,12 @@ export default function EmployeeDetailPage({
     // Helper to safely get numeric values
     const getNum = (key) => {
         const val = data[key] ?? empInfo[key]
-        return typeof val === 'number' ? val : 0
+        const numeric = Number(val)
+        return Number.isFinite(numeric) ? numeric : 0
     }
+
+    const deductionAmount = (value) => Math.abs(Number(value) || 0)
+    const getDeduction = (key) => deductionAmount(data[key] ?? empInfo[key])
 
     // --- CALCULATIONS & DATA PREPARATION ---
 
@@ -358,7 +362,7 @@ export default function EmployeeDetailPage({
         })
     } else {
         Object.entries(data).forEach(([key, val]) => {
-            if (key.startsWith('premi_') && key !== 'premi_brondol' && typeof val === 'number' && val > 0 && !processedPremiKeys.has(key)) {
+            if (key.startsWith('premi_') && key !== 'premi_brondol' && key !== 'premi_pph' && key !== 'pot_premi_pph' && typeof val === 'number' && val > 0 && !processedPremiKeys.has(key)) {
                 const label = key.replace('premi_', '').replace(/_/g, ' ').toUpperCase()
                 if (!premiList.some(p => p.label === `Premi ${label}`)) {
                     premiList.push({ label: `Premi ${label}`, value: val })
@@ -375,37 +379,39 @@ export default function EmployeeDetailPage({
 
     // 5. Potongan Breakdown
     const potKotorList = []
-    if (getNum('pot_koreksi') > 0) potKotorList.push({ label: 'Koreksi', value: getNum('pot_koreksi') })
+    if (getDeduction('pot_koreksi') > 0) potKotorList.push({ label: 'Koreksi', value: getDeduction('pot_koreksi') })
 
     Object.entries(data).forEach(([key, val]) => {
-        if (key.startsWith('koreksi_') && typeof val === 'number' && val > 0) {
+        const amount = deductionAmount(val)
+        if (key.startsWith('koreksi_') && typeof val === 'number' && amount > 0) {
             const label = key.replace('koreksi_', '').replace(/_/g, ' ').toUpperCase()
-            potKotorList.push({ label: `Koreksi ${label}`, value: val })
+            potKotorList.push({ label: `Koreksi ${label}`, value: amount })
         }
     })
 
     const subtotalPotKotor = potKotorList.reduce((acc, curr) => acc + curr.value, 0)
-    const totalPotKotor = getNum('potongan_upah_kotor_total') || subtotalPotKotor
+    const totalPotKotor = getDeduction('potongan_upah_kotor_total') || subtotalPotKotor
 
     const potBersihList = [
-        { label: 'BPJS Kesehatan', value: getNum('pot_bpjs_kesehatan_pekerja') || getNum('pot_bpjs_kesehatan') },
-        { label: 'BPJS Pensiun', value: getNum('pot_bpjs_pensiun_pekerja') || getNum('pot_bpjs_pensiun') },
-        { label: 'Astek Pekerja', value: getNum('pot_astek') || getNum('pot_astek_jumlah') },
-        { label: 'SPSI', value: getNum('pot_spsi') },
-        { label: 'PPh 21', value: getNum('pot_pph21') || getNum('pph21_ter') },
+        { label: 'BPJS Kesehatan', value: getDeduction('pot_bpjs_kesehatan_pekerja') || getDeduction('pot_bpjs_kesehatan') },
+        { label: 'BPJS Pensiun', value: getDeduction('pot_bpjs_pensiun_pekerja') || getDeduction('pot_bpjs_pensiun') },
+        { label: 'Astek Pekerja', value: getDeduction('pot_astek_pekerja') || getDeduction('pot_astek') },
+        { label: 'SPSI', value: getDeduction('pot_spsi') },
+        { label: 'PPh 21', value: getDeduction('pot_pph21') || getDeduction('pph21_ter') },
     ].filter(item => item.value > 0)
 
-    const standardPotKeys = ['pot_bpjs_kesehatan_pekerja', 'pot_bpjs_pensiun_pekerja', 'pot_astek', 'pot_astek_jumlah', 'pot_spsi', 'pot_pph21', 'pot_koreksi', 'potongan_upah_kotor_total', 'total_potongan', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_majikan']
+    const standardPotKeys = ['pot_bpjs_kesehatan_pekerja', 'pot_bpjs_kesehatan', 'pot_bpjs_pensiun_pekerja', 'pot_bpjs_pensiun', 'pot_astek', 'pot_astek_pekerja', 'pot_astek_majikan', 'pot_astek_jumlah', 'pot_spsi', 'pot_pph21', 'pot_koreksi', 'potongan_upah_kotor_total', 'total_potongan', 'pot_bpjs_kesehatan_majikan', 'pot_bpjs_pensiun_majikan', 'pot_bpjs_jumlah']
 
     Object.entries(data).forEach(([key, val]) => {
-        if (key.startsWith('pot_') && !standardPotKeys.includes(key) && !key.includes('total') && typeof val === 'number' && val > 0) {
+        const amount = deductionAmount(val)
+        if (key.startsWith('pot_') && !standardPotKeys.includes(key) && !key.includes('total') && !key.includes('majikan') && !key.includes('jumlah') && typeof val === 'number' && amount > 0) {
             const label = key.replace('pot_', '').replace(/_/g, ' ').toUpperCase()
-            potBersihList.push({ label: label, value: val })
+            potBersihList.push({ label: label, value: amount })
         }
     })
 
     const subtotalPotBersih = potBersihList.reduce((acc, curr) => acc + curr.value, 0)
-    const totalPotongan = getNum('total_potongan') || (subtotalPotKotor + subtotalPotBersih)
+    const totalPotongan = getDeduction('total_potongan') || subtotalPotBersih
 
     // Totals
     const jumlahUpahKotor = getNum('jumlah_upah_kotor') || getNum('penghasilan_bruto')

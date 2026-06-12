@@ -4,6 +4,8 @@ import { gangService } from "./gangService";
 import { lemburCalculator } from "./lemburCalculator";
 import { calculateAllCaruman } from './carumanDefinitions';
 import { PayrollCalculator } from './payroll/components/PayrollCalculator';
+import { OtherIncomesService } from './otherIncomesService';
+import { getCanonicalOtherIncomeType } from '../utils/otherIncomeCanonical';
 
 export class ReportService {
     private static instance: ReportService;
@@ -295,6 +297,7 @@ export class ReportService {
         const processedData = await this.processResults(
             employees, attendance, premiHeaders, premiAmounts, brondol, tunjangan,
             potongan, cuti, upahPokok, berasRate, masaKerja, lembur,
+            await this.fetchOtherIncomesForEmployees(employees, month, year),
             gangCode, month, year, useArc
         );
 
@@ -337,10 +340,63 @@ export class ReportService {
 
     // --- Processing ---
 
+    private normalizeOtherIncomeType(value: unknown): string {
+        return String(value || '')
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+    }
+
+    private async fetchOtherIncomesForEmployees(employees: any[], month: number, year: number): Promise<any[]> {
+        const empCodes = employees
+            .map(e => String(e.emp_code || '').trim())
+            .filter(Boolean);
+        const niks = employees
+            .map(e => String(e.new_nik || e.nik || '').trim())
+            .filter(Boolean);
+
+        if (empCodes.length === 0 && niks.length === 0) return [];
+
+        const conditions: string[] = [];
+        const params: any[] = [month, year];
+
+        if (empCodes.length > 0) {
+            conditions.push(`RTRIM(emp_code) IN (${empCodes.map(() => '?').join(',')})`);
+            params.push(...empCodes);
+        }
+        if (niks.length > 0) {
+            conditions.push(`RTRIM(nik) IN (${niks.map(() => '?').join(',')})`);
+            params.push(...niks);
+        }
+
+        try {
+            const db = Database.getExtendedInstance();
+            const rows = await db.query(`
+                SELECT id,
+                       RTRIM(emp_code) as emp_code,
+                       RTRIM(nik) as nik,
+                       RTRIM(ISNULL(new_nik, '')) as new_nik,
+                       RTRIM(income_type) as income_type,
+                       RTRIM(income_name) as income_name,
+                       amount
+                FROM dbo.employee_other_incomes
+                WHERE period_month = ? AND period_year = ?
+                  AND (${conditions.join(' OR ')})
+                ORDER BY id
+            `, params);
+            return OtherIncomesService.deduplicateIncomeRows(rows);
+        } catch (error) {
+            console.warn('[ReportService] Failed to fetch employee_other_incomes for Daftar Upah Excel:', error);
+            return [];
+        }
+    }
+
     private async processResults(
         employees: any[], attendance: any[], premiHeaders: any[], premiAmounts: any[],
         brondol: any[], tunjangan: any[], potongan: any[], cuti: any[],
         upahPokok: any[], berasRate: any[], masaKerja: any[], lembur: any[],
+        otherIncomes: any[],
         gangCode: string, month: number, year: number, useArc: boolean
     ): Promise<any> {
         const employeeMap = new Map<string, any>();
@@ -388,6 +444,39 @@ export class ReportService {
         // Filter 0 HK
         for (const [key, emp] of employeeMap.entries()) {
             if (!emp.jumlah_hk) employeeMap.delete(key);
+        }
+
+        const employeeByNik = new Map<string, any>();
+        for (const emp of employeeMap.values()) {
+            const nikKey = String(emp.new_nik || emp.nik || '').trim().toUpperCase();
+            if (nikKey) employeeByNik.set(nikKey, emp);
+            emp.other_incomes = [];
+            emp.pendapatan_lainnya = 0;
+            emp.total_pendapatan_lainnya = 0;
+        }
+
+        for (const row of otherIncomes || []) {
+            const empCodeKey = String(row.emp_code || '').trim().toUpperCase();
+            const nikKey = String(row.nik || '').trim().toUpperCase();
+            const emp = employeeMap.get(empCodeKey) || employeeByNik.get(nikKey);
+            if (!emp) continue;
+
+            const incomeType = this.normalizeOtherIncomeType(getCanonicalOtherIncomeType(row));
+            if (!incomeType) continue;
+
+            const amount = Number(row.amount || 0) || 0;
+            if (amount === 0) continue;
+
+            emp.other_incomes.push({
+                type: incomeType,
+                name: row.income_name || incomeType,
+                amount
+            });
+
+            const field = `pendapatan_${incomeType.toLowerCase()}`;
+            emp[field] = (Number(emp[field] || 0) || 0) + amount;
+            emp.pendapatan_lainnya = (Number(emp.pendapatan_lainnya || 0) || 0) + amount;
+            emp.total_pendapatan_lainnya = emp.pendapatan_lainnya;
         }
 
         upahPokok.forEach(r => {
@@ -486,8 +575,9 @@ export class ReportService {
                 const amt = r.TotalAmount || 0;
 
                 if (desc.includes('KOREKSI')) {
-                    emp.pot_koreksi = amt;
-                    emp.potongan_upah_kotor.koreksi = amt;
+                    const koreksiAmount = Math.abs(Number(amt) || 0);
+                    emp.pot_koreksi = (Math.abs(Number(emp.pot_koreksi) || 0) + koreksiAmount);
+                    emp.potongan_upah_kotor.koreksi = (Math.abs(Number(emp.potongan_upah_kotor.koreksi) || 0) + koreksiAmount);
                 } else if (desc.includes('PPH')) {
                     emp.pot_pph21 = amt;
                     emp.potongan_upah_bersih.pph21 = amt;
@@ -541,7 +631,7 @@ export class ReportService {
             emp.pot_astek = astekPek;
             emp.pot_astek_maj = astekMaj;
 
-            const potKoreksi = emp.pot_koreksi || 0;
+            const potKoreksi = Math.abs(Number(emp.pot_koreksi) || 0);
             emp.potongan_upah_kotor.total = potKoreksi;
             emp.potongan_upah_kotor_total = potKoreksi;
 
