@@ -73,7 +73,6 @@ import { getPayrollPeriodMode, resolveEffectiveUseHistoryDb } from './utils/payr
 import { buildPayslipEmployeeRowMap, getEmployeeRows, resolvePayslipEmployeeCodes } from './utils/payrollRowAccessors'
 import { buildDbPtrjCompareReport } from './utils/payrollDbPtrjCompareReport'
 import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
-import { getDaftarUpahDownloadActionCopy } from './utils/payrollDownloadAction'
 import { buildBackendUrl } from './utils/apiBase'
 const ProductivityReportPage = lazy(() => import('./pages/ProductivityReportPage'))
 const DetailedSalaryAnalysisPage = lazy(() => import('./pages/DetailedSalaryAnalysisPage'))
