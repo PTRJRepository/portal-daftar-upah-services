@@ -10,7 +10,7 @@ import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import PremiumDetailPopup from './PremiumDetailPopup';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn, saveManualAdjustment, saveManualAdjustmentBatch, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -36,7 +36,6 @@ import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable,
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
 import { compareEmpCodeValues, sortEmployeesByEmpCode } from '../utils/employeeSort';
-import { buildBackendUrl } from '../utils/apiBase';
 import {
     buildPayrollViewportChapters,
     detectActivePayrollChapter,
@@ -561,24 +560,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Replace the old fetch/process approach with SSE streaming
     // ================================================================
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
-    const streamFallbackKeyRef = useRef(null);
     const effectiveGangPrefix = useMemo(
         () => resolveEffectiveGangPrefix(gangCode, gangPrefix, division),
         [division, gangCode, gangPrefix]
     );
     const canStartDataFlow = !!token && !!division && !!month && !!year && !currentPeriodLoading;
-    const dataRequestKey = useMemo(() => [
-        token ? 'auth' : 'no-auth',
-        division || '',
-        month || '',
-        year || '',
-        effectiveGangPrefix || '',
-        gangCode || '',
-        useHistoryDb ? 'history' : 'origin',
-        valuePriorityMode || '',
-        snapshotVersion || '',
-        refreshTrigger || 0
-    ].join('|'), [division, effectiveGangPrefix, gangCode, month, refreshTrigger, snapshotVersion, token, useHistoryDb, valuePriorityMode, year]);
 
     // Use SSE streaming for progressive data delivery
     // CRITICAL FIX: Remove gangLoading from enabled condition to allow streaming to start immediately
@@ -596,13 +582,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
     });
-
-    useEffect(() => {
-        streamFallbackKeyRef.current = null;
-        setStreamEnabled(true);
-        setError('');
-        setDataReady(false);
-    }, [dataRequestKey]);
 
     const triggerPayrollRefresh = useCallback(() => {
         if (typeof onRefresh === 'function') {
@@ -944,22 +923,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     }, [streamRows, streamActiveFields, stream.isComplete]);
 
-    // Fallback: if stream errors and we have no data, fall back to old fetch once per request.
+    // Fallback: if stream errors and we have no data, fall back to old fetch
     useEffect(() => {
-        if (!stream.error || stream.gangs?.length || !streamEnabled) return;
-
-        const fallbackAlreadyUsed = streamFallbackKeyRef.current === dataRequestKey;
-        if (!fallbackAlreadyUsed) {
-            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch once', stream.error);
-            streamFallbackKeyRef.current = dataRequestKey;
+        if (stream.error && !stream.gangs?.length && streamEnabled) {
+            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch');
             setStreamEnabled(false);
-            setError('');
-            return;
+            setError(null); // Clear stream error
         }
-
-        setError(stream.error);
-        setDataReady(true);
-    }, [dataRequestKey, stream.error, stream.gangs, streamEnabled]);
+    }, [stream.error, stream.gangs, streamEnabled]);
 
     // Update rows when streaming or legacy fetch is active
     useEffect(() => {
@@ -1761,7 +1732,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode profile override failed:', err);
                 }
             } else {
-                    const res = await fetch(buildBackendUrl('/payroll/overrides/profile'), {
+                const res = await fetch('/payroll/overrides/profile', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1790,7 +1761,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode value overrides failed:', err);
                 }
             } else {
-                    const res = await fetch(buildBackendUrl('/payroll/overrides/values'), {
+                const res = await fetch('/payroll/overrides/values', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1807,55 +1778,59 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (resOk && resJson?.success) successCount += valueItems.length;
         }
 
-        // Batch save legacy manual edits (premi, potongan, dll) — replaces serial loop
-        if (legacyEdits.length > 0) {
+        for (const edit of legacyEdits) {
+            const isDeleteEdit = isManualCellDeleteEdit(edit);
+            const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+            const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+            const payload = {
+                period_month: month,
+                period_year: year,
+                emp_code: edit.emp_code || edit.nik,
+                nik: edit.nik,
+                emp_name: edit.emp_name || null,
+                gang_code: edit.gang_code,
+                division_code: division,
+                adjustment_type: edit.type,
+                adjustment_name: edit.name,
+                amount: isDeleteEdit ? 0 : edit.value,
+                remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode
+                    ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
+                    : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                ad_code: edit.ad_code,
+                task_code: edit.task_code,
+                base_task_code: edit.base_task_code,
+                task_desc: edit.task_desc,
+                metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+            };
+
+            let resOk = false;
+            let resJson = null;
+
             if (isProdMode()) {
-                // Prod mode: fallback ke serial (locked endpoint belum punya batch)
-                for (const edit of legacyEdits) {
-                    const isDeleteEdit = isManualCellDeleteEdit(edit);
-                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
-                    const payload = {
-                        period_month: month, period_year: year,
-                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
-                        gang_code: edit.gang_code, division_code: division,
-                        adjustment_type: edit.type, adjustment_name: edit.name,
-                        amount: isDeleteEdit ? 0 : edit.value,
-                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
-                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
-                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
-                    };
-                    try {
-                        const resJson = await saveLockedManualEdit(token, payload);
-                        if (resJson?.success) successCount++;
-                    } catch (err) { console.error('Prod Mode specific manual edit failed:', err); }
+                try {
+                    resJson = await saveLockedManualEdit(token, payload);
+                    resOk = true;
+                } catch (err) {
+                    console.error('Prod Mode specific manual edit failed:', err);
                 }
             } else {
-                // Non-prod: batch endpoint
-                const batchItems = legacyEdits.map(edit => {
-                    const isDeleteEdit = isManualCellDeleteEdit(edit);
-                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
-                    return {
-                        period_month: month, period_year: year,
-                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
-                        gang_code: edit.gang_code, division_code: division,
-                        adjustment_type: edit.type, adjustment_name: edit.name,
-                        amount: isDeleteEdit ? 0 : edit.value,
-                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
-                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
-                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
-                    };
+                const res = await fetch('/payroll/manual-edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
                 });
-                try {
-                    const batchResult = await saveManualAdjustmentBatch(token, batchItems);
-                    successCount += batchResult?.successCount || 0;
-                    if (batchResult?.failedCount > 0) {
-                        console.warn(`[batch] ${batchResult.failedCount} items gagal disimpan`);
-                    }
-                } catch (err) {
-                    console.error('Batch manual edit failed:', err);
+                if (res.ok) {
+                    resOk = true;
+                    resJson = await res.json();
                 }
+            }
+
+            if (resOk && resJson?.success) {
+                successCount++;
+                if (isDeleteEdit) deleteCount++;
             }
         }
 
@@ -1925,7 +1900,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         console.error('Prod Mode other income save failed:', err);
                     }
                 } else {
-                    const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
+                    const res = await fetch('/payroll/manual-edit', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1939,7 +1914,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 }
             } else {
-                const res = await fetch(buildBackendUrl('/payroll/locked/pendapatan-lainnya-edit'), {
+                const res = await fetch('/payroll/locked/pendapatan-lainnya-edit', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2132,7 +2107,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (isProdMode()) {
                 responseJson = await seedLockedAutoBufferToManualAdjustment(token, payload);
             } else {
-                const response = await fetch(buildBackendUrl('/payroll/manual-adjustment/seed-auto-buffer'), {
+                const response = await fetch('/payroll/manual-adjustment/seed-auto-buffer', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2414,7 +2389,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
                 if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
                 appendSnapshotVersionToSearchParams(params, snapshotVersion);
-                const url = buildBackendUrl(`/payroll/report/division-raw-tree?${params.toString()}`);
+                const url = `/payroll/report/division-raw-tree?${params.toString()}`;
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` },
                     signal: controller.signal
@@ -2469,18 +2444,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             fetchDivisionData();
         }
     }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, valuePriorityMode, snapshotVersion, fetchDivisionData, streamEnabled]);
-
-    const retryPayrollLoad = useCallback(() => {
-        streamFallbackKeyRef.current = null;
-        setError('');
-        setDataReady(false);
-        setStreamEnabled(true);
-        if (typeof onRefresh === 'function') {
-            onRefresh();
-        } else if (streamEnabled && typeof stream.startStream === 'function') {
-            void stream.startStream();
-        }
-    }, [onRefresh, stream.startStream, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -4034,8 +3997,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const rectWidth = container.getBoundingClientRect?.().width;
-        const nextWidth = Math.max(0, Math.round(Number(rectWidth || container.offsetWidth || container.clientWidth) || 0));
+        const nextWidth = Math.max(0, Math.round(Number(container.clientWidth) || 0));
         setTableContainerWidth((prev) => {
             if (Math.abs(prev - nextWidth) < 1) return prev;
             return nextWidth;
@@ -4248,6 +4210,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     useEffect(() => {
         const container = tableContainerRef.current;
+        const table = tableRef.current;
         if (!container || typeof ResizeObserver === 'undefined') return undefined;
 
         const observer = new ResizeObserver(() => {
@@ -4255,9 +4218,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             syncHorizontalScrollState(container);
         });
         observer.observe(container);
+        if (table) observer.observe(table);
 
         return () => observer.disconnect();
-    }, [syncHorizontalScrollState, syncTableContainerWidth]);
+    }, [syncHorizontalScrollState, syncTableContainerWidth, displayMode, renderColumnDefs.length, displayRows.length]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -4474,7 +4438,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         <button
                             onClick={() => {
                                 console.log('[CustomPayrollTable] 🔄 Retry triggered');
-                                retryPayrollLoad();
+                                onRefresh?.();
                             }}
                             style={{
                                 padding: '10px 24px', background: '#dc2626', color: 'white',
@@ -4522,7 +4486,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <button
                         onClick={() => {
                             console.log('[CustomPayrollTable] 🔄 Refresh button clicked');
-                            retryPayrollLoad();
+                            onRefresh?.();
                         }}
                         style={{
                             padding: '10px 24px', background: '#1e3a8a', color: 'white',
@@ -4590,8 +4554,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'}`}
             onMouseUp={handleMouseUp}
             style={{ 
-                height: '100%',
-                minHeight: 0,
+                height: 'calc(100vh - 120px)', 
+                minHeight: '400px',
                 ...payrollResponsiveVars,
                 '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
                 '--payroll-grand-total-offset': `${shellGrandTotalOffset}px`
