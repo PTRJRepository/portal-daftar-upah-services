@@ -2,12 +2,6 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from '
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
-import {
-    formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
-    normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
-    NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
-    isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
-} from './payrollTableFormatters';
 import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment, deleteLockedManualAdjustmentColumn } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
@@ -16,7 +10,7 @@ import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import PremiumDetailPopup from './PremiumDetailPopup';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn, saveManualAdjustment, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment, saveManualAdjustmentBatch, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -26,7 +20,12 @@ import { splitPayrollEdits } from '../utils/payrollEditPayloads';
 import { appendSnapshotVersionToSearchParams, buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
 import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
 import { resolveJabatanRate } from '../utils/payrollRowAccessors';
-import { formatOtherIncomeColumnLabel, getOtherIncomeDetailFields } from '../utils/otherIncomeColumns';
+import {
+    formatOtherIncomeColumnLabel,
+    getEditableOtherIncomeConfig,
+    getEditableOtherIncomeFields,
+    getOtherIncomeDetailFields,
+} from '../utils/otherIncomeColumns';
 import { isPayrollNumericField, isPayrollTotalDisplayOnlyField, resolveGrandTotalNumericValue } from '../utils/payrollGrandTotalValue';
 import { buildCanonicalManualAdjustmentName, buildManualColumnPlaceholderPayload, buildPendingManualColumn, resolvePremiumDefinitionForAdjustment } from '../utils/payrollManualAdjustmentNames';
 import { buildPremiumDetailEdit, validatePremiumDetailMetadata } from '../utils/payrollPremiumDetailEdits';
@@ -37,6 +36,7 @@ import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable,
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
 import { compareEmpCodeValues, sortEmployeesByEmpCode } from '../utils/employeeSort';
+import { buildBackendUrl } from '../utils/apiBase';
 import {
     buildPayrollViewportChapters,
     detectActivePayrollChapter,
@@ -99,12 +99,42 @@ import {
  * - HR_PAYROLL (Konfigurasi Gaji)
  */
 
-// formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
-// normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
-// NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
-// isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
-// → imported from ./payrollTableFormatters.js
+const formatNumber = (value) => {
+    if (value === null || value === undefined) return '-';
+    const n = Number(value);
+    if (isNaN(n)) return '-';
+    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
+};
 
+const formatDecimal = (value) => {
+    if (value === null || value === undefined) return '-';
+    const n = Number(value);
+    if (isNaN(n)) return '-';
+    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
+};
+
+const NEGATIVE_TOTAL_DISPLAY_FIELDS = new Set([
+    'potongan_upah_kotor_total',
+    'total_potongan',
+    'total_potongan_bersih'
+]);
+
+const formatNegativeTotalNumber = (value) => {
+    const n = Number(value) || 0;
+    if (n === 0) return '-';
+    return `-${formatNumber(Math.abs(n))}`;
+};
+
+const toFiniteNumber = toFinitePayrollNumber;
+
+const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 const EMPTY_CELL_STYLE = Object.freeze({});
 
 const getInitialViewportWidth = () => {
@@ -126,9 +156,21 @@ const formatHeaderLabel = (label) => {
 
 const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
 
-// normalizeValuePriorityMode → imported from ./payrollTableFormatters.js
-// normalizeFieldKey → imported from ./payrollTableFormatters.js
-// formatSourceCompareValue → imported from ./payrollTableFormatters.js
+const normalizeValuePriorityMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
+    return 'non_db_ptrj';
+};
+
+const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
+
+const formatSourceCompareValue = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
+    const n = Number(value);
+    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
+    return String(value);
+};
 
 const STATIC_PREMI_FIELDS = new Set(['premi_brondol']);
 const STATIC_BRONDOL_FIELD_KEYS = new Set([
@@ -153,7 +195,7 @@ const STATIC_BRONDOL_LABELS = new Set([
 ]);
 const STATIC_POTONGAN_FIELDS = new Set(['pot_spsi']);
 
-// normalizeHeaderLabel → imported from ./payrollTableFormatters.js
+const normalizeHeaderLabel = (value) => String(value || '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
 
 const isBrondolFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
@@ -218,8 +260,12 @@ const getManualDetailValidation = ({ metadata, inputType, amount, adjustmentType
     return validation.isComplete ? null : validation;
 };
 
-// MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks, isManualCellDeleteEdit
-// → imported from ./payrollTableFormatters.js
+const MANUAL_CELL_DELETE_MARKER = 'DELETE_CELL';
+
+const buildManualCellDeleteRemarks = (name) => `${name || 'MANUAL ADJUSTMENT'} | ${MANUAL_CELL_DELETE_MARKER} | 0`;
+
+const isManualCellDeleteEdit = (edit) => Boolean(edit?.delete_cell)
+    || (Number(edit?.value || 0) === 0 && String(edit?.remarks || '').toUpperCase().includes(MANUAL_CELL_DELETE_MARKER));
 
 const isAutomaticPayrollKoreksiFieldKey = (value) => normalizeFieldKey(value) === 'koreksi_hk';
 
@@ -231,65 +277,6 @@ const isDynamicGrossDeductionFieldKey = (value) => {
 const isGrossDeductionFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
     return isDynamicGrossDeductionFieldKey(normalized) || normalized === 'pot_koreksi' || normalized === 'premi_koreksi' || normalized === 'potongan_upah_kotor_total';
-};
-
-const resolveGrossDeductionWithoutAutomaticHk = (row) => {
-    if (!row || typeof row !== 'object') return { total: 0, excludedHk: 0 };
-
-    const rawTotal = Math.abs(toFiniteNumber(row.potongan_upah_kotor_total));
-    const potKoreksi = Math.abs(toFiniteNumber(row.pot_koreksi));
-    const automaticHk = Math.abs(toFiniteNumber(row.koreksi_hk));
-    let dynamicTotal = 0;
-
-    Object.keys(row).forEach((key) => {
-        if (isDynamicGrossDeductionFieldKey(key)) {
-            dynamicTotal += Math.abs(toFiniteNumber(row[key]));
-        }
-    });
-
-    const dynamicGross = row.potongan_upah_kotor?.dynamic;
-    if (dynamicGross && typeof dynamicGross === 'object') {
-        Object.entries(dynamicGross).forEach(([key, value]) => {
-            if (isDynamicGrossDeductionFieldKey(key)) {
-                dynamicTotal += Math.abs(toFiniteNumber(value));
-            }
-        });
-    }
-
-    const sourceTotal = rawTotal || potKoreksi;
-    if (dynamicTotal > 0) {
-        return {
-            total: dynamicTotal,
-            excludedHk: Math.max(0, sourceTotal - dynamicTotal)
-        };
-    }
-
-    if (sourceTotal > 0 && automaticHk > 0 && Math.abs(sourceTotal - automaticHk) <= 1) {
-        return { total: 0, excludedHk: sourceTotal };
-    }
-
-    return { total: sourceTotal, excludedHk: 0 };
-};
-
-const normalizeGrossDeductionForDisplay = (row) => {
-    if (!row || typeof row !== 'object') return row;
-    if (row.type && !['employee', 'gang_total', 'grand_total'].includes(row.type)) return row;
-
-    const { total, excludedHk } = resolveGrossDeductionWithoutAutomaticHk(row);
-    if (total === Math.abs(toFiniteNumber(row.potongan_upah_kotor_total)) && excludedHk === 0) {
-        return row;
-    }
-
-    // [FIX] Do NOT add excludedHk back to jumlah_upah_kotor
-    // koreksi_hk is already embedded in gaji_pokok_aktual (from PR_TASKREGLN scan)
-    // Adding excludedHk back causes double counting where koreksi_hk is counted twice:
-    // once in gaji_pokok_aktual and again in the gross calculation
-    // pot_koreksi is a separate deduction from POTONGAN table, not derived from koreksi_hk
-    return {
-        ...row,
-        potongan_upah_kotor_total: total
-        // REMOVED: excludedHk adjustments - koreksi_hk already in gaji_pokok_aktual
-    };
 };
 
 const isPotonganFieldKey = (value) => {
@@ -329,7 +316,15 @@ const formatFallbackPotonganLabel = (field) => {
     return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
 };
 
-// parseMetadataObjectValue → imported from ./payrollTableFormatters.js
+const parseMetadataObjectValue = (value) => {
+    if (!value) return null;
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+};
 
 const resolveInitialValuePriorityMode = () => {
     try {
@@ -464,10 +459,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [premiumPopup, setPremiumPopup] = useState(emptyPremiumPopup);
     const [premiumDefinitions, setPremiumDefinitions] = useState([]);
 
-    // Kontan (Other Income) State - Always editable column
-    const [editedKontanCells, setEditedKontanCells] = useState({}); // { 'nik-kontan': { value, originalValue, gang_code } }
-    // Pendapatan Lainnya (Bonus, THR) State - Editable in edit mode
-    const [editedPendapatanCells, setEditedPendapatanCells] = useState({}); // { 'nik-pendapatan_field': { value, originalValue, gang_code } }
+    // Other Income State - editable bonus/exgratia/kontan cells
+    const [editedOtherIncomeCells, setEditedOtherIncomeCells] = useState({});
     const [payrollToast, setPayrollToast] = useState(null);
     const [payrollConfirm, setPayrollConfirm] = useState(null);
 
@@ -492,12 +485,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const initialDisplayState = useMemo(() => resolvePayrollDisplayModeState(), []);
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
-    const [compactMode, setCompactMode] = useState(() => {
-        try { return localStorage.getItem('payroll.compactMode') === 'true'; } catch { return false; }
-    });
-    // Virtual scroll state: track scroll position for row windowing
-    const [vsScrollTop, setVsScrollTop] = useState(0);
-    const [vsContainerHeight, setVsContainerHeight] = useState(600);
     const [internalValuePriorityMode, setInternalValuePriorityMode] = useState(resolveInitialValuePriorityMode);
     const valuePriorityMode = controlledValuePriorityMode === null || controlledValuePriorityMode === undefined
         ? internalValuePriorityMode
@@ -529,26 +516,38 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         const manualValues = Object.values(editedCells);
         const manualCount = manualValues.length;
         const manualDeleteCount = manualValues.filter(isManualCellDeleteEdit).length;
-        const kontanValues = Object.values(editedKontanCells);
-        const kontanCount = kontanValues.length;
-        const kontanDeleteCount = kontanValues.filter((item) => item.value === 0).length;
-        const pendapatanValues = Object.values(editedPendapatanCells);
-        const pendapatanCount = pendapatanValues.length;
-        const pendapatanDeleteCount = pendapatanValues.filter((item) => item.value === 0).length;
+        const otherIncomeValues = Object.values(editedOtherIncomeCells);
+        const otherIncomeCount = otherIncomeValues.length;
+        const otherIncomeDeleteCount = otherIncomeValues.filter((item) => item.value === 0).length;
         const addedColumnCount = addedColumns.filter((item) => !item.placeholder_saved).length;
         const deletedColumnCount = pendingDeletedColumns.length;
         return {
             manualCount,
-            kontanCount,
-            pendapatanCount,
-            deleteCount: manualDeleteCount + kontanDeleteCount + pendapatanDeleteCount + deletedColumnCount,
+            otherIncomeCount,
+            deleteCount: manualDeleteCount + otherIncomeDeleteCount + deletedColumnCount,
             manualDeleteCount,
             addedColumnCount,
             deletedColumnCount,
-            totalCount: manualCount + kontanCount + pendapatanCount + addedColumnCount + deletedColumnCount
+            totalCount: manualCount + otherIncomeCount + addedColumnCount + deletedColumnCount
         };
-    }, [addedColumns, editedCells, editedKontanCells, editedPendapatanCells, pendingDeletedColumns.length]);
+    }, [addedColumns, editedCells, editedOtherIncomeCells, pendingDeletedColumns.length]);
     const hasPendingEdits = pendingSaveSummary.totalCount > 0;
+
+    const getOtherIncomeEditDeltaForRow = useCallback((row) => {
+        const empCode = row?.emp_code || row?.nik;
+        if (!empCode) return 0;
+        return Object.values(editedOtherIncomeCells).reduce((sum, item) => {
+            const itemEmpCode = item?.emp_code || item?.nik;
+            if (itemEmpCode !== empCode) return sum;
+            return sum + (toFiniteNumber(item.value) - toFiniteNumber(item.originalValue));
+        }, 0);
+    }, [editedOtherIncomeCells]);
+
+    const getOtherIncomeDisplayValue = useCallback((row, field) => {
+        const empCode = row?.emp_code || row?.nik;
+        const edit = editedOtherIncomeCells[`${empCode}-${field}`];
+        return edit ? toFiniteNumber(edit.value) : toFiniteNumber(row?.[field]);
+    }, [editedOtherIncomeCells]);
 
     const tableRef = useRef(null);
     const tableContainerRef = useRef(null);
@@ -562,11 +561,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Replace the old fetch/process approach with SSE streaming
     // ================================================================
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
+    const streamFallbackKeyRef = useRef(null);
     const effectiveGangPrefix = useMemo(
         () => resolveEffectiveGangPrefix(gangCode, gangPrefix, division),
         [division, gangCode, gangPrefix]
     );
     const canStartDataFlow = !!token && !!division && !!month && !!year && !currentPeriodLoading;
+    const dataRequestKey = useMemo(() => [
+        token ? 'auth' : 'no-auth',
+        division || '',
+        month || '',
+        year || '',
+        effectiveGangPrefix || '',
+        gangCode || '',
+        useHistoryDb ? 'history' : 'origin',
+        valuePriorityMode || '',
+        snapshotVersion || '',
+        refreshTrigger || 0
+    ].join('|'), [division, effectiveGangPrefix, gangCode, month, refreshTrigger, snapshotVersion, token, useHistoryDb, valuePriorityMode, year]);
 
     // Use SSE streaming for progressive data delivery
     // CRITICAL FIX: Remove gangLoading from enabled condition to allow streaming to start immediately
@@ -584,6 +596,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
     });
+
+    useEffect(() => {
+        streamFallbackKeyRef.current = null;
+        setStreamEnabled(true);
+        setError('');
+        setDataReady(false);
+    }, [dataRequestKey]);
 
     const triggerPayrollRefresh = useCallback(() => {
         if (typeof onRefresh === 'function') {
@@ -925,14 +944,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     }, [streamRows, streamActiveFields, stream.isComplete]);
 
-    // Fallback: if stream errors and we have no data, fall back to old fetch
+    // Fallback: if stream errors and we have no data, fall back to old fetch once per request.
     useEffect(() => {
-        if (stream.error && !stream.gangs?.length && streamEnabled) {
-            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch');
+        if (!stream.error || stream.gangs?.length || !streamEnabled) return;
+
+        const fallbackAlreadyUsed = streamFallbackKeyRef.current === dataRequestKey;
+        if (!fallbackAlreadyUsed) {
+            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch once', stream.error);
+            streamFallbackKeyRef.current = dataRequestKey;
             setStreamEnabled(false);
-            setError(null); // Clear stream error
+            setError('');
+            return;
         }
-    }, [stream.error, stream.gangs, streamEnabled]);
+
+        setError(stream.error);
+        setDataReady(true);
+    }, [dataRequestKey, stream.error, stream.gangs, streamEnabled]);
 
     // Update rows when streaming or legacy fetch is active
     useEffect(() => {
@@ -971,7 +998,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
         if (stream.gangs && stream.gangs.length > 0) {
             const baseRows = streamRows;
-            if (Object.keys(editedCells).length > 0 || Object.keys(editedKontanCells).length > 0) {
+            if (Object.keys(editedCells).length > 0 || Object.keys(editedOtherIncomeCells).length > 0) {
                 const editedCellsByEmployee = new Map();
                 Object.values(editedCells).forEach((item) => {
                     const empCode = item?.emp_code || item?.nik;
@@ -983,13 +1010,21 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         editedCellsByEmployee.set(empCode, [item]);
                     }
                 });
+                const editedOtherIncomesByEmployee = new Map();
+                Object.values(editedOtherIncomeCells).forEach((item) => {
+                    const empCode = item?.emp_code || item?.nik;
+                    if (!empCode || !item?.field) return;
+                    const existing = editedOtherIncomesByEmployee.get(empCode) || [];
+                    existing.push(item);
+                    editedOtherIncomesByEmployee.set(empCode, existing);
+                });
 
                 resultRows = baseRows.map(row => {
                     if (row.type !== 'employee') return row;
                     const empCode = row.emp_code || row.nik;
                     const employeeEdits = editedCellsByEmployee.get(empCode) || [];
-                    const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                    if (employeeEdits.length === 0 && !kontanEdit) return row;
+                    const otherIncomeEdits = editedOtherIncomesByEmployee.get(empCode) || [];
+                    if (employeeEdits.length === 0 && otherIncomeEdits.length === 0) return row;
 
                     const merged = { ...row };
                     for (const edit of employeeEdits) {
@@ -997,19 +1032,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         merged[edit.field] = edit.value;
                     }
 
-                    if (kontanEdit) {
-                        merged.pendapatan_kontan = toFiniteNumber(kontanEdit.value);
+                    for (const edit of otherIncomeEdits) {
+                        merged[edit.field] = toFiniteNumber(edit.value);
                     }
-
-                    // Apply pendapatan (bonus/thr) edits
-                    Object.entries(editedPendapatanCells).forEach(([key, edit]) => {
-                        if (key.startsWith(`${empCode}-`)) {
-                            const field = edit.field;
-                            if (field) {
-                                merged[field] = toFiniteNumber(edit.value);
-                            }
-                        }
-                    });
 
                     return {
                         ...merged
@@ -1021,8 +1046,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         } else {
             resultRows = rows;
         }
-
-        resultRows = resultRows.map(normalizeGrossDeductionForDisplay);
 
         // Cek apakah streaming masih berjalan
         const isStreaming = !stream.isComplete || (stream.progress && stream.progress.stage !== 'complete');
@@ -1065,7 +1088,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         flushEmployeeRows();
 
         return sortedRows;
-    }, [stream.gangs, streamRows, rows, editedCells, editedKontanCells, stream.isComplete, stream.progress, sortBy, sortOrder]);
+    }, [stream.gangs, streamRows, rows, editedCells, editedOtherIncomeCells, stream.isComplete, stream.progress, sortBy, sortOrder]);
 
     const employeeRows = useMemo(
         () => displayRows.filter(row => row.type === 'employee'),
@@ -1738,7 +1761,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode profile override failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/profile', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/profile'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1767,7 +1790,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode value overrides failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/values', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/values'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1784,59 +1807,55 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (resOk && resJson?.success) successCount += valueItems.length;
         }
 
-        for (const edit of legacyEdits) {
-            const isDeleteEdit = isManualCellDeleteEdit(edit);
-            const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-            const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
-            const payload = {
-                period_month: month,
-                period_year: year,
-                emp_code: edit.emp_code || edit.nik,
-                nik: edit.nik,
-                emp_name: edit.emp_name || null,
-                gang_code: edit.gang_code,
-                division_code: division,
-                adjustment_type: edit.type,
-                adjustment_name: edit.name,
-                amount: isDeleteEdit ? 0 : edit.value,
-                remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode
-                    ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
-                    : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
-                ad_code: edit.ad_code,
-                task_code: edit.task_code,
-                base_task_code: edit.base_task_code,
-                task_desc: edit.task_desc,
-                metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
-            };
-
-            let resOk = false;
-            let resJson = null;
-
+        // Batch save legacy manual edits (premi, potongan, dll) — replaces serial loop
+        if (legacyEdits.length > 0) {
             if (isProdMode()) {
-                try {
-                    resJson = await saveLockedManualEdit(token, payload);
-                    resOk = true;
-                } catch (err) {
-                    console.error('Prod Mode specific manual edit failed:', err);
+                // Prod mode: fallback ke serial (locked endpoint belum punya batch)
+                for (const edit of legacyEdits) {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    const payload = {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
+                    try {
+                        const resJson = await saveLockedManualEdit(token, payload);
+                        if (resJson?.success) successCount++;
+                    } catch (err) { console.error('Prod Mode specific manual edit failed:', err); }
                 }
             } else {
-                const res = await fetch('/payroll/manual-edit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(payload)
+                // Non-prod: batch endpoint
+                const batchItems = legacyEdits.map(edit => {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    return {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
                 });
-                if (res.ok) {
-                    resOk = true;
-                    resJson = await res.json();
+                try {
+                    const batchResult = await saveManualAdjustmentBatch(token, batchItems);
+                    successCount += batchResult?.successCount || 0;
+                    if (batchResult?.failedCount > 0) {
+                        console.warn(`[batch] ${batchResult.failedCount} items gagal disimpan`);
+                    }
+                } catch (err) {
+                    console.error('Batch manual edit failed:', err);
                 }
-            }
-
-            if (resOk && resJson?.success) {
-                successCount++;
-                if (isDeleteEdit) deleteCount++;
             }
         }
 
@@ -1867,13 +1886,17 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         return { changedCount: successCount };
     };
 
-    const saveEditedKontanCells = async () => {
-        const kontanEdits = Object.values(editedKontanCells);
-        if (kontanEdits.length === 0) return { changedCount: 0, deleteCount: 0 };
+    const saveEditedOtherIncomeCells = async () => {
+        const otherIncomeEdits = Object.values(editedOtherIncomeCells);
+        if (otherIncomeEdits.length === 0) return { changedCount: 0, deleteCount: 0 };
 
         let successCount = 0;
         let deleteCount = 0;
-        for (const k of kontanEdits) {
+        for (const k of otherIncomeEdits) {
+            const incomeType = k.income_type || getEditableOtherIncomeConfig(k.field)?.type;
+            const incomeName = k.income_name || getEditableOtherIncomeConfig(k.field)?.name || incomeType;
+            if (!incomeType) continue;
+
             const payload = {
                 period_month: month,
                 period_year: year,
@@ -1883,55 +1906,26 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 gang_code: k.gang_code,
                 division_code: division,
                 adjustment_type: 'PENDAPATAN_LAINNYA',
-                adjustment_name: 'KONTAN',
+                adjustment_name: incomeName,
                 amount: k.value,
                 remarks: k.value === 0
-                    ? `KONTAN | DELETED | 0 | sync:MANUAL | match:MANUAL`
-                    : `KONTAN | PENDAPATAN LAINNYA | ${k.value} | sync:MANUAL | match:MANUAL`
+                    ? `${incomeName} | DELETED | 0 | sync:MANUAL | match:MANUAL`
+                    : `${incomeName} | PENDAPATAN LAINNYA | ${k.value} | sync:MANUAL | match:MANUAL`
             };
 
             let resOk = false;
             let resJson = null;
 
-            if (isProdMode()) {
-                try {
-                    if (k.value === 0) {
-                        const delPayload = {
-                            nik: k.nik,
-                            period_month: month,
-                            period_year: year,
-                            income_type: 'KONTAN'
-                        };
-                        const delRes = await fetch('/payroll/locked/income-delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify(delPayload)
-                        });
-                        resJson = await delRes.json();
-                        resOk = delRes.ok;
-                    } else {
+            if (incomeType === 'KONTAN') {
+                if (isProdMode()) {
+                    try {
                         resJson = await saveLockedManualEdit(token, payload);
                         resOk = true;
+                    } catch (err) {
+                        console.error('Prod Mode other income save failed:', err);
                     }
-                } catch (err) {
-                    console.error('Prod Mode kontan save failed:', err);
-                }
-            } else {
-                let res;
-                if (k.value === 0) {
-                    const delPayload = {
-                        nik: k.nik,
-                        period_month: month,
-                        period_year: year,
-                        income_type: 'KONTAN'
-                    };
-                    res = await fetch('/payroll/locked/income-delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify(delPayload)
-                    });
                 } else {
-                    res = await fetch('/payroll/manual-edit', {
+                    const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1939,7 +1933,31 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         },
                         body: JSON.stringify(payload)
                     });
+                    if (res.ok) {
+                        resOk = true;
+                        resJson = await res.json();
+                    }
                 }
+            } else {
+                const res = await fetch(buildBackendUrl('/payroll/locked/pendapatan-lainnya-edit'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        nik: k.nik,
+                        emp_code: k.emp_code,
+                        emp_name: k.emp_name || '',
+                        period_month: month,
+                        period_year: year,
+                        amount: k.value,
+                        gang_code: k.gang_code || '',
+                        division_code: division || '',
+                        income_type: incomeType,
+                        income_name: incomeName
+                    })
+                });
                 if (res.ok) {
                     resOk = true;
                     resJson = await res.json();
@@ -1952,75 +1970,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
         }
 
-        if (successCount !== kontanEdits.length) {
-            throw new Error(`${successCount}/${kontanEdits.length} perubahan KONTAN berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
+        if (successCount !== otherIncomeEdits.length) {
+            throw new Error(`${successCount}/${otherIncomeEdits.length} perubahan pendapatan lainnya berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
         }
 
-        setEditedKontanCells({});
-        return { changedCount: successCount, deleteCount };
-    };
-
-    const saveEditedPendapatanCells = async () => {
-        const pendapatanEdits = Object.values(editedPendapatanCells);
-        if (pendapatanEdits.length === 0) return { changedCount: 0, deleteCount: 0 };
-
-        let successCount = 0;
-        let deleteCount = 0;
-
-        for (const p of pendapatanEdits) {
-            const adjustmentName = p.field ? p.field.replace('pendapatan_', 'PENDAPATAN ').toUpperCase() : 'PENDAPATAN LAINNYA';
-            const payload = {
-                period_month: month,
-                period_year: year,
-                nik: p.nik,
-                emp_code: p.emp_code,
-                emp_name: p.emp_name || null,
-                gang_code: p.gang_code,
-                division_code: division,
-                adjustment_type: 'PENDAPATAN_LAINNYA',
-                adjustment_name: adjustmentName,
-                amount: p.value,
-                remarks: p.value === 0
-                    ? `${adjustmentName} | DELETED | 0 | sync:MANUAL | match:MANUAL`
-                    : `${adjustmentName} | PENDAPATAN LAINNYA | ${p.value} | sync:MANUAL | match:MANUAL`
-            };
-
-            let resOk = false;
-            let resJson = null;
-
-            if (isProdMode()) {
-                try {
-                    resJson = await saveLockedManualEdit(token, payload);
-                    resOk = true;
-                } catch (err) {
-                    console.error('Prod Mode pendapatan save failed:', err);
-                }
-            } else {
-                const res = await fetch('/payroll/manual-edit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (res.ok) {
-                    resOk = true;
-                    resJson = await res.json();
-                }
-            }
-
-            if (resOk && resJson?.success) {
-                successCount++;
-                if (p.value === 0) deleteCount++;
-            }
-        }
-
-        if (successCount !== pendapatanEdits.length) {
-            throw new Error(`${successCount}/${pendapatanEdits.length} perubahan Pendapatan Lainnya berhasil disimpan. Perubahan yang belum pasti tersimpan tetap ditahan di layar.`);
-        }
-
-        setEditedPendapatanCells({});
+        setEditedOtherIncomeCells({});
         return { changedCount: successCount, deleteCount };
     };
 
@@ -2042,14 +1996,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 deleteCount += result.changedCount;
             }
 
-            if (Object.keys(editedKontanCells).length > 0) {
-                const result = await saveEditedKontanCells();
-                savedCount += result.changedCount;
-                deleteCount += result.deleteCount;
-            }
-
-            if (Object.keys(editedPendapatanCells).length > 0) {
-                const result = await saveEditedPendapatanCells();
+            if (Object.keys(editedOtherIncomeCells).length > 0) {
+                const result = await saveEditedOtherIncomeCells();
                 savedCount += result.changedCount;
                 deleteCount += result.deleteCount;
             }
@@ -2082,17 +2030,14 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
 
         const manualDeleteRows = Object.values(editedCells).filter(isManualCellDeleteEdit);
-        const deleteRows = Object.values(editedKontanCells).filter(k => k.value === 0);
-        const deletePendapatanRows = Object.values(editedPendapatanCells).filter(p => p.value === 0);
-        if (manualDeleteRows.length > 0 || deleteRows.length > 0 || deletePendapatanRows.length > 0 || pendingDeletedColumns.length > 0) {
+        const deleteRows = Object.values(editedOtherIncomeCells).filter(k => k.value === 0);
+        if (manualDeleteRows.length > 0 || deleteRows.length > 0 || pendingDeletedColumns.length > 0) {
             const manualNames = manualDeleteRows.map(item => `${item.name || item.field} (${item.emp_code || item.nik})`).join(', ');
             const names = deleteRows.map(k => k.emp_code || k.nik).join(', ');
-            const pendapatanNames = deletePendapatanRows.map(p => `${p.field || 'PENDAPATAN'} (${p.emp_code || p.nik})`).join(', ');
             const columnNames = pendingDeletedColumns.map(item => item.name || item.field).join(', ');
             const messages = [];
             if (manualDeleteRows.length > 0) messages.push(`${manualDeleteRows.length} nilai manual adjustment akan dihapus: ${manualNames}.`);
-            if (deleteRows.length > 0) messages.push(`${deleteRows.length} nilai KONTAN akan dihapus untuk: ${names}.`);
-            if (deletePendapatanRows.length > 0) messages.push(`${deletePendapatanRows.length} nilai Pendapatan Lainnya akan dihapus untuk: ${pendapatanNames}.`);
+            if (deleteRows.length > 0) messages.push(`${deleteRows.length} nilai pendapatan lainnya akan dihapus untuk: ${names}.`);
             if (pendingDeletedColumns.length > 0) messages.push(`${pendingDeletedColumns.length} kolom manual adjustment akan dihapus: ${columnNames}.`);
             openPayrollConfirm({
                 variant: 'danger',
@@ -2187,7 +2132,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (isProdMode()) {
                 responseJson = await seedLockedAutoBufferToManualAdjustment(token, payload);
             } else {
-                const response = await fetch('/payroll/manual-adjustment/seed-auto-buffer', {
+                const response = await fetch(buildBackendUrl('/payroll/manual-adjustment/seed-auto-buffer'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2469,7 +2414,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
                 if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
                 appendSnapshotVersionToSearchParams(params, snapshotVersion);
-                const url = `/payroll/report/division-raw-tree?${params.toString()}`;
+                const url = buildBackendUrl(`/payroll/report/division-raw-tree?${params.toString()}`);
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` },
                     signal: controller.signal
@@ -2524,6 +2469,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             fetchDivisionData();
         }
     }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, valuePriorityMode, snapshotVersion, fetchDivisionData, streamEnabled]);
+
+    const retryPayrollLoad = useCallback(() => {
+        streamFallbackKeyRef.current = null;
+        setError('');
+        setDataReady(false);
+        setStreamEnabled(true);
+        if (typeof onRefresh === 'function') {
+            onRefresh();
+        } else if (streamEnabled && typeof stream.startStream === 'function') {
+            void stream.startStream();
+        }
+    }, [onRefresh, stream.startStream, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -3266,11 +3223,87 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         cols.push({ field: 'total_premi', headers: [PREMI, null, 'TOTAL PREMI'], w: 95, className: 'text-right font-bold cell-total-soft' });
 
         // PENDAPATAN LAINNYA
-        const activePendapatan = getOtherIncomeDetailFields(effectiveActivePendapatanFields);
+        const editableOtherIncomeFields = isEditMode
+            ? getEditableOtherIncomeFields(effectiveActivePendapatanFields)
+            : [];
+        const activePendapatan = getOtherIncomeDetailFields(effectiveActivePendapatanFields)
+            .filter(field => !getEditableOtherIncomeConfig(field));
         const showOtherIncomeDetails = isEditMode && isOtherIncomeExpanded;
         const deductionOtherIncomeFields = showOtherIncomeDetails
-            ? getOtherIncomeDetailFields(effectiveActivePendapatanFields, { includeKontan: true })
+            ? getOtherIncomeDetailFields([...effectiveActivePendapatanFields, ...editableOtherIncomeFields], { includeKontan: true })
             : [];
+        const renderEditableOtherIncome = (row, field) => {
+            const config = getEditableOtherIncomeConfig(field);
+            const label = formatOtherIncomeColumnLabel(field);
+            const val = Number(row[field] || 0);
+            const empCode = row.emp_code || row.nik;
+            const editKey = `${empCode}-${field}`;
+            const cellEdit = editedOtherIncomeCells[editKey];
+            const displayVal = cellEdit ? toFiniteNumber(cellEdit.value) : val;
+            const isEdited = !!cellEdit;
+
+            if (isEditMode && row.type === 'employee') {
+                const hasPendingDelete = cellEdit && cellEdit.value === 0;
+                return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <DeferredPayrollNumberInput
+                            className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
+                            value={displayVal}
+                            onCommit={(rawVal) => {
+                                const newVal = parsePayrollInputNumber(rawVal);
+                                if (newVal === null) return;
+                                setEditedOtherIncomeCells(prev => {
+                                    const existingEdit = prev[editKey];
+                                    const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, val);
+                                    return {
+                                        ...prev,
+                                        [editKey]: {
+                                            nik: row.nik,
+                                            emp_code: row.emp_code,
+                                            emp_name: row.nama || row.emp_name || null,
+                                            field,
+                                            value: newVal,
+                                            originalValue: persistedOriginal,
+                                            gang_code: row.gang_code,
+                                            income_type: config?.type,
+                                            income_name: config?.name
+                                        }
+                                    };
+                                });
+                            }}
+                            placeholder="0"
+                            style={{ width: '65px' }}
+                        />
+                        {hasPendingDelete && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPayrollConfirm({
+                                        variant: 'danger',
+                                        title: `Batalkan hapus ${label}?`,
+                                        message: `Nilai ${label} untuk ${row.nama || row.nik || empCode} akan dikembalikan ke nilai sebelumnya.`,
+                                        confirmText: 'Batalkan Hapus',
+                                        onConfirm: () => {
+                                            const restoreValue = resolvePersistentOriginalNumber(cellEdit?.originalValue, val);
+                                            setEditedOtherIncomeCells(prev => {
+                                                const upd = { ...prev };
+                                                delete upd[editKey];
+                                                return upd;
+                                            });
+                                            setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, [field]: restoreValue } : r));
+                                            showPayrollToast('info', `Hapus ${label} dibatalkan`, `Nilai ${label} dikembalikan ke nilai sebelumnya.`);
+                                        }
+                                    });
+                                }}
+                                style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }}
+                                title="Batal Hapus"
+                            >x</button>
+                        )}
+                    </div>
+                );
+            }
+            return displayVal === 0 ? '-' : formatNumber(displayVal);
+        };
         if (showOtherIncomeDetails) {
             for (const field of activePendapatan) {
                 const displayName = formatOtherIncomeColumnLabel(field, '(+)');
@@ -3281,42 +3314,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     className: 'text-right font-bold',
                     render: (row) => {
                         const val = Number(row[field] || 0);
-                        const empCode = row.emp_code || row.nik;
-                        const editKey = `${empCode}-${field}`;
-                        const cellEdit = editedPendapatanCells[editKey];
-                        const displayVal = cellEdit ? toFiniteNumber(cellEdit.value) : val;
-                        const isEdited = !!cellEdit;
-
-                        if (isEditMode && row.type === 'employee') {
-                            return (
-                                <DeferredPayrollNumberInput
-                                    className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                    value={displayVal}
-                                    onCommit={(rawVal) => {
-                                        const newVal = parsePayrollInputNumber(rawVal);
-                                        if (newVal === null) return;
-                                        setEditedPendapatanCells(prev => {
-                                            const existingEdit = prev[editKey];
-                                            const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, val);
-                                            return {
-                                                ...prev,
-                                                [editKey]: {
-                                                    nik: row.nik,
-                                                    emp_code: row.emp_code,
-                                                    emp_name: row.nama || row.emp_name || null,
-                                                    field: field,
-                                                    value: newVal,
-                                                    originalValue: persistedOriginal,
-                                                    gang_code: row.gang_code
-                                                }
-                                            };
-                                        });
-                                    }}
-                                    placeholder="0"
-                                    style={{ width: '70px' }}
-                                />
-                            );
-                        }
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
@@ -3324,80 +3321,16 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             }
         }
 
-        if (showOtherIncomeDetails || isEditMode) {
-            cols.push({
-            field: 'pendapatan_kontan',
-            headers: [PENDAPATAN_LAINNYA, null, 'KONTAN (+)'],
-            w: 90,
-            className: 'text-right',
-            render: (row) => {
-                const val = Number(row.pendapatan_kontan || 0);
-                const empCode = row.emp_code || row.nik;
-                const editKey = `${empCode}-pendapatan_kontan`;
-                const cellEdit = editedKontanCells[editKey];
-                const displayVal = cellEdit ? toFiniteNumber(cellEdit.value) : val;
-                const isEdited = !!cellEdit;
-
-                if (isEditMode && row.type === 'employee') {
-                    const hasPendingDelete = cellEdit && cellEdit.value === 0;
-                    return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <DeferredPayrollNumberInput
-                                className={`edit-input ${isEdited ? 'cell-edited' : ''} ${hasPendingDelete ? 'cell-delete' : ''}`}
-                                value={displayVal}
-                                onCommit={(rawVal) => {
-                                    const newVal = parsePayrollInputNumber(rawVal);
-                                    if (newVal === null) return;
-                                    setEditedKontanCells(prev => {
-                                        const existingEdit = prev[editKey];
-                                        const persistedOriginal = resolvePersistentOriginalNumber(existingEdit?.originalValue, val);
-                                        return {
-                                            ...prev,
-                                            [editKey]: {
-                                                nik: row.nik,
-                                                emp_code: row.emp_code,
-                                                emp_name: row.nama || row.emp_name || null,
-                                                value: newVal,
-                                                originalValue: persistedOriginal,
-                                                gang_code: row.gang_code
-                                            }
-                                        };
-                                    });
-                                }}
-                                placeholder="0"
-                                style={{ width: '65px' }}
-                            />
-                            {hasPendingDelete && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        openPayrollConfirm({
-                                            variant: 'danger',
-                                            title: 'Batalkan hapus KONTAN?',
-                                            message: `Nilai KONTAN untuk ${row.nama || row.nik || empCode} akan dikembalikan ke nilai sebelumnya.`,
-                                            confirmText: 'Batalkan Hapus',
-                                            onConfirm: () => {
-                                                const restoreValue = resolvePersistentOriginalNumber(cellEdit?.originalValue, val);
-                                                setEditedKontanCells(prev => {
-                                                    const upd = { ...prev };
-                                                    delete upd[editKey];
-                                                    return upd;
-                                                });
-                                                setRows(prev => prev.map(r => (r.emp_code || r.nik) === empCode ? { ...r, pendapatan_kontan: restoreValue } : r));
-                                                showPayrollToast('info', 'Hapus KONTAN dibatalkan', 'Nilai KONTAN dikembalikan ke nilai sebelumnya.');
-                                            }
-                                        });
-                                    }}
-                                    style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', padding: '2px 5px' }}
-                                    title="Batal Hapus"
-                                >✕</button>
-                            )}
-                        </div>
-                    );
-                }
-                return val === 0 ? '-' : formatNumber(val);
+        if (isEditMode) {
+            for (const field of editableOtherIncomeFields) {
+                cols.push({
+                    field,
+                    headers: [PENDAPATAN_LAINNYA, null, formatOtherIncomeColumnLabel(field, '(+)')],
+                    w: 90,
+                    className: 'text-right',
+                    render: (row) => renderEditableOtherIncome(row, field)
+                });
             }
-            });
         }
 
         cols.push({
@@ -3406,7 +3339,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             w: 100,
             className: 'text-right font-bold',
             render: (row) => {
-                const val = Number(row.total_pendapatan_lainnya || 0);
+                const val = toFiniteNumber(row.total_pendapatan_lainnya) + getOtherIncomeEditDeltaForRow(row);
                 return formatNumber(val);
             }
         });
@@ -3640,11 +3573,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         cols.push({
             field: 'jumlah_upah_kotor', headers: [UPAH_KOTOR, 'SETELAH KOREKSI', 'JUMLAH'], w: 118, className: 'text-right font-bold cell-gross-salary',
             render: (row) => {
-                const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                const originalKontan = toFiniteNumber(kontanEdit?.originalValue ?? row.pendapatan_kontan);
-                const currentKontan = toFiniteNumber(kontanEdit?.value ?? row.pendapatan_kontan);
-                const val = toFiniteNumber(row.jumlah_upah_kotor) - originalKontan + currentKontan;
+                const val = toFiniteNumber(row.jumlah_upah_kotor) + getOtherIncomeEditDeltaForRow(row);
                 return val === 0 ? '-' : formatNumber(val);
             }
         });
@@ -3708,7 +3637,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     w: 90,
                     className: 'text-right',
                     render: (row) => {
-                        const val = Number(row[field] || 0);
+                        const val = getOtherIncomeDisplayValue(row, field);
                         if (val === 0) return '-';
                         return formatNumber(val);
                     }
@@ -3721,7 +3650,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 w: 90,
                 className: 'text-right',
                 render: (row) => {
-                    const val = Number(row.total_pendapatan_lainnya || 0);
+                    const val = toFiniteNumber(row.total_pendapatan_lainnya) + getOtherIncomeEditDeltaForRow(row);
                     if (val === 0) return '-';
                     return formatNumber(val);
                 }
@@ -3868,11 +3797,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             w: 100,
             className: 'text-right font-bold cell-deduction cell-total-soft',
             render: (row) => {
-                const empCode = row.emp_code || row.nik;
-                const kontanEdit = editedKontanCells[`${empCode}-pendapatan_kontan`];
-                const originalKontan = toFiniteNumber(kontanEdit?.originalValue ?? row.pendapatan_kontan);
-                const currentKontan = toFiniteNumber(kontanEdit?.value ?? row.pendapatan_kontan);
-                const val = toFiniteNumber(row.total_potongan_bersih) - originalKontan + currentKontan;
+                const val = toFiniteNumber(row.total_potongan_bersih) + getOtherIncomeEditDeltaForRow(row);
                 return formatNegativeTotalNumber(val);
             }
         });
@@ -3896,7 +3821,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         });
 
         return cols;
-    }, [effectiveDynamicHeaders, effectiveActivePremiFields, effectiveActivePotFields, effectiveActivePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, isEditMode, editedCells, editedKontanCells, addedColumns, premiumDefinitions, displayMode]);
+    }, [effectiveDynamicHeaders, effectiveActivePremiFields, effectiveActivePotFields, effectiveActivePendapatanFields, tunjanganMode, tunjanganRates, isTaxExpanded, isHarvestExpanded, isAttendanceExpanded, isPayrollExpanded, isAllowanceExpanded, isDeductionExpanded, isOtherIncomeExpanded, isPremiExpanded, selectedEmployees, onToggleEmployeeSelection, isEditMode, editedCells, editedOtherIncomeCells, addedColumns, premiumDefinitions, displayMode, getOtherIncomeEditDeltaForRow, getOtherIncomeDisplayValue]);
 
     const chapterSegments = useMemo(() => buildPayrollViewportChapters(columnDefs), [columnDefs]);
     const stickyPaneWidth = useMemo(() => (
@@ -4109,7 +4034,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const nextWidth = Math.max(0, Math.round(Number(container.clientWidth) || 0));
+        const rectWidth = container.getBoundingClientRect?.().width;
+        const nextWidth = Math.max(0, Math.round(Number(rectWidth || container.offsetWidth || container.clientWidth) || 0));
         setTableContainerWidth((prev) => {
             if (Math.abs(prev - nextWidth) < 1) return prev;
             return nextWidth;
@@ -4274,9 +4200,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             scrollSyncRafRef.current = window.requestAnimationFrame(() => {
                 scrollSyncRafRef.current = 0;
                 syncActiveGangMarker(container);
-                // Update virtual scroll position
-                setVsScrollTop(container.scrollTop);
-                setVsContainerHeight(container.clientHeight);
 
                 if (didScrollHorizontally) {
                     setChapterBarVisible(true);
@@ -4325,7 +4248,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     useEffect(() => {
         const container = tableContainerRef.current;
-        const table = tableRef.current;
         if (!container || typeof ResizeObserver === 'undefined') return undefined;
 
         const observer = new ResizeObserver(() => {
@@ -4333,10 +4255,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             syncHorizontalScrollState(container);
         });
         observer.observe(container);
-        if (table) observer.observe(table);
 
         return () => observer.disconnect();
-    }, [syncHorizontalScrollState, syncTableContainerWidth, displayMode, renderColumnDefs.length, displayRows.length]);
+    }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -4553,7 +4474,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         <button
                             onClick={() => {
                                 console.log('[CustomPayrollTable] 🔄 Retry triggered');
-                                onRefresh?.();
+                                retryPayrollLoad();
                             }}
                             style={{
                                 padding: '10px 24px', background: '#dc2626', color: 'white',
@@ -4601,7 +4522,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <button
                         onClick={() => {
                             console.log('[CustomPayrollTable] 🔄 Refresh button clicked');
-                            onRefresh?.();
+                            retryPayrollLoad();
                         }}
                         style={{
                             padding: '10px 24px', background: '#1e3a8a', color: 'white',
@@ -4669,8 +4590,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'}`}
             onMouseUp={handleMouseUp}
             style={{ 
-                height: 'calc(100vh - 120px)', 
-                minHeight: '400px',
+                height: '100%',
+                minHeight: 0,
                 ...payrollResponsiveVars,
                 '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
                 '--payroll-grand-total-offset': `${shellGrandTotalOffset}px`
@@ -4820,8 +4741,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
                     <div className="payroll-edit-save-dock__metrics" aria-label="Ringkasan perubahan">
                         <span className="payroll-edit-save-dock__metric">Manual/Profile <b>{pendingSaveSummary.manualCount}</b></span>
-                        <span className="payroll-edit-save-dock__metric">KONTAN <b>{pendingSaveSummary.kontanCount}</b></span>
-                        <span className="payroll-edit-save-dock__metric">Bonus/THR <b>{pendingSaveSummary.pendapatanCount}</b></span>
+                        <span className="payroll-edit-save-dock__metric">Pend. Lain <b>{pendingSaveSummary.otherIncomeCount}</b></span>
                         <span className="payroll-edit-save-dock__metric">Kolom Baru <b>{pendingSaveSummary.addedColumnCount}</b></span>
                         {pendingSaveSummary.deleteCount > 0 && (
                             <span className="payroll-edit-save-dock__metric is-danger">Hapus <b>{pendingSaveSummary.deleteCount}</b></span>
@@ -4842,14 +4762,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             className="payroll-edit-save-dock__secondary"
                             onClick={() => openPayrollConfirm({
                                 title: 'Batalkan semua perubahan?',
-                                message: 'Semua edit manual, KONTAN, Bonus/THR, dan kolom baru yang belum disimpan akan dikosongkan dari layar.',
+                                message: 'Semua edit manual, pendapatan lainnya, dan kolom baru yang belum disimpan akan dikosongkan dari layar.',
                                 confirmText: 'Batal Semua',
                                 variant: 'danger',
                                 onConfirm: () => {
                                     setEditedCells({});
                                     setAddedColumns([]);
-                                    setEditedKontanCells({});
-                                    setEditedPendapatanCells({});
+                                    setEditedOtherIncomeCells({});
                                     onRefresh?.();
                                     showPayrollToast('info', 'Perubahan dibatalkan', 'Semua perubahan yang belum disimpan sudah dikosongkan.');
                                 }
@@ -5017,25 +4936,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     ))}
                 </thead>
                 <tbody>
-                    {(() => {
-                        // Virtual windowing: hanya render baris yang visible + buffer
-                        // Ini mengurangi DOM nodes dari ~12k ke ~600 untuk 200 employee × 60 col
-                        const BUFFER = 10; // baris buffer di atas dan bawah viewport
-                        const visibleStart = Math.max(0, Math.floor(vsScrollTop / rowHeight) - BUFFER);
-                        const visibleEnd = Math.min(displayRows.length, Math.ceil((vsScrollTop + vsContainerHeight) / rowHeight) + BUFFER);
-                        const topSpacerHeight = visibleStart * rowHeight;
-                        const bottomSpacerHeight = (displayRows.length - visibleEnd) * rowHeight;
-                        const visibleRows = displayRows.slice(visibleStart, visibleEnd);
-
-                        return (
-                            <>
-                                {topSpacerHeight > 0 && (
-                                    <tr style={{ height: topSpacerHeight, display: 'block' }} aria-hidden="true" />
-                                )}
-                                {visibleRows.map((row, localIdx) => {
-                                    const rIdx = visibleStart + localIdx;
-                                    if (row.type === 'gang_header') {
-                                        return (
+                    {displayRows.map((row, rIdx) => {
+                        if (row.type === 'gang_header') {
+                            return (
                                 <tr key={row.id} className="gang-header-row" data-gang-code={row.gang_code}>
                                     <td
                                         colSpan={renderColumnDefs.length}
@@ -5134,12 +5037,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             </tr>
                         );
                     })}
-                                {bottomSpacerHeight > 0 && (
-                                    <tr style={{ height: bottomSpacerHeight, display: 'block' }} aria-hidden="true" />
-                                )}
-                            </>
-                        );
-                    })()}
                 </tbody>
                 {grandTotal && (
                     <tfoot>

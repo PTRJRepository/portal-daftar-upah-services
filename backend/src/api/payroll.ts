@@ -17,6 +17,8 @@ import { AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME } from "../services/payroll/manua
 
 
 const authService = AuthService.getInstance();
+const STREAM_SLOW_LOG_MS = 30_000;
+const STREAM_MAX_RUNTIME_MS = 5 * 60_000;
 
 /**
  * [PERFORMANCE] Strip heavy per-row array fields before sending JSON to browser.
@@ -196,6 +198,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             set.status = 401;
             return { message: "Unauthorized" };
         }
+    })
+    .get("/locked/verify", ({ currentUser }) => {
+        const divisions = currentUser?.divisions || [];
+        return {
+            valid: true,
+            username: currentUser?.username,
+            role: currentUser?.role,
+            divisions,
+            division: divisions[0] || null,
+            user: currentUser
+        };
     })
     // --- Divisions ---
     .get("/divisions", async ({ currentUser }): Promise<any> => {
@@ -595,6 +608,81 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
             task_desc: t.Optional(t.String())
+        })
+    })
+    // --- Batch Manual Edit (saves multiple adjustments in one request) ---
+    .post("/manual-edit/batch", async ({ body, currentUser, set }) => {
+        try {
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const items = (body as any).items as any[];
+            if (!Array.isArray(items) || items.length === 0) {
+                set.status = 400;
+                return { success: false, error: "items array required" };
+            }
+            if (items.length > 200) {
+                set.status = 400;
+                return { success: false, error: "Maximum 200 items per batch" };
+            }
+
+            const username = currentUser?.username || 'system';
+            const results: Array<{ index: number; success: boolean; id?: number; error?: string }> = [];
+            const affectedKeys = new Map<string, { month: number; year: number; divisionCode?: string; gangCode?: string }>();
+
+            // Process in parallel chunks of 10
+            const CONCURRENCY = 10;
+            for (let i = 0; i < items.length; i += CONCURRENCY) {
+                const chunk = items.slice(i, i + CONCURRENCY);
+                const settled = await Promise.allSettled(
+                    chunk.map(item => manualAdjustmentService.saveAdjustment(item, username))
+                );
+                settled.forEach((res, idx) => {
+                    const globalIdx = i + idx;
+                    const item = chunk[idx];
+                    if (res.status === 'fulfilled') {
+                        results.push({ index: globalIdx, success: true, id: res.value });
+                        const k = `${item.period_month}:${item.period_year}:${item.division_code || ''}:${item.gang_code || ''}`;
+                        if (!affectedKeys.has(k)) {
+                            affectedKeys.set(k, { month: item.period_month, year: item.period_year, divisionCode: item.division_code, gangCode: item.gang_code });
+                        }
+                    } else {
+                        results.push({ index: globalIdx, success: false, error: (res.reason as any)?.message || String(res.reason) });
+                    }
+                });
+            }
+
+            // Invalidate cache only for affected gang+division combinations
+            for (const k of affectedKeys.values()) {
+                cacheService.invalidatePayroll(k);
+            }
+
+            const successCount = results.filter(r => r.success).length;
+            return { success: true, total: items.length, successCount, failedCount: items.length - successCount, results };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-edit/batch error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            items: t.Array(t.Object({
+                period_month: t.Number(),
+                period_year: t.Number(),
+                emp_code: t.String(),
+                nik: t.Optional(t.String()),
+                emp_name: t.Optional(t.String()),
+                gang_code: t.String(),
+                division_code: t.Optional(t.String()),
+                adjustment_type: t.String(),
+                adjustment_name: t.String(),
+                amount: t.Number(),
+                remarks: t.Optional(t.String()),
+                metadata_json: t.Optional(t.String()),
+                ad_code: t.Optional(t.String()),
+                task_code: t.Optional(t.String()),
+                base_task_code: t.Optional(t.String()),
+                task_desc: t.Optional(t.String())
+            }))
         })
     })
     // --- Manual Adjustment for authenticated UI ---
@@ -2129,18 +2217,36 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const parsedAmount = parseFloat(data.amount?.toString()) || 0;
             const incomeType = String(data.income_type || '').toUpperCase().trim().replace(/\s+/g, '_');
             const incomeName = String(data.income_name || data.income_type || '').trim();
+            const empCode = String(data.emp_code || '').toUpperCase().trim();
+            const nik = String(data.nik || '').trim();
+            const empName = String(data.emp_name || '').trim();
+            const gangCode = String(data.gang_code || '').trim();
+            const divisionCode = data.division_code || null;
+            const isTaxable = incomeType === 'BONUS' || incomeType === 'EXGRATIA' ? 1 : 0;
 
             if (!incomeType) {
                 set.status = 400;
                 return { error: "income_type is required" };
             }
 
-            // Look for existing record for this NIK + emp_name + income_type in this period
-            // Using NIK + emp_name to disambiguate employees that may share the same NIK
-            const existing = await db.query(`
-                SELECT id FROM employee_other_incomes 
-                WHERE nik = ? AND emp_name = ? AND period_year = ? AND period_month = ? AND income_type = ?
-            `, [data.nik, data.emp_name, data.period_year, data.period_month, incomeType]);
+            let existing: any[] = [];
+            if (empCode) {
+                existing = await db.query(`
+                    SELECT TOP 1 id, income_name FROM employee_other_incomes
+                    WHERE UPPER(LTRIM(RTRIM(ISNULL(emp_code, '')))) = ?
+                      AND period_year = ? AND period_month = ? AND income_type = ?
+                    ORDER BY id DESC
+                `, [empCode, data.period_year, data.period_month, incomeType]);
+            }
+
+            if ((!existing || existing.length === 0) && nik) {
+                existing = await db.query(`
+                    SELECT TOP 1 id, income_name FROM employee_other_incomes
+                    WHERE LTRIM(RTRIM(ISNULL(nik, ''))) = ?
+                      AND period_year = ? AND period_month = ? AND income_type = ?
+                    ORDER BY id DESC
+                `, [nik, data.period_year, data.period_month, incomeType]);
+            }
 
             const clearPeriodCache = () => {
                 const pattern = `payroll_data:${data.period_month}:${data.period_year}`;
@@ -2149,18 +2255,27 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             };
 
             if (existing && existing.length > 0) {
+                const storedIncomeName = existing[0].income_name || incomeName;
                 if (parsedAmount === 0) {
                     await db.query(`DELETE FROM employee_other_incomes WHERE id = ?`, [existing[0].id]);
                     clearPeriodCache();
-                    return { success: true, action: 'deleted', message: `${incomeName} removed.` };
+                    return { success: true, action: 'deleted', message: `${storedIncomeName} removed.` };
                 } else {
                     await db.query(`
                         UPDATE employee_other_incomes 
-                        SET amount = ?, emp_name = ?, gang_code = ?, division_code = ?, income_name = ?, updated_at = GETDATE()
+                        SET nik = COALESCE(NULLIF(?, ''), nik),
+                            emp_code = COALESCE(NULLIF(?, ''), emp_code),
+                            amount = ?,
+                            emp_name = COALESCE(NULLIF(?, ''), emp_name),
+                            gang_code = COALESCE(NULLIF(?, ''), gang_code),
+                            division_code = COALESCE(?, division_code),
+                            income_name = COALESCE(NULLIF(?, ''), income_name),
+                            is_taxable = ?,
+                            updated_at = GETDATE()
                         WHERE id = ?
-                    `, [parsedAmount, data.emp_name, data.gang_code, data.division_code || null, incomeName, existing[0].id]);
+                    `, [nik, empCode, parsedAmount, empName, gangCode, divisionCode, storedIncomeName, isTaxable, existing[0].id]);
                     clearPeriodCache();
-                    return { success: true, action: 'updated', id: existing[0].id, message: `${incomeName} updated.` };
+                    return { success: true, action: 'updated', id: existing[0].id, message: `${storedIncomeName} updated.` };
                 }
             } else {
                 if (parsedAmount === 0) {
@@ -2168,10 +2283,10 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 }
                 await db.query(`
                     INSERT INTO employee_other_incomes (
-                        nik, emp_name, division_code, gang_code, period_year, period_month,
+                        nik, emp_code, emp_name, division_code, gang_code, period_year, period_month,
                         income_type, income_name, amount, is_paid_in_thp, is_taxable
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
-                `, [data.nik, data.emp_name, data.division_code || null, data.gang_code, data.period_year, data.period_month, incomeType, incomeName, parsedAmount]);
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                `, [nik, empCode || null, empName || null, divisionCode, gangCode || null, data.period_year, data.period_month, incomeType, incomeName, parsedAmount, isTaxable]);
                 clearPeriodCache();
                 return { success: true, action: 'inserted', message: `${incomeName} saved.` };
             }
@@ -2183,6 +2298,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     }, {
         body: t.Object({
             nik: t.String(),
+            emp_code: t.Optional(t.String()),
             emp_name: t.String(),
             period_month: t.Number(),
             period_year: t.Number(),
@@ -2713,7 +2829,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
+        const requestStartTime = Date.now();
         let cancelled = false;
+        let slowStreamLogged = false;
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -2751,6 +2869,18 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                     for await (const chunk of progressiveStream) {
                         if (cancelled) break;
+
+                        const elapsedMs = Date.now() - streamStartTime;
+                        if (!slowStreamLogged && elapsedMs >= STREAM_SLOW_LOG_MS) {
+                            slowStreamLogged = true;
+                            console.warn(`[Stream] Slow stream | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                        }
+                        if (elapsedMs >= STREAM_MAX_RUNTIME_MS) {
+                            console.error(`[Stream] Timeout boundary reached | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                            controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: "Payroll stream melewati batas waktu server. Silakan coba lagi." })}\n\n`));
+                            streamComplete = true;
+                            break;
+                        }
 
                         const { phase, gangs, current_gang, meta, dynamic_premi_headers, dynamic_potongan_headers, dynamic_premi_titles, dynamic_potongan_titles } = chunk;
 
@@ -2925,6 +3055,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             },
             cancel() {
                 cancelled = true;
+                console.warn(`[Stream] Client cancelled | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${Date.now() - requestStartTime}ms`);
             }
         });
 
