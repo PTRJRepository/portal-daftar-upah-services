@@ -53,4 +53,27 @@ describe('buildDbPtrjCompareReport', () => {
         expect(report.mismatchCount).toBe(0);
         expect(report.mismatches).toEqual([]);
     });
+
+    it('labels PPh21 TER comparison against DB_PTRJ value', () => {
+        const report = buildDbPtrjCompareReport([
+            {
+                type: 'employee',
+                emp_code: 'A0003',
+                nama: 'CICI',
+                gang_code: 'A2',
+                value_source_compare: {
+                    pph21_ter: { active: 93435, db_ptrj: 28655 }
+                }
+            }
+        ]);
+
+        expect(report.mismatchCount).toBe(1);
+        expect(report.mismatches[0]).toMatchObject({
+            field: 'pph21_ter',
+            label: 'PPh21 TER vs DB_PTRJ',
+            active: 93435,
+            db_ptrj: 28655,
+            diff: 64780
+        });
+    });
 });

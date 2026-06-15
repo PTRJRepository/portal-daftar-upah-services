@@ -4,6 +4,7 @@ const FIELD_LABELS = {
     jabatan_rate: 'Rate Jabatan',
     masa_kerja_jumlah: 'Masa Kerja',
     masa_kerja_rate: 'Rate Masa Kerja',
+    pph21_ter: 'PPh21 TER vs DB_PTRJ',
     pot_spsi: 'SPSI',
     spsi: 'SPSI'
 };

@@ -1,0 +1,25 @@
+{
+  "id": "IMPL-4",
+  "title": "Backend compare preview endpoint",
+  "description": "Add trusted backend preview for MISSING/MISMATCH manual adjustment records before running Auto Key-In.",
+  "depends_on": [
+    "IMPL-1",
+    "IMPL-3"
+  ],
+  "files": [
+    "backend/src/api/payroll.ts",
+    "backend/src/services/manualAdjustmentService.ts",
+    "backend/src/services/adminAutoKeyInPreviewService.ts"
+  ],
+  "convergence": [
+    "Endpoint accepts period, division, category, and optional gang/employee scope.",
+    "Endpoint filters compare/check results to MISSING/MISMATCH only.",
+    "Response records are compatible with Auto Key In ManualAdjustmentRecord.",
+    "API keys and Plantware credentials stay server-side."
+  ],
+  "meta": {
+    "type": "backend_api",
+    "agent": "code_developer"
+  },
+  "status": "pending"
+}

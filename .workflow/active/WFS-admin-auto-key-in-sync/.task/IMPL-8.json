@@ -1,0 +1,25 @@
+{
+  "id": "IMPL-8",
+  "title": "Validation and live-run guardrail",
+  "description": "Validate focused tests/build and keep live Plantware actual run behind manual approval.",
+  "depends_on": [
+    "IMPL-7"
+  ],
+  "files": [
+    "backend tests",
+    "frontend tests",
+    "docs if needed"
+  ],
+  "convergence": [
+    "Manual adjustment focused backend tests pass.",
+    "New backend preview/run tests pass.",
+    "New frontend admin visibility/red-only tests pass.",
+    "Frontend build passes.",
+    "Live Plantware actual run uses small approved scope only."
+  ],
+  "meta": {
+    "type": "validation",
+    "agent": "validation_archivist"
+  },
+  "status": "pending"
+}

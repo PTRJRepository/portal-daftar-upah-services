@@ -1,9 +1,13 @@
 /* CustomPayrollTable.css - Solid Multi-Level Headers */
 
 .payroll-table-container {
-    overflow: auto;
-    overscroll-behavior: contain;
-    overflow-anchor: none;
+    scroll-behavior: auto;
+    /* FORCE horizontal scrollbar to ALWAYS be visible — never hide */
+    scrollbar-gutter: stable;
+    /* Safari / mobile: force horizontal scroll indicator */
+    overflow-x: scroll !important;
+    overflow-y: auto;
+    overscroll-behavior-y: none;
     position: relative;
     height: 100%;
     padding-bottom: var(--payroll-bottom-safe-area, 56px);
@@ -715,8 +719,8 @@
     white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: calc(var(--payroll-font-size-base, 12px) + 1px) !important;
-    font-weight: 700 !important;
+    font-size: var(--payroll-font-size-base, 12px) !important;
+    font-weight: 650 !important;
     line-height: 1.25;
 }
 
@@ -1209,33 +1213,25 @@
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"] {
-    font-weight: 800 !important;
-    letter-spacing: 0.02em;
-    color: #f8fafc;
-    background-color: #1e293b !important;
-    box-shadow:
-        inset 0 -3px 0 rgba(var(--group-accent-rgb, 59, 130, 246), 0.86),
-        inset 0 0 0 1px rgba(var(--group-accent-rgb, 59, 130, 246), 0.36);
+    box-shadow: inset 0 -2px 0 rgba(var(--group-accent-rgb, 59, 130, 246), 0.75);
     text-shadow: none;
     filter: none;
-    transition: background-color 0.12s ease, color 0.12s ease;
+    transition: none;
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"][data-header-level="0"] {
-    font-weight: 850 !important;
+    font-weight: 700 !important;
 }
 
 .payroll-table-shell .payroll-table thead th[data-active-group="true"][data-header-level="1"] {
-    font-weight: 820 !important;
+    font-weight: 700 !important;
 }
 
 .payroll-table-shell .payroll-table tbody td[data-active-group="true"],
 .payroll-table-shell .payroll-table tfoot td[data-active-group="true"] {
-    font-weight: 750;
-    color: var(--payroll-ink) !important;
-    box-shadow:
-        inset 0 0 0 1px rgba(var(--group-accent-rgb, 59, 130, 246), 0.56),
-        inset 4px 0 0 rgba(var(--group-accent-rgb, 59, 130, 246), 0.9);
+    font-weight: inherit;
+    color: inherit;
+    box-shadow: none;
     text-shadow: none;
     transition: none;
 }
@@ -1252,8 +1248,8 @@
 .payroll-table-shell.mode-simple .payroll-table tfoot td.sticky-col.frozen-col-theme,
 .payroll-table-shell.mode-detail .payroll-table tbody td.sticky-col.frozen-col-theme,
 .payroll-table-shell.mode-detail .payroll-table tfoot td.sticky-col.frozen-col-theme {
-    font-size: calc(var(--payroll-font-size-base, 12px) + 1px) !important;
-    font-weight: 750 !important;
+    font-size: calc(var(--payroll-font-size-base, 12px) + 0.5px) !important;
+    font-weight: 650 !important;
 }
 
 /* === UNIFIED MODE: all modes keep focus-style legibility === */
@@ -1266,13 +1262,13 @@
 }
 
 .payroll-table-shell.focus-lens-on .payroll-table tbody td[data-focus-dim="true"] {
-    opacity: 0.95;
+    opacity: 1;
     filter: none;
-    font-weight: 650;
+    font-weight: inherit;
 }
 
 .payroll-table-shell.focus-lens-on .payroll-table thead th[data-focus-dim="true"] {
-    opacity: 0.95;
+    opacity: 1;
     filter: none;
 }
 
@@ -1382,16 +1378,21 @@
     scrollbar-color: #2563eb #cbd5e1;
 }
 
-/* Scrollbar styling */
+/* Force scrollbar to ALWAYS show (never hidden) */
 .payroll-table-container::-webkit-scrollbar {
     width: 13px;
     height: 13px;
+    /* Prevent scrollbar from being hidden */
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
 }
 
 .payroll-table-container::-webkit-scrollbar-track {
     background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
     border-radius: 999px;
     border: 1px solid #94a3b8;
+    display: block !important;
 }
 
 .payroll-table-container::-webkit-scrollbar-thumb {
@@ -1399,6 +1400,9 @@
     border-radius: 999px;
     border: 2px solid #e2e8f0;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    display: block !important;
+    /* Force always visible */
+    opacity: 1 !important;
 }
 
 .payroll-table-container::-webkit-scrollbar-thumb:hover {
@@ -1407,6 +1411,7 @@
 
 .payroll-table-container::-webkit-scrollbar-corner {
     background: #cbd5e1;
+    display: block !important;
 }
 
 /* Scroll position indicator */
@@ -1806,6 +1811,35 @@
     color: #111827 !important;
 }
 
+/* Saving state: cell sedang dikirim ke server */
+.cell-saving {
+    background-color: #e0f2fe !important;
+    opacity: 0.7 !important;
+    pointer-events: none !important;
+}
+
+/* Saved state: cell baru saja tersimpan, fade ke normal */
+.cell-saved {
+    background-color: #dcfce7 !important;
+    transition: background-color 2s ease-out !important;
+}
+
+/* Compact mode: tampilan lebih padat untuk monitor sempit / zoom tinggi */
+.payroll-table-shell.compact {
+    --payroll-font-size-base: 10px;
+    --payroll-header-font-size: 0.75rem;
+    --payroll-header-pad-y: 2px;
+    --payroll-header-pad-x: 3px;
+    --payroll-body-pad-y: 1px;
+    --payroll-body-pad-x: 3px;
+}
+.payroll-table-shell.compact .payroll-table th,
+.payroll-table-shell.compact .payroll-table td {
+    padding: 1px 3px !important;
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+}
+
 /* ============================================
    UNIFIED EDIT SAVE DOCK & NOTIFICATIONS
    ============================================ */
@@ -2144,27 +2178,38 @@
 
 /* New gang header row animation */
 .gang-header-row.row-animating {
-    animation: fadeInGang 0.4s ease-out forwards;
+    animation: none;
 }
 
 /* New employee row animation */
 .payroll-table tbody tr.row-animating {
-    animation: fadeInRow 0.3s ease-out forwards;
+    animation: none;
 }
 
 /* Staggered animation for gang chunks */
 .gang-chunk-new .gang-header-row {
-    animation: fadeInGang 0.4s ease-out forwards;
+    animation: none;
 }
 
 .gang-chunk-new tbody tr:nth-child(even) {
-    animation: fadeInRow 0.3s ease-out 0.05s forwards;
-    opacity: 0;
+    animation: none;
+    opacity: 1;
 }
 
 .gang-chunk-new tbody tr:nth-child(odd) {
-    animation: fadeInRow 0.3s ease-out 0.1s forwards;
-    opacity: 0;
+    animation: none;
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .payroll-table *,
+    .payroll-scroll-dock *,
+    .payroll-edit-save-dock * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 /* Pulse animation for streaming indicator */

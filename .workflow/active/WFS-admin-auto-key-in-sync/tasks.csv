@@ -1,0 +1,9 @@
+id,title,depends_on,files,status
+IMPL-1,Baseline audit and ownership guard,"","frontend/src/components/CustomPayrollTable.jsx;frontend/src/styles/CustomPayrollTable.css;frontend/src/context/AuthContext.jsx;frontend/src/services/manualAdjustmentService.js;backend/src/api/payroll.ts;backend/src/services/manualAdjustmentService.ts",pending
+IMPL-2,Admin-only UI affordance plan,IMPL-1,"frontend/src/components/CustomPayrollTable.jsx;frontend/src/components/AdminPayrollSyncToolbar.jsx",pending
+IMPL-3,Unsynced item detection model,IMPL-2,"frontend/src/utils/payrollSyncTargets.js;frontend/src/utils/payrollSyncTargets.test.js;frontend/src/components/CustomPayrollTable.jsx",pending
+IMPL-4,Backend compare preview endpoint,"IMPL-1;IMPL-3","backend/src/api/payroll.ts;backend/src/services/manualAdjustmentService.ts;backend/src/services/adminAutoKeyInPreviewService.ts",pending
+IMPL-5,Auto Key-In backend bridge,IMPL-4,"backend/src/services/adminAutoKeyInRunService.ts;backend/src/api/payroll.ts",pending
+IMPL-6,Frontend preview confirm and run flow,IMPL-5,"frontend/src/services/adminAutoKeyInSyncService.js;frontend/src/components/AdminPayrollSyncToolbar.jsx;frontend/src/components/CustomPayrollTable.jsx",pending
+IMPL-7,Post-run sync audit and red indicator refresh,"IMPL-5;IMPL-6","backend/src/services/manualAdjustmentSyncStatusSeederService.ts;backend/src/api/payroll.ts;frontend/src/services/adminAutoKeyInSyncService.js",pending
+IMPL-8,Validation and live-run guardrail,IMPL-7,"backend tests;frontend tests;docs if needed",pending
