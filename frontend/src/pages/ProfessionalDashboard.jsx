@@ -293,7 +293,10 @@ export default function ProfessionalDashboard() {
       if (!token || !month || !year) return;
       setDashboardError('');
       try {
-        const response = await fetch(buildBackendUrl(`/payroll/dashboard/executive-summary?month=${month}&year=${year}`), {
+        const params = new URLSearchParams({ month: String(month), year: String(year) });
+        if (division) params.set('division_code', division);
+        if (gang && gang !== 'ALL') params.set('gang_code', gang);
+        const response = await fetch(buildBackendUrl(`/payroll/dashboard/executive-summary?${params.toString()}`), {
           headers: { Authorization: `Bearer ${token}` }
         });
         const json = await response.json();
@@ -310,7 +313,7 @@ export default function ProfessionalDashboard() {
     }
     loadDashboardSummary();
     return () => { active = false; };
-  }, [token, month, year]);
+  }, [token, month, year, division, gang]);
 
   const userRole = guessRole(user, isAdminUser);
   const roleMeta = getRoleMeta(userRole);

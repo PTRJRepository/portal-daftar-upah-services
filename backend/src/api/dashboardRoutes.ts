@@ -1,19 +1,32 @@
 import { Elysia, t } from "elysia";
 import { dashboardService } from "../services/dashboardService";
+import { divisionConfigService } from "../services/config/DivisionConfigService";
 
 export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
     .get("/executive-summary", async ({ query, set }) => {
         try {
             const month = query.month ? parseInt(query.month) : new Date().getMonth() + 1;
             const year = query.year ? parseInt(query.year) : new Date().getFullYear();
+            const divisionCode = query.division_code && query.division_code !== 'ALL' ? query.division_code : undefined;
+            const gangCode = query.gang_code && query.gang_code !== 'ALL' ? query.gang_code : undefined;
 
-            const trends = await dashboardService.getPayrollTrend(month, year);
-            const breakdown = await dashboardService.getDivisionBreakdown(month, year);
-            const gangBreakdown = await dashboardService.getGangBreakdown(month, year);
-            const efficiency = await dashboardService.getDivisionEfficiency(month, year);
+            // Resolve gang codes for the selected division (HR_GANG lives in db_ptrj, not extendDb)
+            let gangFilterCodes: string[] | undefined;
+            if (divisionCode) {
+                const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+                gangFilterCodes = gangs.map(g => (g.gang_code || '').trim()).filter(Boolean);
+            }
+            if (gangCode) {
+                gangFilterCodes = gangCode ? [gangCode] : gangFilterCodes;
+            }
 
-            const productivityTrend = await dashboardService.getProductivityTrend(month, year);
-            const wageSpikes = await dashboardService.getWageSpikes(month, year);
+            const trends = await dashboardService.getPayrollTrend(month, year, gangFilterCodes);
+            const breakdown = await dashboardService.getDivisionBreakdown(month, year, gangFilterCodes);
+            const gangBreakdown = await dashboardService.getGangBreakdown(month, year, 15, gangFilterCodes);
+            const efficiency = await dashboardService.getDivisionEfficiency(month, year, gangFilterCodes);
+
+            const productivityTrend = await dashboardService.getProductivityTrend(month, year, gangFilterCodes);
+            const wageSpikes = await dashboardService.getWageSpikes(month, year, gangFilterCodes);
 
             // KPI calculation (Current vs Previous Month in the trend series)
             const current = trends[trends.length - 1] || {};
@@ -50,7 +63,9 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
     }, {
         query: t.Object({
             month: t.String(),
-            year: t.String()
+            year: t.String(),
+            division_code: t.Optional(t.String()),
+            gang_code: t.Optional(t.String())
         })
     })
     .get('/latest-period', async ({ set }) => {

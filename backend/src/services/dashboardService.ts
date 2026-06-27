@@ -58,6 +58,16 @@ export class DashboardService {
         `;
     }
 
+    /**
+     * Build an optional `AND h.gang_code IN (...)` filter clause.
+     * Returns { clause, params }. When gangCodes is empty/undefined, no filter.
+     */
+    private buildGangCodeFilter(gangCodes?: string[]): { clause: string; params: string[] } {
+        if (!gangCodes || gangCodes.length === 0) return { clause: '', params: [] };
+        const placeholders = gangCodes.map(() => '?').join(',');
+        return { clause: ` AND h.gang_code IN (${placeholders})`, params: [...gangCodes] };
+    }
+
     public static getInstance(): DashboardService {
         if (!DashboardService.instance) {
             DashboardService.instance = new DashboardService();
@@ -69,7 +79,7 @@ export class DashboardService {
     /**
      * Get 12-month trend for Wages, OT, Premi
      */
-    public async getPayrollTrend(endMonth: number, endYear: number): Promise<any[]> {
+    public async getPayrollTrend(endMonth: number, endYear: number, gangCodes?: string[]): Promise<any[]> {
         // Calculate start period (12 months ago)
         let startMonth = endMonth + 1;
         let startYear = endYear - 1;
@@ -77,6 +87,8 @@ export class DashboardService {
             startMonth = 1;
             startYear = endYear;
         }
+
+        const gf = this.buildGangCodeFilter(gangCodes);
 
         // Query for 12-month trend
         const query = `
@@ -95,6 +107,7 @@ export class DashboardService {
                 AND
                 (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
                 AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
+                ${gf.clause}
             GROUP BY h.period_year, h.period_month
             ORDER BY h.period_year, h.period_month
         `;
@@ -106,7 +119,8 @@ export class DashboardService {
         try {
             const rows = await this.extendDb.query<any>(query, [
                 startYear, startYear, startMonth,
-                endYear, endYear, endMonth
+                endYear, endYear, endMonth,
+                ...gf.params
             ]);
 
             // Map keys to be friendly
@@ -129,7 +143,8 @@ export class DashboardService {
     /**
      * Get current month division breakdown
      */
-    public async getDivisionBreakdown(month: number, year: number): Promise<any[]> {
+    public async getDivisionBreakdown(month: number, year: number, gangCodes?: string[]): Promise<any[]> {
+        const gf = this.buildGangCodeFilter(gangCodes);
         const query = `
             ${this.latestAggregationRowsCte()}
             SELECT
@@ -139,18 +154,19 @@ export class DashboardService {
                 SUM(ISNULL(h.total_premi, 0)) as total_premi,
                 SUM(ISNULL(h.total_employees, 0)) as headcount
             FROM latest_rows h
-            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?${gf.clause}
             GROUP BY h.division_code
             ORDER BY total_wage DESC
         `;
-        const rows = await this.extendDb.query<any>(query, [month, year]);
+        const rows = await this.extendDb.query<any>(query, [month, year, ...gf.params]);
         return rows;
     }
 
     /**
      * Get Top Gangs by Cost
      */
-    public async getGangBreakdown(month: number, year: number, limit: number = 15): Promise<any[]> {
+    public async getGangBreakdown(month: number, year: number, limit: number = 15, gangCodes?: string[]): Promise<any[]> {
+        const gf = this.buildGangCodeFilter(gangCodes);
         const query = `
             ${this.latestAggregationRowsCte()}
             SELECT TOP ${limit}
@@ -159,17 +175,18 @@ export class DashboardService {
                 SUM(ISNULL(h.total_lembur, 0)) as total_ot,
                 SUM(ISNULL(h.total_employees, 0)) as headcount
             FROM latest_rows h
-            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?${gf.clause}
             GROUP BY h.gang_code
             ORDER BY total_wage DESC
         `;
-        return await this.extendDb.query<any>(query, [month, year]);
+        return await this.extendDb.query<any>(query, [month, year, ...gf.params]);
     }
 
     /**
      * Get Division Efficiency (Cost vs Headcount/WorkDays)
      */
-    public async getDivisionEfficiency(month: number, year: number): Promise<any[]> {
+    public async getDivisionEfficiency(month: number, year: number, gangCodes?: string[]): Promise<any[]> {
+        const gf = this.buildGangCodeFilter(gangCodes);
         const query = `
             ${this.latestAggregationRowsCte()}
             SELECT
@@ -178,19 +195,20 @@ export class DashboardService {
                 SUM(ISNULL(h.total_employees, 0)) as headcount,
                 SUM(ISNULL(h.total_hk, 0)) as total_man_days
             FROM latest_rows h
-            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?${gf.clause}
             GROUP BY h.division_code
             HAVING SUM(ISNULL(h.total_employees, 0)) > 0
             ORDER BY total_cost DESC
         `;
-        return await this.extendDb.query<any>(query, [month, year]);
+        return await this.extendDb.query<any>(query, [month, year, ...gf.params]);
     }
 
     /**
      * Get 12-Month/Period Productivity Trend (Cost per HK)
      */
-    public async getProductivityTrend(endMonth: number, endYear: number): Promise<any[]> {
+    public async getProductivityTrend(endMonth: number, endYear: number, gangCodes?: string[]): Promise<any[]> {
         const { startMonth, startYear } = this.getStartPeriod(endMonth, endYear);
+        const gf = this.buildGangCodeFilter(gangCodes);
         const query = `
             ${this.latestAggregationRowsCte()}
             SELECT
@@ -204,11 +222,12 @@ export class DashboardService {
                 AND
                 (h.period_year > ? OR (h.period_year = ? AND h.period_month >= ?))
                 AND (h.period_year < ? OR (h.period_year = ? AND h.period_month <= ?))
+                ${gf.clause}
             GROUP BY h.period_year, h.period_month
             ORDER BY h.period_year, h.period_month
         `;
 
-        const rows = await this.extendDb.query<any>(query, [startYear, startYear, startMonth, endYear, endYear, endMonth]);
+        const rows = await this.extendDb.query<any>(query, [startYear, startYear, startMonth, endYear, endYear, endMonth, ...gf.params]);
 
         return rows.map(r => ({
             period: `${this.getMonthName(r.period_month)} ${r.period_year}`,
@@ -221,7 +240,8 @@ export class DashboardService {
      * Get Gang Wage Spikes (Anomaly Detection)
      * Compares Current Month vs Previous Month for Top 5 Gangs with highest Cost/HK increase
      */
-    public async getWageSpikes(month: number, year: number): Promise<any[]> {
+    public async getWageSpikes(month: number, year: number, gangCodes?: string[]): Promise<any[]> {
+        const gf = this.buildGangCodeFilter(gangCodes);
         const query = `
             ${this.latestAggregationRowsCte()}
             SELECT
@@ -229,7 +249,7 @@ export class DashboardService {
                 SUM(ISNULL(h.total_upah_bersih, 0)) as total_wage,
                 SUM(ISNULL(h.total_hk, 0)) as total_hk
             FROM latest_rows h
-            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?
+            WHERE h.row_rank = 1 AND h.period_month = ? AND h.period_year = ?${gf.clause}
             GROUP BY h.gang_code
         `;
 
@@ -241,8 +261,8 @@ export class DashboardService {
         }
 
         const [currentRows, prevRows] = await Promise.all([
-            this.extendDb.query<any>(query, [month, year]),
-            this.extendDb.query<any>(query, [prevMonth, prevYear])
+            this.extendDb.query<any>(query, [month, year, ...gf.params]),
+            this.extendDb.query<any>(query, [prevMonth, prevYear, ...gf.params])
         ]);
 
         const prevMap = new Map<string, { wage: number, hk: number }>();
