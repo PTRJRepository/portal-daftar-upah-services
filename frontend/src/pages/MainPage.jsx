@@ -18,6 +18,7 @@ import GangAttendanceMatrix from '../components/GangAttendanceMatrix'
 import GangOvertimeMatrix from '../components/GangOvertimeMatrix'
 import GangEmployeeInfo from '../components/GangEmployeeInfo'
 import PayrollTaxMatrix from '../components/PayrollTaxMatrix'
+import SalaryRangeModal from '../components/SalaryRangeModal'
 import { isProdMode, getUserDivision, buildAppPath } from '../utils/prodModeUtils'
 import { openEmployeeDetailPage } from '../utils/employeeDetailNavigation'
 import { checkReportAccess } from '../services/summaryReportService'
@@ -106,6 +107,7 @@ export default function MainPage({ lockedDiv = null }) {
   const [showAnalysisReport, setShowAnalysisReport] = useState(false)
   const [showAggregationSeeder, setShowAggregationSeeder] = useState(false)
   const [showPayrollAnalysis, setShowComprehensivePerformance] = useState(false)
+  const [showSalaryRangeModal, setShowSalaryRangeModal] = useState(false)
   const [rowCount, setRowCount] = useState(0)
   const [fontSize, setFontSize] = useState(100) // Default 100% font size
   const [exportHandler, setExportHandler] = useState(null) // Export function from CustomPayrollTable
@@ -586,6 +588,15 @@ export default function MainPage({ lockedDiv = null }) {
 
   const handleBackFromPayrollAnalysis = () => {
     setShowComprehensivePerformance(false)
+  }
+
+  // Handler for Salary Range Modal
+  const handleShowSalaryRangeModal = () => {
+    setShowSalaryRangeModal(true)
+  }
+
+  const handleCloseSalaryRangeModal = () => {
+    setShowSalaryRangeModal(false)
   }
 
   // -- SHOW WAGES IJL REPORT PAGE --
@@ -1530,6 +1541,30 @@ export default function MainPage({ lockedDiv = null }) {
                       Aggregation Seeder
                       <span style={{ fontSize: '1.2em' }}>›</span>
                     </button>
+
+                    <button
+                      onClick={handleShowSalaryRangeModal}
+                      style={{
+                        padding: '0.9rem',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.color = '#d97706'; e.currentTarget.style.backgroundColor = '#fffbeb'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+                    >
+                      Detail Gaji Range
+                      <span style={{ fontSize: '1.2em' }}>›</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -1537,6 +1572,12 @@ export default function MainPage({ lockedDiv = null }) {
 
           </div>
         </div>
+
+        {/* Salary Range Modal - rendered here for selection screen */}
+        <SalaryRangeModal
+          isOpen={showSalaryRangeModal}
+          onClose={handleCloseSalaryRangeModal}
+        />
       </div>
     )
   }
@@ -2027,6 +2068,12 @@ export default function MainPage({ lockedDiv = null }) {
           ]}
         />
       </div>
+
+      {/* Salary Range Modal */}
+      <SalaryRangeModal
+        isOpen={showSalaryRangeModal}
+        onClose={handleCloseSalaryRangeModal}
+      />
     </div>
   )
 }

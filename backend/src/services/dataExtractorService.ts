@@ -782,7 +782,6 @@ export class DataExtractorService {
         const daysInMonth = new Date(year, month, 0).getDate();
 
         // ============================================================
-        // ============================================================
         // [OPTIMIZATION] Parallelize: gangService fetch + currentPeriod with timeout fallback
         // ============================================================
         // Get gangs first (fast query)
@@ -798,7 +797,6 @@ export class DataExtractorService {
             currentYear = currentPeriod.year;
         } catch (periodError: any) {
             // If getCurrentPeriod fails (e.g., DB timeout), use the requested period as fallback
-            // This ensures the seeder can still work even if the DB is slow
             console.warn(`[DataExtractor] getCurrentPeriod failed: ${periodError.message}. Using requested period ${month}/${year} as fallback.`);
             currentMonth = month;
             currentYear = year;
@@ -807,15 +805,7 @@ export class DataExtractorService {
         // Determine if the selected period is historical (before current period)
         const isHistorical = (year < currentYear) || (year === currentYear && month < currentMonth);
 
-        // [OPTIMIZATION] Cache check
-        const cacheKey = cacheService.buildPayrollKey(gangCode, month, year, divisionCode, useHistoryDb);
-        const useCache = false;
-        if (useCache) {
-            const cached = cacheService.get<any>(cacheKey);
-            if (cached) {
-                return cached;
-            }
-        }
+        console.log(`[DataExtractor] Current period: ${currentMonth}/${currentYear}, Selected: ${month}/${year}, IsHistorical: ${isHistorical}`);
 
         // If history mode is on, try to fetch from the snapshot tables first.
         let shouldFetchHistory = isHistorical && historyDatabaseService.isHistoryMode();

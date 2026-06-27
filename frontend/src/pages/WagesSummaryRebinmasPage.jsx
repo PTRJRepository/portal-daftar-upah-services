@@ -1020,7 +1020,7 @@ export default function WagesSummaryRebinmasPage({ onBack, initialMonth, initial
                 {/* Subtotal Row */}
                 {group.subtotal && (
                     <tr className="subtotal">
-                        <td className="text-left sticky-col">GRAND TOTAL {group.label.replace('ESTATE ', '')}</td>
+                        <td className="text-left sticky-col">Grand Total {group.label.replace('ESTATE ', '')}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_employees)}</td>
                         <td className="text-right border-right-section">{formatNumber(group.subtotal.total_hk)}</td>
                         <td className="text-right">{formatNumber(group.subtotal.total_pph21)}</td>

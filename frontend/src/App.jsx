@@ -1,6 +1,10 @@
 import { useEffect, useState, useMemo, useCallback, lazy, Suspense, memo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import axios from 'axios'
+// Lazy load pages for better startup performance
+const MainPage = lazy(() => import('./pages/MainPage'))
+
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ReportProvider, useReport } from './context/ReportContext'
 import LoadingScreen from './components/common/LoadingScreen'
@@ -1087,7 +1091,58 @@ function AppInner() {
     return <LoadingScreen isLoading={true} message="Menyiapkan sistem..." />
   }
 
-  console.log('[AppInner] rendering Routes for location:', location.pathname);
+  // Not authenticated
+  if (!isAuthenticated) {
+    // If we are explicitly at the login page, render it!
+    const isLoginPath = window.location.pathname === '/login' || window.location.pathname === '/upah/login'
+
+    if (isLoginPath) {
+      return (
+        <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat halaman login..." />}>
+          <LoginPage />
+        </Suspense>
+      )
+    }
+
+    // Show loading while redirecting
+    return <LoadingScreen isLoading={true} message="Mengalihkan ke halaman login..." />
+  }
+
+  // Check for specific routes (after authentication)
+  // Normalize pathname by removing /upah prefix for consistent route matching
+  const rawPathname = window.location.pathname
+  // Handle employee detail route
+  const isEmployeeDetail = rawPathname.includes('/employee/detail')
+
+  if (isEmployeeDetail) {
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat detail karyawan..." />}>
+        <EmployeeDetailRoute />
+      </Suspense>
+    )
+  }
+
+  // Handle high earners report route
+  const isHighEarnersReport = rawPathname.includes('/report/high-earners')
+
+  if (isHighEarnersReport) {
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat laporan..." />}>
+        <HighEarnerReportPage />
+      </Suspense>
+    )
+  }
+
+  // Handle salary range detail report route
+  const isSalaryRangeDetail = rawPathname.includes('/report/salary-range-detail')
+
+  if (isSalaryRangeDetail) {
+    return (
+      <Suspense fallback={<LoadingScreen isLoading={true} message="Memuat laporan..." />}>
+        <SalaryRangeDetailPage />
+      </Suspense>
+    )
+  }
 
   return (
     <ErrorBoundary>
