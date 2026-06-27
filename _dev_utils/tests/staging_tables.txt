@@ -1,6 +1,0 @@
-
-Profile: SERVER_PROFILE_2
-  db_staging NOT FOUND
-
-Profile: SERVER_PROFILE_1
-  db_staging NOT FOUND

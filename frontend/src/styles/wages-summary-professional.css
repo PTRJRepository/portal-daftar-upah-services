@@ -1190,6 +1190,223 @@
 }
 
 /* =============================================
+   SUMMARY PREMIUM BREAKDOWN
+   ============================================= */
+.summary-premium-report {
+    margin: 0 0 2rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+}
+
+.summary-premium-report-header,
+.summary-premium-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.summary-premium-eyebrow {
+    margin-bottom: 0.2rem;
+    color: #047857;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.summary-premium-report h2,
+.summary-premium-modal h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.05rem;
+    line-height: 1.2;
+}
+
+.summary-premium-report p,
+.summary-premium-modal p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.3;
+}
+
+.summary-premium-status {
+    padding: 0.45rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.summary-premium-status.ok {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.summary-premium-status.warn {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.summary-premium-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding: 1rem 1.1rem;
+}
+
+.summary-premium-metrics.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 1rem;
+}
+
+.summary-premium-metrics div {
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    padding: 0.75rem;
+}
+
+.summary-premium-metrics span {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.summary-premium-metrics strong {
+    color: #0f172a;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.95rem;
+    line-height: 1.2;
+}
+
+.summary-premium-note {
+    margin: 0 1.1rem 1rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #9a3412;
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
+.summary-premium-table-wrapper {
+    margin: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+}
+
+.summary-premium-table .summary-premium-residual-row td {
+    background: #fffbeb;
+    color: #713f12;
+    font-weight: 700;
+}
+
+.summary-premium-double-section {
+    margin: 0 1.1rem 1rem;
+    padding: 0.85rem;
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    color: #7f1d1d;
+}
+
+.summary-premium-double-section.modal-section {
+    margin: 0 1rem 1rem;
+}
+
+.summary-premium-double-title {
+    margin-bottom: 0.25rem;
+    color: #991b1b;
+    font-size: 0.78rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.summary-premium-double-section p {
+    margin: 0 0 0.7rem;
+    color: #7f1d1d;
+    font-size: 0.74rem;
+    line-height: 1.45;
+}
+
+.summary-premium-double-table {
+    background: #ffffff;
+}
+
+.summary-premi-total-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 700;
+    text-align: right;
+    padding: 0;
+}
+
+.summary-premi-total-button:hover span {
+    text-decoration: underline;
+}
+
+.summary-premium-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 4200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.summary-premium-modal {
+    width: min(760px, 96vw);
+    max-height: 86vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.32);
+}
+
+.summary-premium-modal-body {
+    overflow: auto;
+    padding: 0 1rem 1rem;
+}
+
+.summary-premium-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #334155;
+    cursor: pointer;
+}
+
+.summary-premium-icon-button:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+/* =============================================
    FOOTER / GRAND TOTAL
    ============================================= */
 .wsp-table tfoot tr.wsp-grand-total td {

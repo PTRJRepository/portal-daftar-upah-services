@@ -1,1274 +1,1675 @@
 /**
- * SummaryReportPage - Full Redesign
- * Clean Modern Corporate Dark Blue theme (#0A1D3A / #2563EB / #F3F6FB)
- * With sidebar, topbar, KPI cards, CSS-only charts, 3-page print
+ * SummaryReportPage - Display aggregation summary from daftar_upah_aggregation_history
+ * Professional Financial Report "Paper View" Style
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Printer, FileText, RefreshCw, Save } from 'lucide-react';
-import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, updateGangCell } from '../services/summaryReportService';
-import ReportKpiCards, { PrintKpiRow } from '../components/common/ReportKpiCards';
-import ReportMiniStats from '../components/common/ReportMiniStats';
-import ReportPrintHeader from '../components/common/ReportPrintHeader';
+import { Printer, RefreshCw, ArrowLeft, Save, FileText, ListTree, Eye, X } from 'lucide-react';
+import { fetchDivisionSummary, fetchAvailablePeriods, fetchDivisionsWithData, fetchVirtualDivisions, validateAggregation, seedAggregation, updateGangCell } from '../services/summaryReportService';
+import { generatePDF } from '../utils/pdfGenerator';
+import AggregationSeederModal from '../components/AggregationSeederModal';
+import PrintSignature from '../components/common/PrintSignature';
+import ReportPrintMetadata from '../components/common/ReportPrintMetadata';
+import ReportWatermark from '../components/common/ReportWatermark';
+import { otherIncomesService } from '../services/otherIncomesService';
 import { getDivisionTypeLabel } from '../utils/reportPresentationLabels';
 import { getReportDivisionSummary } from '../utils/divisionPresentation';
 import { printReport } from '../utils/printPageSetup';
-import '../styles/summary-report-new.css';
+import { buildGangDescriptionGroupLabel } from '../utils/gangDescriptionGroupLabel';
+import { buildSummaryPremiumBreakdown, getSummaryRowPremiumDoubleCount, getSummaryRowPremiumItems } from '../utils/summaryPremiumBreakdown';
+import '../styles/wages-summary-professional.css';
+import '../styles/print-optimization.css';
+import '../styles/report-print-foundation.css';
 
-const REBINMAS_LOGO_SRC = `${import.meta.env.BASE_URL || '/'}images/rebinmas.webp`;
-const DEFAULT_DIVISION = 'AB1';
-const PRINT_SUMMARY_ROWS = 4;
-const PRINT_DETAIL_ROWS_PER_PAGE = 14;
-const PRINT_PREMI_ROWS = 11;
-
-// ---- Helpers ----
-function formatNumber(value) {
-  if (value === null || value === undefined || value === '') return '-';
-  const num = Number(value);
-  if (isNaN(num)) return '-';
-  return new Intl.NumberFormat('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(num));
-}
-
-function formatRupiah(value) {
-  if (value === null || value === undefined || value === '') return '-';
-  const num = Number(value);
-  if (isNaN(num)) return '-';
-  return `Rp ${new Intl.NumberFormat('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(num))}`;
-}
-
-function formatCompactRupiah(value) {
-  const num = Number(value || 0);
-  if (Math.abs(num) >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toLocaleString('id-ID', { maximumFractionDigits: 2 })} M`;
-  if (Math.abs(num) >= 1_000_000) return `Rp ${(num / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 2 })} JT`;
-  return formatRupiah(num);
-}
-
-function getMonthName(m) {
-  const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-  return months[m] || '';
-}
-
-function chunkRows(rows, size) {
-  const source = Array.isArray(rows) && rows.length ? rows : [];
-  if (!source.length) return [[]];
-  const chunks = [];
-  for (let i = 0; i < source.length; i += size) chunks.push(source.slice(i, i + size));
-  return chunks;
-}
-
-function buildThumbprintRowSpans(rows, comparisonTotal = null) {
-  if (comparisonTotal && rows.length) {
-    return new Map([[0, {
-      rowSpan: rows.length,
-      thumbPrint: Number(comparisonTotal.thumb_print || 0),
-      selisih: Number(comparisonTotal.selisih || 0),
-    }]]);
-  }
-
-  const groups = new Map();
-  rows.forEach((row, idx) => {
-    const key = row.division_code || 'LAINNYA';
-    const current = groups.get(key) || { firstIndex: idx, rowSpan: 0, thumbPrint: Number(row.thumb_print || 0), totalUpahBersih: 0 };
-    current.rowSpan += 1;
-    current.totalUpahBersih += Number(row.total_upah_bersih || 0);
-    if (!current.thumbPrint) current.thumbPrint = Number(row.thumb_print || 0);
-    groups.set(key, current);
-  });
-
-  const rowSpanByIndex = new Map();
-  groups.forEach(group => {
-    rowSpanByIndex.set(group.firstIndex, {
-      rowSpan: group.rowSpan,
-      thumbPrint: group.thumbPrint,
-      selisih: group.thumbPrint > 0 ? group.totalUpahBersih - group.thumbPrint : 0,
-    });
-  });
-  return rowSpanByIndex;
-}
-
-function getPreviousPeriod(month, year) {
-  const currentMonth = Number(month);
-  const currentYear = Number(year);
-  if (currentMonth <= 1) return { month: 12, year: currentYear - 1 };
-  return { month: currentMonth - 1, year: currentYear };
-}
-
-function buildGrandTotal(rows) {
-  if (!rows.length) return null;
-  const totals = {
-    total_employees: 0, total_hk: 0, total_premi: 0, total_lembur: 0,
-    total_pph21: 0, total_spsi: 0, total_upah_bersih: 0,
-    thumb_print: 0, selisih: 0,
-    dynamic_premi_totals: {}, gang_count: rows.length,
-  };
-  const comparisonByDivision = new Map();
-
-  rows.forEach(row => {
-    totals.total_employees += Number(row.total_employees || 0);
-    totals.total_hk += Number(row.total_hk || 0);
-    totals.total_premi += Number(row.total_premi || 0);
-    totals.total_lembur += Number(row.total_lembur || 0);
-    totals.total_pph21 += Number(row.total_pph21 || 0);
-    totals.total_spsi += Number(row.total_spsi || 0);
-    totals.total_upah_bersih += Number(row.total_upah_bersih || 0);
-
-    const divisionKey = row.division_code || 'LAINNYA';
-    const currentComparison = comparisonByDivision.get(divisionKey) || { thumbPrint: Number(row.thumb_print || 0), totalUpahBersih: 0 };
-    currentComparison.totalUpahBersih += Number(row.total_upah_bersih || 0);
-    if (!currentComparison.thumbPrint) currentComparison.thumbPrint = Number(row.thumb_print || 0);
-    comparisonByDivision.set(divisionKey, currentComparison);
-
-    if (Array.isArray(row._dynamic_premi_list)) {
-      row._dynamic_premi_list.forEach(dp => {
-        totals.dynamic_premi_totals[dp.header] = (totals.dynamic_premi_totals[dp.header] || 0) + Number(dp.total || 0);
-      });
+// Company information by division
+const COMPANY_INFO = {
+    IJL: {
+        name: 'PT. IMPIAN JAYA LESTARI',
+        logo: '/images/ijl-logo.png',
+        logoFallback: '/images/rebinmas.webp'
+    },
+    DEFAULT: {
+        name: 'PT. REBINMAS JAYA',
+        logo: '/images/rebinmas.webp',
+        logoFallback: '/images/rebinmas.webp'
     }
-  });
+};
 
-  comparisonByDivision.forEach(({ thumbPrint, totalUpahBersih }) => {
-    totals.thumb_print += Number(thumbPrint || 0);
-    totals.selisih += thumbPrint > 0 ? totalUpahBersih - thumbPrint : 0;
-  });
-  return totals;
-}
+// Helper function to get company info based on division
+const getCompanyInfo = (division) => {
+    return COMPANY_INFO[division] || COMPANY_INFO.DEFAULT;
+};
 
-function buildPremiBreakdown(currentTotal, previousTotal) {
-  if (!currentTotal) return [];
-  const currentDynamicTotals = currentTotal?.dynamic_premi_totals || {};
-  const previousDynamicTotals = previousTotal?.dynamic_premi_totals || {};
-  const currentEntries = Object.entries(currentDynamicTotals)
-    .filter(([, amount]) => Number(amount || 0) !== 0);
+// Helper function to format numbers with Indonesian locale
+const formatNumber = (value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    const num = Number(value);
+    if (isNaN(num)) return '-';
+    return new Intl.NumberFormat('id-ID', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(Math.round(num));
+};
 
-  const rows = currentEntries.length
-    ? currentEntries.map(([name, amount]) => ({ name, amount: Number(amount || 0) }))
-    : [{ name: 'Total Premi', amount: Number(currentTotal?.total_premi || 0) }];
+const getSummaryGroupFallbackLabel = (group) => {
+    return group && group !== 'LAINNYA' ? `Group ${group}` : 'Lainnya';
+};
 
-  return rows
-    .map(row => {
-      const previousAmount = Number(previousDynamicTotals[row.name] || 0);
-      const delta = row.amount - previousAmount;
-      return {
-        ...row,
-        previousAmount,
-        delta,
-        percentage: currentTotal?.total_premi ? (row.amount / currentTotal.total_premi) * 100 : 0,
-        deltaPercentage: previousAmount ? (delta / previousAmount) * 100 : null,
-      };
-    })
-    .sort((a, b) => b.amount - a.amount);
-}
+const formatSummaryGroupLabel = (label) => {
+    const summaryGroupLabel = String(label || '');
+    return summaryGroupLabel.toUpperCase();
+};
 
-function compactPremiRowsForPrint(rows, maxRows = PRINT_PREMI_ROWS) {
-  if (!Array.isArray(rows) || rows.length <= maxRows) return rows || [];
-  const visibleRows = rows.slice(0, maxRows - 1);
-  const remainingRows = rows.slice(maxRows - 1);
-  const others = remainingRows.reduce((acc, row) => {
-    acc.amount += Number(row.amount || 0);
-    acc.previousAmount += Number(row.previousAmount || 0);
-    acc.delta += Number(row.delta || 0);
-    acc.percentage += Number(row.percentage || 0);
-    return acc;
-  }, { name: 'Lainnya', amount: 0, previousAmount: 0, delta: 0, percentage: 0, deltaPercentage: null });
-  return [...visibleRows, others];
-}
-
-// ---- Editable Cell ----
+// Editable cell component for inline editing
 function EditableCell({ editMode, value, onSave, isCurrency }) {
-  const [editing, setEditing] = useState(false);
-  const [inputVal, setInputVal] = useState(String(value || 0));
-  const inputRef = React.useRef(null);
+    const [editing, setEditing] = useState(false);
+    const [inputVal, setInputVal] = useState(String(value || 0));
+    const inputRef = useRef(null);
 
-  useEffect(() => {
-    if (!editing) setInputVal(String(value || 0));
-  }, [value, editing]);
+    useEffect(() => {
+        if (!editing) setInputVal(String(value || 0));
+    }, [value, editing]);
 
-  const handleDoubleClick = () => {
-    if (editMode) {
-      setEditing(true);
-      setTimeout(() => inputRef.current?.select(), 50);
-    }
-  };
-
-  const handleBlur = () => {
-    setEditing(false);
-    const num = parseFloat(inputVal) || 0;
-    if (num !== Number(value)) onSave(num);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') inputRef.current?.blur();
-    else if (e.key === 'Escape') {
-      setInputVal(String(value || 0));
-      setEditing(false);
-    }
-  };
-
-  if (editMode) {
-    return (
-      <td
-        className="num-cell"
-        style={{
-          cursor: 'text',
-          backgroundColor: editing ? '#fffbeb' : '#f0f9ff',
-          textAlign: 'right',
-        }}
-        onDoubleClick={handleDoubleClick}
-      >
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="number"
-            value={inputVal}
-            onChange={e => setInputVal(e.target.value)}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            style={{
-              width: '100%',
-              border: '1px solid #3b82f6',
-              borderRadius: '4px',
-              background: '#ffffff',
-              textAlign: 'right',
-              fontSize: 'inherit',
-              fontFamily: 'inherit',
-              color: '#0f172a',
-              outline: 'none',
-              padding: '2px 6px',
-            }}
-            autoFocus
-          />
-        ) : (
-          <span style={{ color: '#1e40af', fontSize: '11px', opacity: 0.7 }}>
-            {formatNumber(value)} ✏
-          </span>
-        )}
-      </td>
-    );
-  }
-
-  return (
-    <td className="num-cell">
-      {formatNumber(value)}
-    </td>
-  );
-}
-
-// ---- CONTENT WRAPPER (no duplicate sidebar/topbar — DashboardLayout provides those) ----
-function ContentWrapper({ children }) {
-  return <div className="srn-content-body">{children}</div>;
-}
-
-// ---- Sidebar (not used — DashboardLayout provides its own sidebar) ----
-// NOTE: We keep the Sidebar/Topbar component code for standalone reference
-// but they are NOT rendered since DashboardLayout provides layout chrome.
-
-// ---- Donut Chart ----
-function DonutChart({ label, percentage }) {
-  const pct = percentage ?? 100;
-  return (
-    <div className="srn-donut-wrap">
-      <div
-        className="srn-donut"
-        data-label={`${label}\n${pct.toFixed(1)}%`}
-        style={{
-          background: `conic-gradient(var(--srn-blue-600) 0 ${pct}%, var(--srn-blue-050) ${pct}%)`,
-        }}
-      />
-      <div className="srn-legend">
-        <div className="srn-legend-item">
-          <span className="srn-dot" />
-          <span>{label}</span>
-          <span className="srn-legend-pct">{pct.toFixed(1)}%</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DistributionDonutChart({ items, centerLabel }) {
-  const safeItems = (items || []).filter(item => Number(item.amount) > 0).slice(0, 6);
-  const total = safeItems.reduce((sum, item) => sum + Number(item.amount || 0), 0) || 1;
-  let cursor = 0;
-  const palette = ['#2563EB', '#0A1D3A', '#15803d', '#d97706', '#7c3aed', '#64748b'];
-  const segments = safeItems.map((item, idx) => {
-    const pct = (Number(item.amount || 0) / total) * 100;
-    const start = cursor;
-    cursor += pct;
-    return `${palette[idx % palette.length]} ${start}% ${cursor}%`;
-  });
-
-  return (
-    <div className="srn-donut-wrap srn-donut-wrap-multi">
-      <div
-        className="srn-donut srn-donut-multi"
-        data-label={`${centerLabel}\n${formatRupiah(total)}`}
-        style={{ background: `conic-gradient(${segments.join(', ') || 'var(--srn-blue-050) 0 100%'})` }}
-      />
-      <div className="srn-legend">
-        {safeItems.map((item, idx) => {
-          const pct = (Number(item.amount || 0) / total) * 100;
-          return (
-            <div key={`${item.name}-${idx}`} className="srn-legend-item">
-              <span className="srn-dot" style={{ background: palette[idx % palette.length] }} />
-              <span>{item.name}</span>
-              <span className="srn-legend-pct">{pct.toFixed(1)}%</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ---- Bar Chart ----
-function BarChart({ items }) {
-  const maxVal = Math.max(...items.map(i => Number(i.amount) || 0), 1);
-  return (
-    <div className="srn-bars">
-      {items.map((item, idx) => {
-        const val = Number(item.amount) || 0;
-        const width = (val / maxVal) * 100;
-        return (
-          <div key={idx} className="srn-bar-row">
-            <div className="srn-bar-label" title={item.name}>{item.name}</div>
-            <div className="srn-bar-track">
-              <div className="srn-bar-fill" style={{ width: `${width}%` }} />
-            </div>
-            <div className="srn-bar-value">{item.label}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---- Summary Table ----
-function SummaryTable({ data, grandTotal, comparisonTotal, onCellEdit, editMode, filteredGrandTotalLabel, showDetail, filteredHeaders, getDynamicPremiValue }) {
-  const baseColSpan = 11 + (showDetail ? filteredHeaders.length : 0);
-  const thumbprintRowSpans = useMemo(() => buildThumbprintRowSpans(data, comparisonTotal), [data, comparisonTotal]);
-
-  return (
-    <div className="srn-table-wrapper">
-      <table className="srn-table">
-        <thead>
-          <tr>
-            <th className="text-left">ESTATE / GANG</th>
-            <th>WORKERS</th>
-            <th>HK</th>
-            {showDetail && filteredHeaders.map(h => <th key={h}>{h.toUpperCase()}</th>)}
-            <th>TOTAL PREMI</th>
-            <th>LEMBUR</th>
-            <th>PPH 21</th>
-            <th>SPSI</th>
-            <th>TOTAL UPAH BERSIH</th>
-            <th>THUMBPRINT</th>
-            <th>SELISIH</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.length === 0 ? (
-            <tr>
-              <td colSpan={baseColSpan} style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                Tidak ada data
-              </td>
-            </tr>
-          ) : data.map((row, idx) => {
-            const comparisonCell = thumbprintRowSpans.get(idx);
-            return (
-              <tr key={idx}>
-                <td className="srn-gang-cell">
-                  <span className="srn-gang-code">{row.gang_code}</span>
-                  {row.gang_description && row.gang_description !== row.gang_code && (
-                    <span className="srn-gang-desc">{row.gang_description}</span>
-                  )}
-                </td>
-                <EditableCell editMode={editMode} value={row.total_employees} onSave={v => onCellEdit(row.gang_code, 'total_employees', v)} />
-                <EditableCell editMode={editMode} value={row.total_hk} onSave={v => onCellEdit(row.gang_code, 'total_hk', v)} />
-                {showDetail && filteredHeaders.map(h => (
-                  <td key={h} className="num-cell">
-                    {formatNumber(getDynamicPremiValue(row, h))}
-                  </td>
-                ))}
-                <td className="num-cell" style={{ fontWeight: 700 }}>
-                  {formatNumber(row.total_premi)}
-                </td>
-                <EditableCell editMode={editMode} value={row.total_lembur} onSave={v => onCellEdit(row.gang_code, 'total_lembur', v)} />
-                <td className="num-cell">{formatNumber(row.total_pph21)}</td>
-                <EditableCell editMode={editMode} value={row.total_spsi} onSave={v => onCellEdit(row.gang_code, 'total_spsi', v)} />
-                <EditableCell editMode={editMode} value={row.total_upah_bersih} onSave={v => onCellEdit(row.gang_code, 'total_upah_bersih', v)} isCurrency />
-                {comparisonCell && (
-                  <>
-                    <td className="num-cell summary-compare-cell" rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint ? formatNumber(comparisonCell.thumbPrint) : '-'}</td>
-                    <td className={`num-cell summary-compare-cell ${comparisonCell.selisih < 0 ? 'negative' : comparisonCell.selisih > 0 ? 'positive' : ''}`} rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint || comparisonCell.selisih ? formatNumber(comparisonCell.selisih) : '-'}</td>
-                  </>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-        {grandTotal && (
-          <tfoot>
-            <tr>
-              <td className="srn-total-row-label">{filteredGrandTotalLabel}</td>
-              <td className="num-cell">{formatNumber(grandTotal.total_employees)}</td>
-              <td className="num-cell">{formatNumber(grandTotal.total_hk)}</td>
-              {showDetail && filteredHeaders.map(h => (
-                <td key={h} className="num-cell">{formatNumber(grandTotal.dynamic_premi_totals?.[h])}</td>
-              ))}
-              <td className="num-cell" style={{ background: 'var(--srn-navy-900)', color: '#fff' }}>
-                {formatNumber(grandTotal.total_premi)}
-              </td>
-              <td className="num-cell">{formatNumber(grandTotal.total_lembur)}</td>
-              <td className="num-cell">{formatNumber(grandTotal.total_pph21)}</td>
-              <td className="num-cell">{formatNumber(grandTotal.total_spsi)}</td>
-              <td className="num-cell" style={{ color: '#4ade80' }}>
-                {formatNumber(grandTotal.total_upah_bersih)}
-              </td>
-              <td className="num-cell" />
-              <td className="num-cell" />
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
-  );
-}
-
-// ---- Signature Section ----
-function SignatureSection() {
-  const sigs = [
-    { role: 'Dibuat Oleh', name: 'Admin Payroll', title: 'Staff Payroll' },
-    { role: 'Diperiksa Oleh', name: 'HR Manager', title: 'Manager' },
-    { role: 'Diketahui Oleh', name: 'Senior Manager', title: 'Senior Manager' },
-    { role: 'Disetujui Oleh', name: 'General Manager', title: 'GM / Direktur' },
-  ];
-
-  return (
-    <div className="srn-signatures">
-      {sigs.map((s, idx) => (
-        <div key={idx} className="srn-sig">
-          <div className="srn-sig-line" />
-          <strong>{s.role}</strong>
-          <br />
-          <strong>{s.name}</strong>
-          <br />
-          <em style={{ fontSize: '0.85em', color: 'var(--srn-text-500)' }}>{s.title}</em>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---- Print Page 1: Summary ----
-function PrintPage1({ grandTotal, comparisonTotal, periodLabel, printDate, username, filteredData, filteredGrandTotalLabel, chartData, divisionLabel, totalPages }) {
-  const kpis = [
-    { label: 'Total Workers', value: formatNumber(grandTotal?.total_employees) },
-    { label: 'Total HK Chekroll', value: formatNumber(grandTotal?.total_hk) },
-    { label: 'Total Premi', value: formatRupiah(grandTotal?.total_premi) },
-    { label: 'Total Upah Bersih', value: formatRupiah(grandTotal?.total_upah_bersih) },
-  ];
-  const summaryRows = filteredData.slice(0, PRINT_SUMMARY_ROWS);
-  const summaryThumbprintRowSpans = buildThumbprintRowSpans(summaryRows, comparisonTotal);
-
-  return (
-    <article className="srn-paper srn-paper-summary" id="print-page-1">
-      <ReportPrintHeader
-        title="Summary Report Detail"
-        period={`Divisi: ${divisionLabel} | Periode: ${periodLabel}`}
-        meta={`Dicetak oleh: ${username || 'Admin'}\nTanggal Cetak: ${printDate}`}
-      />
-      <PrintKpiRow items={kpis} />
-      <div className="srn-print-grid">
-        <div className="srn-print-card">
-          <div className="srn-print-card-title">{chartData.distributionTitle}</div>
-          <DistributionDonutChart items={chartData.distribution} centerLabel={chartData.distributionCenterLabel} />
-        </div>
-        <div className="srn-print-card">
-          <div className="srn-print-card-title">Distribusi Per Jenis Premi</div>
-          <BarChart items={chartData.premi} />
-        </div>
-      </div>
-      <div className="srn-table-wrapper" style={{ marginBottom: 0 }}>
-        <table className="srn-table">
-          <thead>
-            <tr>
-              <th className="text-left">ESTATE / GANG</th>
-              <th>WORKERS</th>
-              <th>HK</th>
-              <th>TOTAL PREMI</th>
-              <th>LEMBUR</th>
-              <th>PPH 21</th>
-              <th>SPSI</th>
-              <th>TOTAL UPAH BERSIH</th>
-              <th>THUMBPRINT</th>
-              <th>SELISIH</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summaryRows.map((row, idx) => {
-              const comparisonCell = summaryThumbprintRowSpans.get(idx);
-              return (
-                <tr key={idx}>
-                  <td>
-                    <span className="srn-gang-code">{row.gang_code}</span>
-                    <br />
-                    <span className="srn-gang-desc">{row.gang_description || ''}</span>
-                  </td>
-                  <td className="num-cell">{formatNumber(row.total_employees)}</td>
-                  <td className="num-cell">{formatNumber(row.total_hk)}</td>
-                  <td className="num-cell">{formatNumber(row.total_premi)}</td>
-                  <td className="num-cell">{formatNumber(row.total_lembur)}</td>
-                  <td className="num-cell">{formatNumber(row.total_pph21)}</td>
-                  <td className="num-cell">{formatNumber(row.total_spsi)}</td>
-                  <td className="num-cell">{formatNumber(row.total_upah_bersih)}</td>
-                  {comparisonCell && (
-                    <>
-                      <td className="num-cell summary-compare-cell" rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint ? formatNumber(comparisonCell.thumbPrint) : '-'}</td>
-                      <td className={`num-cell summary-compare-cell ${comparisonCell.selisih < 0 ? 'negative' : comparisonCell.selisih > 0 ? 'positive' : ''}`} rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint || comparisonCell.selisih ? formatNumber(comparisonCell.selisih) : '-'}</td>
-                    </>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-          {grandTotal && (
-            <tfoot>
-              <tr>
-                <td className="srn-total-row-label">{filteredGrandTotalLabel}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_employees)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_hk)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_premi)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_lembur)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_pph21)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_spsi)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_upah_bersih)}</td>
-                <td className="num-cell" />
-                <td className="num-cell" />
-              </tr>
-            </tfoot>
-          )}
-        </table>
-        {filteredData.length > PRINT_SUMMARY_ROWS && (
-          <div className="srn-print-table-note">
-            Menampilkan {PRINT_SUMMARY_ROWS} baris pertama. Detail lengkap berlanjut pada halaman Detail Per Gang.
-          </div>
-        )}
-      </div>
-      <SignatureSection />
-      <footer className="srn-paper-footer">
-        <span>Dicetak: {printDate}</span>
-        <span>Payroll Reporting System - PT. Rebinmas Jaya</span>
-        <span>Hal. 1 / {totalPages}</span>
-      </footer>
-    </article>
-  );
-}
-
-// ---- Print Page 2: Uraian Premi ----
-function PrintPage2({ grandTotal, previousGrandTotal, premiBreakdownData, periodLabel, previousPeriodLabel, printDate, username, divisionLabel, pageNumber, totalPages }) {
-  const previousTotalPremi = Number(previousGrandTotal?.total_premi || 0);
-  const totalDelta = Number(grandTotal?.total_premi || 0) - previousTotalPremi;
-  const printPremiRows = compactPremiRowsForPrint(premiBreakdownData);
-  const kpis = [
-    { label: 'Total Premi', value: formatRupiah(grandTotal?.total_premi) },
-    { label: 'Premi Bulan Lalu', value: formatRupiah(previousTotalPremi) },
-    { label: 'Selisih Premi', value: formatRupiah(totalDelta) },
-    { label: 'Jenis Premi', value: formatNumber(premiBreakdownData.length) },
-  ];
-
-  return (
-    <article className="srn-paper srn-paper-premi" id={`print-page-${pageNumber}`}>
-      <ReportPrintHeader
-        title="Uraian Premi Per Jenis"
-        period={`Divisi: ${divisionLabel} | Periode: ${periodLabel}`}
-        meta={`Dicetak oleh: ${username || 'Admin'}\nTanggal Cetak: ${printDate}`}
-      />
-      <PrintKpiRow items={kpis} />
-      <div className="srn-uraian-layout">
-        <div>
-          <table className="srn-table">
-            <thead>
-              <tr>
-                <th>NO</th>
-                <th className="text-left">JENIS PREMI</th>
-                <th>BULAN INI</th>
-                <th>BULAN LALU</th>
-                <th>SELISIH</th>
-                <th>PERSENTASE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {printPremiRows.map((row, index) => (
-                <tr key={row.name}>
-                  <td className="num-cell">{index + 1}</td>
-                  <td>{row.name}</td>
-                  <td className="num-cell">{formatNumber(row.amount)}</td>
-                  <td className="num-cell">{formatNumber(row.previousAmount)}</td>
-                  <td className="num-cell">{formatNumber(row.delta)}</td>
-                  <td className="num-cell">{row.percentage.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan="2" className="srn-total-row-label">Total</td>
-                <td className="num-cell">{formatNumber(grandTotal?.total_premi)}</td>
-                <td className="num-cell">{formatNumber(previousTotalPremi)}</td>
-                <td className="num-cell">{formatNumber(totalDelta)}</td>
-                <td className="num-cell">100,00%</td>
-              </tr>
-            </tfoot>
-          </table>
-          <div className="srn-note">*Angka dalam Rupiah (IDR)</div>
-        </div>
-        <div>
-          <div className="srn-print-card" style={{ marginBottom: '10px' }}>
-            <div className="srn-print-card-title">Ringkasan Top Premi</div>
-            <div className="srn-rank-list">
-              {printPremiRows.slice(0, 4).map((item, index) => (
-                <div key={item.name} className="srn-rank-item">
-                  <div className="srn-rank-no">{index + 1}</div>
-                  <div className="srn-rank-bar-wrap">
-                    <div className="srn-rank-bar-label">{item.name}</div>
-                    <div className="srn-rank-bar">
-                      <span style={{ width: `${Math.min(100, Math.max(3, item.percentage))}%` }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="srn-info-box">
-            Total Jenis Premi: <strong>{premiBreakdownData.length}</strong><br />
-            Total Divisi: <strong>1</strong><br />
-            Total Gang: <strong>{formatNumber(grandTotal?.gang_count || 0)}</strong><br />
-            Periode: <strong>{periodLabel}</strong>
-            <br />Pembanding: <strong>{previousPeriodLabel}</strong>
-          </div>
-        </div>
-      </div>
-      <footer className="srn-paper-footer">
-        <span>Dicetak: {printDate}</span>
-        <span>Payroll Reporting System - PT. Rebinmas Jaya</span>
-        <span>Hal. {pageNumber} / {totalPages}</span>
-      </footer>
-    </article>
-  );
-}
-
-// ---- Print Page 3: Detail Gang ----
-function PrintPage3({ rows, grandTotal, comparisonTotal, periodLabel, printDate, username, filteredGrandTotalLabel, divisionLabel, pageNumber, totalPages, isLastDetailPage }) {
-  const thumbprintRowSpans = buildThumbprintRowSpans(rows, comparisonTotal);
-
-  return (
-    <article className="srn-paper srn-paper-detail" id={`print-page-${pageNumber}`}>
-      <ReportPrintHeader
-        title={pageNumber === 2 ? 'Detail Per Gang / Estate' : 'Lanjutan Detail Per Gang / Estate'}
-        period={`Divisi: ${divisionLabel} | Periode: ${periodLabel}`}
-        meta={`Dicetak oleh: ${username || 'Admin'}\nTanggal Cetak: ${printDate}`}
-      />
-      <div className="srn-detail-table-wrapper">
-        <table className="srn-table">
-          <thead>
-            <tr>
-              <th className="text-left">ESTATE / GANG</th>
-              <th>WORKERS</th>
-              <th>HK</th>
-              <th>TOTAL PREMI</th>
-              <th>LEMBUR</th>
-              <th>PPH 21</th>
-              <th>SPSI</th>
-              <th>TOTAL UPAH BERSIH</th>
-              <th>THUMBPRINT</th>
-              <th>SELISIH</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, idx) => {
-              const comparisonCell = thumbprintRowSpans.get(idx);
-              return (
-                <tr key={idx}>
-                  <td>
-                    <span className="srn-gang-code">{row.gang_code}</span>
-                    <br />
-                    <span className="srn-gang-desc">{row.gang_description || ''}</span>
-                  </td>
-                  <td className="num-cell">{formatNumber(row.total_employees)}</td>
-                  <td className="num-cell">{formatNumber(row.total_hk)}</td>
-                  <td className="num-cell">{formatNumber(row.total_premi)}</td>
-                  <td className="num-cell">{formatNumber(row.total_lembur)}</td>
-                  <td className="num-cell">{formatNumber(row.total_pph21)}</td>
-                  <td className="num-cell">{formatNumber(row.total_spsi)}</td>
-                  <td className="num-cell">{formatNumber(row.total_upah_bersih)}</td>
-                  {comparisonCell && (
-                    <>
-                      <td className="num-cell summary-compare-cell" rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint ? formatNumber(comparisonCell.thumbPrint) : '-'}</td>
-                      <td className={`num-cell summary-compare-cell ${comparisonCell.selisih < 0 ? 'negative' : comparisonCell.selisih > 0 ? 'positive' : ''}`} rowSpan={comparisonCell.rowSpan}>{comparisonCell.thumbPrint || comparisonCell.selisih ? formatNumber(comparisonCell.selisih) : '-'}</td>
-                    </>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-          {grandTotal && isLastDetailPage && (
-            <tfoot>
-              <tr>
-                <td className="srn-total-row-label">{filteredGrandTotalLabel}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_employees)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_hk)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_premi)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_lembur)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_pph21)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_spsi)}</td>
-                <td className="num-cell">{formatNumber(grandTotal.total_upah_bersih)}</td>
-                <td className="num-cell" />
-                <td className="num-cell" />
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-      <footer className="srn-paper-footer">
-        <span>Dicetak: {printDate}</span>
-        <span>Payroll Reporting System - PT. Rebinmas Jaya</span>
-        <span>Hal. {pageNumber} / {totalPages}</span>
-      </footer>
-    </article>
-  );
-}
-
-// ===== MAIN COMPONENT =====
-export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
-  const { token, user } = useAuth();
-
-  // Filters
-  const [division, setDivision] = useState(initialDivision || DEFAULT_DIVISION);
-  const [month, setMonth] = useState(initialMonth || 11);
-  const [year, setYear] = useState(initialYear || new Date().getFullYear());
-  const [divisionType, setDivisionType] = useState('real');
-  const [groupFilter, setGroupFilter] = useState('');
-
-  // Data
-  const [divisions, setDivisions] = useState([]);
-  const [virtualDivisions, setVirtualDivisions] = useState([]);
-  const [periods, setPeriods] = useState([]);
-  const [summaryData, setSummaryData] = useState([]);
-  const [previousSummaryData, setPreviousSummaryData] = useState([]);
-  const [gangDescriptions, setGangDescriptions] = useState({});
-  const [filteredHeaders, setFilteredHeaders] = useState([]);
-  const [showDetail, setShowDetail] = useState(false);
-
-  // UI State
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [editMode, setEditMode] = useState(false);
-  const [editedCells, setEditedCells] = useState({});
-
-  const periodLabel = `${getMonthName(month)} ${year}`;
-  const previousPeriod = useMemo(() => getPreviousPeriod(month, year), [month, year]);
-  const previousPeriodLabel = `${getMonthName(previousPeriod.month)} ${previousPeriod.year}`;
-  const printDate = new Date().toLocaleDateString('id-ID', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
-
-  // Sync props
-  useEffect(() => {
-    if (initialDivision !== undefined) setDivision(initialDivision || DEFAULT_DIVISION);
-    if (initialMonth !== undefined) setMonth(initialMonth);
-    if (initialYear !== undefined) setYear(initialYear);
-  }, [initialDivision, initialMonth, initialYear]);
-
-  // Get asistensi
-  const getAsistensi = useCallback((gc) => {
-    if (!gc) return null;
-    const g = gc.trim().toUpperCase();
-    if (g.startsWith('K2')) return '1';
-    const match = g.match(/\d/);
-    return match ? match[0] : null;
-  }, []);
-
-  // Merged data with gang descriptions
-  const mergedData = useMemo(() => {
-    return summaryData.map(row => ({
-      ...row,
-      gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code,
-    }));
-  }, [summaryData, gangDescriptions]);
-
-  // Filter by group
-  const filteredData = useMemo(() => {
-    if (!groupFilter) return mergedData;
-    return mergedData.filter(row => getAsistensi(row.gang_code) === groupFilter);
-  }, [mergedData, groupFilter, getAsistensi]);
-
-  const previousFilteredData = useMemo(() => {
-    if (!groupFilter) return previousSummaryData;
-    return previousSummaryData.filter(row => getAsistensi(row.gang_code) === groupFilter);
-  }, [previousSummaryData, groupFilter, getAsistensi]);
-
-  // Available groups
-  const availableGroups = useMemo(() => {
-    const groups = new Set();
-    mergedData.forEach(row => {
-      const g = getAsistensi(row.gang_code);
-      if (g) groups.add(g);
-    });
-    return Array.from(groups).sort((a, b) => Number(a) - Number(b));
-  }, [mergedData, getAsistensi]);
-
-  // Grand total from filtered data
-  const grandTotal = useMemo(() => buildGrandTotal(filteredData), [filteredData]);
-
-  const divisionComparisonTotal = useMemo(() => buildGrandTotal(mergedData), [mergedData]);
-
-  const previousGrandTotal = useMemo(() => buildGrandTotal(previousFilteredData), [previousFilteredData]);
-
-  const premiBreakdownData = useMemo(
-    () => buildPremiBreakdown(grandTotal, previousGrandTotal),
-    [grandTotal, previousGrandTotal]
-  );
-
-  const filteredGrandTotalLabel = groupFilter ? `TOTAL GROUP ${groupFilter}` : 'GRAND TOTAL';
-
-  // Dynamic premi value helper
-  const getDynamicPremiValue = useCallback((row, header) => {
-    if (!row._dynamic_premi_list || !Array.isArray(row._dynamic_premi_list)) return 0;
-    const item = row._dynamic_premi_list.find(p => p.header?.toLowerCase() === header.toLowerCase());
-    return item ? parseFloat(item.total || 0) : 0;
-  }, []);
-
-  // Chart data
-  const chartData = useMemo(() => {
-    const selectedDivisionLevel = Boolean(division);
-    const distributionMap = new Map();
-
-    filteredData.forEach(row => {
-      const key = selectedDivisionLevel
-        ? (row.gang_description || row.gang_code || 'Lainnya')
-        : (row.division_code || 'Lainnya');
-      distributionMap.set(key, (distributionMap.get(key) || 0) + Number(row.total_premi || 0));
-    });
-
-    const distribution = Array.from(distributionMap.entries())
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => b.amount - a.amount);
-
-    const topPremi = premiBreakdownData.slice(0, 8).map(row => ({
-      name: row.name,
-      amount: row.amount,
-      label: formatCompactRupiah(row.amount),
-    }));
-    return {
-      distributionTitle: selectedDivisionLevel ? 'Distribusi Premi Per Gang' : 'Distribusi Premi Per Divisi',
-      distributionCenterLabel: selectedDivisionLevel ? 'Gang' : 'Divisi',
-      distribution: distribution.length ? distribution : [{ name: selectedDivisionLevel ? 'Gang' : 'Divisi', amount: 1 }],
-      premi: topPremi.length ? topPremi : [{ name: 'Total Premi', amount: 0, label: formatRupiah(0) }],
-    };
-  }, [division, filteredData, premiBreakdownData]);
-
-  const detailPrintRows = useMemo(
-    () => filteredData.slice(PRINT_SUMMARY_ROWS),
-    [filteredData]
-  );
-
-  const detailPrintPages = useMemo(
-    () => detailPrintRows.length ? chunkRows(detailPrintRows, PRINT_DETAIL_ROWS_PER_PAGE) : [],
-    [detailPrintRows]
-  );
-
-  const printTotalPages = 2 + detailPrintPages.length;
-  const premiPrintPageNumber = printTotalPages;
-
-  // Load gang descriptions
-  useEffect(() => {
-    async function loadGangDescriptions() {
-      if (!token) return;
-      try {
-        const resp = await axios.get('payroll/summary/gang-descriptions', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (resp.data.success) setGangDescriptions(resp.data.descriptions || {});
-      } catch (e) { /* silent */ }
-    }
-    loadGangDescriptions();
-  }, [token]);
-
-  // Load divisions
-  useEffect(() => {
-    async function loadDivisions() {
-      if (!token) return;
-      try {
-        const result = await fetchDivisionsWithData(token);
-        setDivisions(result.divisions || []);
-      } catch (e) { /* silent */ }
-    }
-    loadDivisions();
-  }, [token]);
-
-  // Load virtual divisions
-  useEffect(() => {
-    async function loadVirtualDivisions() {
-      if (!token) return;
-      try {
-        const result = await fetchVirtualDivisions(token);
-        setVirtualDivisions(result.divisions || []);
-      } catch (e) { /* silent */ }
-    }
-    loadVirtualDivisions();
-  }, [token]);
-
-  // Load periods
-  useEffect(() => {
-    async function loadPeriods() {
-      if (!token) return;
-      try {
-        const result = await fetchAvailablePeriods(token, division || null);
-        setPeriods(result.periods || []);
-      } catch (e) { /* silent */ }
-    }
-    loadPeriods();
-  }, [token, division]);
-
-  // Fetch data
-  const fetchData = useCallback(async () => {
-    if (!token) return;
-    if (!division) {
-      setSummaryData([]);
-      setFilteredHeaders([]);
-      setPreviousSummaryData([]);
-      setError('Pilih satu divisi terlebih dahulu. Summary Report dihitung untuk lingkup satu divisi.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const result = await fetchDivisionSummary(token, {
-        division,
-        month,
-        year,
-        includeVirtual: divisionType !== 'real',
-      });
-      if (result.success) {
-        setSummaryData(result.data || []);
-        const uniqueHeaders = [];
-        const seen = new Set();
-        for (const h of (result.filtered_headers || [])) {
-          const norm = h.toLowerCase().trim();
-          if (!seen.has(norm)) { seen.add(norm); uniqueHeaders.push(h); }
+    const handleDoubleClick = () => {
+        if (editMode) {
+            setEditing(true);
+            setTimeout(() => inputRef.current?.select(), 50);
         }
-        setFilteredHeaders(uniqueHeaders);
-      } else {
-        setError('Gagal mengambil data summary');
-      }
-    } catch (e) {
-      setError(e.message || 'Gagal mengambil data');
-    } finally {
-      setLoading(false);
+    };
+
+    const handleBlur = () => {
+        setEditing(false);
+        const num = parseFloat(inputVal) || 0;
+        if (num !== Number(value)) {
+            onSave(num);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            inputRef.current?.blur();
+        } else if (e.key === 'Escape') {
+            setInputVal(String(value || 0));
+            setEditing(false);
+        }
+    };
+
+    if (editMode) {
+        return (
+            <td
+                className={`text-right ${isCurrency && Number(value) > 0 ? 'val-positive' : !Number(value) ? 'val-zero' : ''}`}
+                style={{ fontWeight: isCurrency ? 600 : 400, cursor: 'text', backgroundColor: editing ? '#fffbeb' : '#f0f9ff' }}
+                onDoubleClick={handleDoubleClick}
+            >
+                {editing ? (
+                    <input
+                        ref={inputRef}
+                        type="number"
+                        value={inputVal}
+                        onChange={e => setInputVal(e.target.value)}
+                        onBlur={handleBlur}
+                        onKeyDown={handleKeyDown}
+                        style={{
+                            width: '100%',
+                            border: '1px solid #3b82f6',
+                            borderRadius: '4px',
+                            background: '#ffffff',
+                            textAlign: 'right',
+                            fontSize: 'inherit',
+                            fontFamily: 'inherit',
+                            color: '#0f172a',
+                            outline: 'none',
+                            padding: '2px 6px',
+                            boxShadow: '0 0 0 2px rgba(37, 99, 235, 0.15)',
+                        }}
+                        autoFocus
+                    />
+                ) : (
+                    <span style={{ color: '#1e40af', fontSize: '11px', opacity: 0.7 }}>{formatNumber(value)} ✏️</span>
+                )}
+            </td>
+        );
     }
-  }, [token, division, month, year, divisionType]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+    return (
+        <td className={`text-right ${isCurrency && Number(value) > 0 ? 'val-positive' : !Number(value) ? 'val-zero' : ''}`} style={{ fontWeight: isCurrency ? 600 : 400 }}>
+            {formatNumber(value)}
+        </td>
+    );
+}
 
-  useEffect(() => {
-    async function fetchPreviousDivisionData() {
-      if (!token || !division) {
-        setPreviousSummaryData([]);
-        return;
-      }
+function SummaryPremiumBreakdownReport({ breakdown, periodLabel, reportDivisionSummary }) {
+    if (!breakdown || breakdown.items.length === 0) return null;
 
-      try {
-        const result = await fetchDivisionSummary(token, {
-          division,
-          month: previousPeriod.month,
-          year: previousPeriod.year,
-          useHistory: true,
-          includeVirtual: divisionType !== 'real',
-        });
-        setPreviousSummaryData(result.success ? (result.data || []) : []);
-      } catch {
-        setPreviousSummaryData([]);
-      }
-    }
-
-    fetchPreviousDivisionData();
-  }, [token, division, previousPeriod.month, previousPeriod.year, divisionType]);
-
-  // Cell edit handler
-  const handleCellEdit = useCallback((gangCode, field, newValue) => {
-    setEditedCells(prev => ({ ...prev, [`${gangCode}_${field}`]: newValue }));
-  }, []);
-
-  // Save edits
-  const handleSaveEdits = useCallback(async () => {
-    if (!token || Object.keys(editedCells).length === 0) return;
-    setLoading(true);
-    const entries = Object.entries(editedCells);
-    let ok = 0, fail = 0;
-    for (const [key, value] of entries) {
-      const u = key.indexOf('_');
-      if (u === -1) { fail++; continue; }
-      const gc = key.substring(0, u);
-      const field = key.substring(u + 1);
-      try {
-        const result = await updateGangCell(token, { month, year, gang_code: gc, field, value });
-        if (result.success) ok++; else fail++;
-      } catch { fail++; }
-    }
-    if (fail === 0) {
-      setEditedCells({});
-      setEditMode(false);
-      fetchData();
-    } else {
-      setError(`Saved ${ok}/${entries.length} edits. ${fail} failed.`);
-    }
-    setLoading(false);
-  }, [token, editedCells, month, year, fetchData]);
-
-  // Handle print
-  const handlePrint = () => {
-    if (!division) {
-      setError('Pilih satu divisi terlebih dahulu. Summary Report dan Uraian Premi dihitung untuk lingkup satu divisi.');
-      return;
-    }
-    printReport({ orientation: 'landscape', margin: '0' });
-  };
-
-  // Export CSV
-  const handleExport = () => {
-    let csv = 'Gang,Workers,HK,Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih\n';
-    filteredData.forEach(row => {
-      csv += `"${row.gang_description || row.gang_code}",${row.total_employees},${row.total_hk},${row.total_premi},${row.total_lembur},${row.total_pph21},${row.total_spsi},${row.total_upah_bersih}\n`;
-    });
-    if (grandTotal) {
-      csv += `"GRAND TOTAL",${grandTotal.total_employees},${grandTotal.total_hk},${grandTotal.total_premi},${grandTotal.total_lembur},${grandTotal.total_pph21},${grandTotal.total_spsi},${grandTotal.total_upah_bersih}\n`;
-    }
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Summary_Detail_${division || 'ALL'}_${month}_${year}.csv`;
-    link.click();
-  };
-
-  const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
-    division, divisionType, rows: filteredData,
-  }), [division, divisionType, filteredData]);
-
-  const divisionLabel = division ? reportDivisionSummary : 'Pilih Divisi';
-
-  return (
-    // SummaryReportPage renders inside DashboardLayout which provides sidebar+topbar.
-    // We wrap our content in .srn-page-container so the CSS can target it.
-    <div className="srn-page-container" style={{ padding: '24px 28px', background: 'var(--srn-bg)', minHeight: '100vh' }}>
-      {/* ===== TOOLBAR ===== */}
-          <div className="srn-toolbar">
-            <div className="srn-toolbar-header">
-              <h1 className="srn-toolbar-title">Summary Report Detail</h1>
-              <p className="srn-toolbar-subtitle">
-                Rekapitulasi total pekerja, HK, premi, lembur, potongan, dan upah bersih per estate/gang.
-              </p>
+    return (
+        <section className="summary-premium-report">
+            <div className="summary-premium-report-header">
+                <div>
+                    <div className="summary-premium-eyebrow">Report Khusus</div>
+                    <h2>Uraian Total Premi</h2>
+                    <p>{reportDivisionSummary} | {periodLabel}</p>
+                </div>
+                <div className={`summary-premium-status ${breakdown.isReconciled ? 'ok' : 'warn'}`}>
+                    {breakdown.isReconciled ? 'Total uraian sama dengan total premi' : 'Total uraian belum sama'}
+                </div>
             </div>
-            <div className="srn-filters">
-              {/* Division type */}
-              <select
-                className="srn-select"
-                value={divisionType}
-                onChange={e => { setDivisionType(e.target.value); setDivision(''); setGroupFilter(''); }}
-                style={{
-                  background: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
-                  color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
-                  borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
-                }}
-              >
-                <option value="all">Semua Divisi</option>
-                <option value="real">Divisi Utama Saja</option>
-                <option value="virtual">Divisi Virtual Saja</option>
-              </select>
 
-              {/* Division */}
-              <select
-                className="srn-select"
-                value={division}
-                onChange={e => { setDivision(e.target.value); setGroupFilter(''); }}
-              >
-                <option value="">Pilih {divisionType === 'virtual' ? 'Divisi Virtual' : 'Divisi'}</option>
-                {(divisionType === 'all' ? [...divisions, ...virtualDivisions] : divisionType === 'virtual' ? virtualDivisions : divisions).map(d => (
-                  <option key={`div-${d}`} value={d}>{d}</option>
-                ))}
-              </select>
-
-              {/* Group */}
-              <select className="srn-select" value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
-                <option value="">Semua Group</option>
-                {availableGroups.map(g => (
-                  <option key={`grp-${g}`} value={g}>Group {g}</option>
-                ))}
-              </select>
-
-              {/* Periode */}
-              <span className="srn-select" style={{ display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontWeight: 700, fontSize: 12 }}>
-                {periodLabel}
-              </span>
-
-              {/* Spacer */}
-              <div style={{ flex: 1 }} />
-
-              {/* Action buttons */}
-              <button className="srn-btn srn-btn-primary" onClick={handlePrint}>
-                <Printer size={14} /> Cetak Report
-              </button>
-              <button className="srn-btn" onClick={handleExport}>
-                <FileText size={14} /> Export CSV
-              </button>
-              <button
-                className="srn-btn"
-                onClick={() => setShowDetail(prev => !prev)}
-                style={{ background: showDetail ? '#f1f5f9' : '#fff' }}
-              >
-                {showDetail ? 'Hide Detail' : 'Show Detail Premi'}
-              </button>
-              <button
-                className="srn-btn"
-                onClick={() => setEditMode(prev => !prev)}
-                style={{
-                  background: editMode ? '#dbeafe' : '#fff',
-                  color: editMode ? '#1e40af' : undefined,
-                  borderColor: editMode ? '#93c5fd' : undefined,
-                }}
-              >
-                {editMode ? 'Selesai Edit' : 'Edit Nilai'}
-              </button>
-              {editMode && Object.keys(editedCells).length > 0 && (
-                <button className="srn-btn srn-btn-accent" onClick={handleSaveEdits} disabled={loading}>
-                  <Save size={14} /> Simpan ({Object.keys(editedCells).length})
-                </button>
-              )}
+            <div className="summary-premium-metrics">
+                <div>
+                    <span>Total Premi</span>
+                    <strong>Rp {formatNumber(breakdown.grandTotal)}</strong>
+                </div>
+                <div>
+                    <span>Total Uraian</span>
+                    <strong>Rp {formatNumber(breakdown.breakdownTotal)}</strong>
+                </div>
+                <div>
+                    <span>Selisih dari Dynamic</span>
+                    <strong>Rp {formatNumber(breakdown.residualTotal)}</strong>
+                </div>
             </div>
-          </div>
 
-          {/* ===== REPORT HEADER ===== */}
-          <div className="srn-report-head">
-            <div className="srn-report-title">
-              <img className="srn-report-logo" src={REBINMAS_LOGO_SRC} alt="PT. Rebinmas Jaya" />
-              <div>
-                <h3>PT. REBINMAS JAYA</h3>
-                <p>Summary Report Detail &bull; Division: <strong>{reportDivisionSummary}</strong> &bull; Periode: <strong>{periodLabel}</strong></p>
-              </div>
-            </div>
-            <div className="srn-report-meta">
-              Dibuat oleh: {user?.username || 'Admin'}<br />
-              Tanggal Cetak: {printDate}
-            </div>
-          </div>
+            {Math.abs(Number(breakdown.residualTotal || 0)) > 0.01 && (
+                <div className="summary-premium-note">
+                    Baris <strong>PREMI LAINNYA / SELISIH TOTAL</strong> adalah rekonsiliasi agar jumlah uraian tetap sama dengan total premi.
+                    Ini bisa terjadi ketika detail premi tidak menutup total, termasuk kemungkinan data lama masih ikut terhitung dari proses seeder berbasis upsert yang tidak menghapus data lama.
+                </div>
+            )}
 
-          {/* ===== KPI CARDS ===== */}
-          <ReportKpiCards grandTotal={grandTotal} periodLabel={periodLabel} isLoading={loading} />
+            {breakdown.doubleCountItems.length > 0 && (
+                <div className="summary-premium-double-section">
+                    <div className="summary-premium-double-title">Indikasi Premi Double Count</div>
+                    <p>
+                        Nominal berikut terdeteksi muncul lagi di selisih total. Artinya saat detail dibuka, premi ini sudah ada di uraian dynamic premi tetapi ikut menambah total premi sekali lagi.
+                    </p>
+                    <table className="wsp-table summary-premium-table summary-premium-double-table">
+                        <thead>
+                            <tr className="wsp-header-master">
+                                <th>PREMI TERINDIKASI DOUBLE</th>
+                                <th>TOTAL DOUBLE</th>
+                                <th>% TOTAL PREMI</th>
+                                <th>JUMLAH GANG</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {breakdown.doubleCountItems.map((item) => (
+                                <tr key={item.header}>
+                                    <td className="text-left">{item.header}</td>
+                                    <td className="text-right">{formatNumber(item.total)}</td>
+                                    <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                    <td className="text-right">{formatNumber(item.gangCount)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-          {/* ===== CHART SECTION ===== */}
-          <div className="srn-two-col">
-            <div className="srn-panel">
-              <div className="srn-panel-title">{chartData.distributionTitle}</div>
-              <DistributionDonutChart items={chartData.distribution} centerLabel={chartData.distributionCenterLabel} />
+            <div className="wsp-table-wrapper summary-premium-table-wrapper">
+                <table className="wsp-table summary-premium-table">
+                    <thead>
+                        <tr className="wsp-header-master">
+                            <th>URAIAN PREMI</th>
+                            <th>TOTAL</th>
+                            <th>% TOTAL</th>
+                            <th>JUMLAH GANG</th>
+                            <th>CATATAN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {breakdown.items.map((item) => (
+                            <tr key={item.header} className={item.isResidual ? 'summary-premium-residual-row' : ''}>
+                                <td className="text-left">{item.header}</td>
+                                <td className="text-right">{formatNumber(item.total)}</td>
+                                <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                <td className="text-right">{formatNumber(item.gangCount)}</td>
+                                <td className="text-left">
+                                    {item.isResidual
+                                        ? 'Selisih agar total uraian sama dengan total premi'
+                                        : 'Dari dynamic premi summary'}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                        <tr className="wsp-grand-total">
+                            <td>TOTAL URAIAN PREMI</td>
+                            <td className="text-right">{formatNumber(breakdown.breakdownTotal)}</td>
+                            <td className="text-right">100%</td>
+                            <td></td>
+                            <td>{breakdown.isReconciled ? 'Sama dengan total premi' : 'Perlu cek sumber data'}</td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
-            <div className="srn-panel">
-              <div className="srn-panel-title">Distribusi Per Jenis Premi</div>
-              <BarChart items={chartData.premi} />
-            </div>
-          </div>
+        </section>
+    );
+}
 
-          {/* ===== SUMMARY TABLE ===== */}
-          {loading ? (
-            <div className="srn-loading">
-              <div className="srn-spinner" />
-              Memuat data...
-            </div>
-          ) : error ? (
-            <div className="srn-error">! {error}</div>
-          ) : (
-            <SummaryTable
-              data={filteredData}
-              grandTotal={grandTotal}
-              comparisonTotal={divisionComparisonTotal}
-              onCellEdit={handleCellEdit}
-              editMode={editMode}
-              filteredGrandTotalLabel={filteredGrandTotalLabel}
-              showDetail={showDetail}
-              filteredHeaders={filteredHeaders}
-              getDynamicPremiValue={getDynamicPremiValue}
-            />
-          )}
+function SummaryPremiumDetailModal({ row, headers, onClose }) {
+    const items = useMemo(() => getSummaryRowPremiumItems(row, headers), [row, headers]);
+    const doubleCount = useMemo(() => getSummaryRowPremiumDoubleCount(row, headers), [row, headers]);
+    if (!row) return null;
 
-          {/* ===== MINI STATS ===== */}
-          <ReportMiniStats
-            totalDivisi={1}
-            totalGang={grandTotal?.gang_count || filteredData.length}
-            totalJenisPremi={premiBreakdownData.length}
-            printDate={printDate}
-          />
+    const totalPremi = Number(row.total_premi || 0);
+    const detailTotal = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const hasResidual = items.some((item) => item.isResidual);
 
-          {/* ===== PRINT SECTION ===== */}
-          <div className="srn-print-section">
-            <div className="srn-print-header">
-              <div>
-                <h2>Referensi Tampilan Print Out / PDF</h2>
-                <p>A4 Landscape, 3 halaman: Summary, Uraian Premi, Detail Gang.</p>
-              </div>
-              <button className="srn-btn srn-btn-primary no-print" onClick={handlePrint}>
-                <Printer size={14} /> Print Preview
-              </button>
+    return (
+        <div className="summary-premium-modal-backdrop no-print" onClick={onClose}>
+            <div className="summary-premium-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="summary-premium-modal-header">
+                    <div>
+                        <div className="summary-premium-eyebrow">Detail Total Premi</div>
+                        <h3>{row.gang_code || 'Gang'}</h3>
+                        {row.gang_description && row.gang_description !== row.gang_code && (
+                            <p>{row.gang_description}</p>
+                        )}
+                    </div>
+                    <button type="button" className="summary-premium-icon-button" onClick={onClose} aria-label="Tutup detail premi">
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="summary-premium-metrics compact">
+                    <div>
+                        <span>Total Premi</span>
+                        <strong>Rp {formatNumber(totalPremi)}</strong>
+                    </div>
+                    <div>
+                        <span>Total Uraian</span>
+                        <strong>Rp {formatNumber(detailTotal)}</strong>
+                    </div>
+                </div>
+
+                {hasResidual && (
+                    <div className="summary-premium-note">
+                        Ada selisih antara dynamic premi dan total premi. Selisih ditampilkan sebagai <strong>PREMI LAINNYA / SELISIH TOTAL</strong> agar total uraian tetap sama dengan total premi.
+                    </div>
+                )}
+
+                {doubleCount.isDetected && (
+                    <div className="summary-premium-double-section modal-section">
+                        <div className="summary-premium-double-title">Premi Terindikasi Double</div>
+                        <p>{doubleCount.reason}. Nominal di bawah sudah ada di uraian dynamic premi dan muncul lagi sebagai selisih total.</p>
+                        <table className="wsp-table summary-premium-table summary-premium-double-table">
+                            <thead>
+                                <tr className="wsp-header-master">
+                                    <th>PREMI</th>
+                                    <th>NOMINAL DOUBLE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {doubleCount.items.map((item) => (
+                                    <tr key={item.header}>
+                                        <td className="text-left">{item.header}</td>
+                                        <td className="text-right">{formatNumber(item.total)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                <div className="summary-premium-modal-body">
+                    <table className="wsp-table summary-premium-table">
+                        <thead>
+                            <tr className="wsp-header-master">
+                                <th>URAIAN PREMI</th>
+                                <th>TOTAL</th>
+                                <th>% TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items.length === 0 ? (
+                                <tr>
+                                    <td colSpan="3" className="text-center">Tidak ada uraian premi</td>
+                                </tr>
+                            ) : items.map((item) => (
+                                <tr key={item.header} className={item.isResidual ? 'summary-premium-residual-row' : ''}>
+                                    <td className="text-left">{item.header}</td>
+                                    <td className="text-right">{formatNumber(item.total)}</td>
+                                    <td className="text-right">{formatNumber(item.percentOfTotal)}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="wsp-grand-total">
+                                <td>TOTAL URAIAN</td>
+                                <td className="text-right">{formatNumber(detailTotal)}</td>
+                                <td className="text-right">100%</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
-            <div className="srn-print-stack">
-              <PrintPage1
-                grandTotal={grandTotal}
-                comparisonTotal={divisionComparisonTotal}
-                periodLabel={periodLabel}
-                printDate={printDate}
-                username={user?.username}
-                filteredData={filteredData}
-                filteredHeaders={filteredHeaders}
-                getDynamicPremiValue={getDynamicPremiValue}
-                filteredGrandTotalLabel={filteredGrandTotalLabel}
-                chartData={chartData}
-                divisionLabel={divisionLabel}
-                totalPages={printTotalPages}
-              />
-              {detailPrintPages.map((rows, pageIdx) => (
-                <PrintPage3
-                  key={`detail-page-${pageIdx}`}
-                  rows={rows}
-                  grandTotal={grandTotal}
-                  comparisonTotal={divisionComparisonTotal}
-                  periodLabel={periodLabel}
-                  printDate={printDate}
-                  username={user?.username}
-                  filteredGrandTotalLabel={filteredGrandTotalLabel}
-                  divisionLabel={divisionLabel}
-                  pageNumber={pageIdx + 2}
-                  totalPages={printTotalPages}
-                  isLastDetailPage={pageIdx === detailPrintPages.length - 1}
-                />
-              ))}
-              <PrintPage2
-                grandTotal={grandTotal}
-                previousGrandTotal={previousGrandTotal}
-                premiBreakdownData={premiBreakdownData}
-                periodLabel={periodLabel}
-                previousPeriodLabel={previousPeriodLabel}
-                printDate={printDate}
-                username={user?.username}
-                divisionLabel={divisionLabel}
-                pageNumber={premiPrintPageNumber}
-                totalPages={printTotalPages}
-              />
-            </div>
-          </div>
         </div>
-      );
-    }
+    );
+}
+
+export default function SummaryReportPage({ onBack, initialDivision, initialMonth, initialYear }) {
+    const { token, user } = useAuth();
+
+    // Filters - Use initial props if provided
+    const [division, setDivision] = useState(initialDivision || '');
+    const [month, setMonth] = useState(initialMonth || 11);  // Default to 11
+    const [year, setYear] = useState(initialYear || new Date().getFullYear());
+    const [reportMode, setReportMode] = useState('payroll'); // 'payroll' or 'thr'
+    const [divisionType, setDivisionType] = useState('all'); // 'all', 'real', or 'virtual'
+
+    // Sync state with props when they change (fix navigation freeze)
+    useEffect(() => {
+        if (initialDivision !== undefined) setDivision(initialDivision);
+        if (initialMonth !== undefined) setMonth(initialMonth);
+        if (initialYear !== undefined) setYear(initialYear);
+    }, [initialDivision, initialMonth, initialYear]);
+
+    // Get company info for current division
+    const companyInfo = useMemo(() => getCompanyInfo(division), [division]);
+
+    // Data
+    const [divisions, setDivisions] = useState([]);
+    const [virtualDivisions, setVirtualDivisions] = useState([]);
+    const [periods, setPeriods] = useState([]);
+    const [summaryData, setSummaryData] = useState([]);
+    const [gangDescriptions, setGangDescriptions] = useState({});
+    const [grandTotal, setGrandTotal] = useState(null);
+    const [showDetail, setShowDetail] = useState(false);
+    const [filteredHeaders, setFilteredHeaders] = useState([]);
+    const [groupFilter, setGroupFilter] = useState(''); // Group / Asistensi filter
+
+    // State
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [editMode, setEditMode] = useState(false);
+    const [editedCells, setEditedCells] = useState({}); // { `${gang_code}_${field}`: value }
+    const [isSeeding, setIsSeeding] = useState(false);
+    const [seedingProgress, setSeedingProgress] = useState(null);
+    const [validating, setValidating] = useState(false);
+    const [showValidation, setShowValidation] = useState(false);
+    const [validationResult, setValidationResult] = useState(null);
+    const [showSeederModal, setShowSeederModal] = useState(false);
+    const [showPremiumReport, setShowPremiumReport] = useState(false);
+    const [premiumDetailRow, setPremiumDetailRow] = useState(null);
+
+    // Helper to extract Asistensi (Group)
+    // Rule: K2 gangs belong to Group 1 (special estate classification).
+    // For all other gangs, extract the first digit found in the gang code.
+    const getAsistensi = useCallback((gc, div) => {
+        if (!gc) return null;
+        const g = gc.trim().toUpperCase();
+        // K2 gangs belong to Group 1 (special classification)
+        if (g.startsWith('K2')) return '1';
+        // Find the first digit in the string for other patterns (e.g., A1H → '1', K1H → '1')
+        const match = g.match(/\d/);
+        return match ? match[0] : null;
+    }, []);
+
+    // Handle inline edit of cell value
+    const handleCellEdit = useCallback((gangCode, field, newValue) => {
+        const editKey = `${gangCode}_${field}`;
+        const numValue = parseFloat(newValue) || 0;
+        setEditedCells(prev => ({
+            ...prev,
+            [editKey]: numValue
+        }));
+    }, []);
+
+    // Calculate available groups for filter
+    const availableGroups = useMemo(() => {
+        const groups = new Set();
+        summaryData.forEach(row => {
+            const asist = getAsistensi(row.gang_code, division);
+            if (asist) groups.add(asist);
+        });
+        return Array.from(groups).sort((a, b) => Number(a) - Number(b));
+    }, [summaryData, division, getAsistensi]);
+
+    // Merge summary data with gang descriptions
+    const mergedSummaryData = useMemo(() => {
+        return summaryData.map(row => {
+            // Apply edited values if any
+            const editableFields = ['total_upah_bersih', 'total_premi', 'total_lembur', 'total_spsi', 'total_employees', 'total_hk'];
+            const editedRow = { ...row };
+            editableFields.forEach(field => {
+                const editKey = `${row.gang_code}_${field}`;
+                if (editedCells[editKey] !== undefined) {
+                    editedRow[field] = editedCells[editKey];
+                }
+            });
+            return {
+                ...editedRow,
+                // Use real-time gang description if available, otherwise use stored description, fallback to gang_code
+                gang_description: gangDescriptions[row.gang_code] || row.gang_description || row.gang_code
+            };
+        });
+    }, [summaryData, gangDescriptions, editedCells]);
+
+    // Filter summary data by group
+    const filteredSummaryData = useMemo(() => {
+        if (!groupFilter) return mergedSummaryData;
+        return mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
+    }, [mergedSummaryData, groupFilter, division, getAsistensi]);
+
+    const buildDivisionRowGroups = useCallback((rows) => {
+        const groupsByKey = new Map();
+        const groups = [];
+
+        rows.forEach(row => {
+            const divisionKey = row.division_code || 'LAINNYA';
+            if (!groupsByKey.has(divisionKey)) {
+                const nextGroup = { divisionKey, rows: [] };
+                groupsByKey.set(divisionKey, nextGroup);
+                groups.push(nextGroup);
+            }
+            groupsByKey.get(divisionKey).rows.push(row);
+        });
+
+        return groups;
+    }, []);
+
+    const groupedSummaryScreenRows = useMemo(
+        () => buildDivisionRowGroups(filteredSummaryData),
+        [buildDivisionRowGroups, filteredSummaryData]
+    );
+
+    const reportDivisionSummary = useMemo(() => getReportDivisionSummary({
+        division,
+        divisionType,
+        rows: filteredSummaryData
+    }), [division, divisionType, filteredSummaryData]);
+
+    const activeSummaryGroupLabel = useMemo(() => {
+        if (!groupFilter) return '';
+        const rows = mergedSummaryData.filter(row => getAsistensi(row.gang_code, division) === groupFilter);
+        return buildGangDescriptionGroupLabel(rows, {
+            fallbackLabel: getSummaryGroupFallbackLabel(groupFilter)
+        });
+    }, [groupFilter, mergedSummaryData, getAsistensi, division]);
+
+    const filteredGrandTotalLabel = groupFilter
+        ? `TOTAL ${formatSummaryGroupLabel(activeSummaryGroupLabel)}`
+        : 'GRAND TOTAL';
+
+    // Recalculate Grand Total based on filtered data (always recalculate to include edited values)
+    const filteredGrandTotal = useMemo(() => {
+        if (!filteredSummaryData.length) return null;
+
+        const totals = {
+            total_employees: 0,
+            total_hk: 0,
+            total_premi: 0,
+            total_lembur: 0,
+            total_pph21: 0,
+            total_spsi: 0,
+            total_premi_insentif: 0,
+            total_premi_kinerja: 0,
+            total_premi_prunning: 0,
+            total_upah_bersih: 0,
+            thumb_print: 0,
+            selisih: 0,
+            dynamic_premi_totals: {}
+        };
+
+        const comparisonByDivision = new Map();
+
+        filteredSummaryData.forEach(row => {
+            totals.total_employees += Number(row.total_employees || 0);
+            totals.total_hk += Number(row.total_hk || 0);
+            totals.total_premi += Number(row.total_premi || 0);
+            totals.total_lembur += Number(row.total_lembur || 0);
+            totals.total_pph21 += Number(row.total_pph21 || 0);
+            totals.total_spsi += Number(row.total_spsi || 0);
+            totals.total_premi_insentif += Number(row.total_premi_insentif || 0);
+            totals.total_premi_kinerja += Number(row.total_premi_kinerja || 0);
+            totals.total_premi_prunning += Number(row.total_premi_prunning || 0);
+            totals.total_upah_bersih += Number(row.total_upah_bersih || 0);
+
+            const divisionKey = row.division_code || 'LAINNYA';
+            const currentComparison = comparisonByDivision.get(divisionKey) || { thumbPrint: Number(row.thumb_print || 0), totalUpahBersih: 0 };
+            currentComparison.totalUpahBersih += Number(row.total_upah_bersih || 0);
+            if (!currentComparison.thumbPrint) {
+                currentComparison.thumbPrint = Number(row.thumb_print || 0);
+            }
+            comparisonByDivision.set(divisionKey, currentComparison);
+
+            // Handle dynamic premiums if present
+            if (row._dynamic_premi_list) {
+                row._dynamic_premi_list.forEach(dp => {
+                    const h = dp.header;
+                    totals.dynamic_premi_totals[h] = (totals.dynamic_premi_totals[h] || 0) + Number(dp.total || 0);
+                });
+            }
+        });
+
+        comparisonByDivision.forEach(({ thumbPrint, totalUpahBersih }) => {
+            totals.thumb_print += thumbPrint;
+            totals.selisih += thumbPrint > 0 ? totalUpahBersih - thumbPrint : 0;
+        });
+
+        return totals;
+    }, [filteredSummaryData]);
+
+    const groupedSummaryPrintRows = useMemo(() => {
+        const groupsByKey = new Map();
+        const groups = [];
+
+        filteredSummaryData.forEach(row => {
+            const group = getAsistensi(row.gang_code, division) || 'LAINNYA';
+            if (!groupsByKey.has(group)) {
+                const nextGroup = { group, rows: [] };
+                groupsByKey.set(group, nextGroup);
+                groups.push(nextGroup);
+            }
+            groupsByKey.get(group).rows.push(row);
+        });
+
+        return groups.map(groupData => ({
+            ...groupData,
+            divisionGroups: buildDivisionRowGroups(groupData.rows),
+            summaryGroupLabel: buildGangDescriptionGroupLabel(groupData.rows, {
+                fallbackLabel: getSummaryGroupFallbackLabel(groupData.group)
+            })
+        })).sort((a, b) => {
+            const aNum = Number(a.group);
+            const bNum = Number(b.group);
+            const aIsNum = Number.isFinite(aNum);
+            const bIsNum = Number.isFinite(bNum);
+
+            if (aIsNum && bIsNum && aNum !== bNum) return aNum - bNum;
+            if (aIsNum !== bIsNum) return aIsNum ? -1 : 1;
+            return String(a.group).localeCompare(String(b.group));
+        });
+    }, [filteredSummaryData, getAsistensi, division, buildDivisionRowGroups]);
+
+    const reportComparison = useMemo(() => ({
+        thumbPrint: Number(filteredGrandTotal?.thumb_print || 0),
+        selisih: Number(filteredGrandTotal?.selisih || 0)
+    }), [filteredGrandTotal]);
+
+    const summaryComparisonRowSpan = filteredSummaryData.length;
+    const summaryPrintComparisonRowSpan = filteredSummaryData.length + groupedSummaryPrintRows.length;
+
+    // Load gang descriptions (real-time from HR_GANG)
+    useEffect(() => {
+        async function loadGangDescriptions() {
+            if (!token) return;
+            try {
+                const response = await axios.get('payroll/summary/gang-descriptions', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const result = response.data;
+                if (result.success) {
+                    setGangDescriptions(result.descriptions || {});
+                }
+            } catch (e) {
+                console.error('Failed to load gang descriptions:', e);
+            }
+        }
+        loadGangDescriptions();
+    }, [token]);
+
+
+    useEffect(() => {
+        async function loadDivisions() {
+            if (!token) return;
+            try {
+                const result = await fetchDivisionsWithData(token);
+                setDivisions(result.divisions || []);
+            } catch (e) {
+                console.error('Failed to load divisions:', e);
+            }
+        }
+        loadDivisions();
+    }, [token]);
+
+    // Load virtual divisions
+    useEffect(() => {
+        async function loadVirtualDivisions() {
+            if (!token) return;
+            try {
+                const result = await fetchVirtualDivisions(token);
+                setVirtualDivisions(result.divisions || []);
+            } catch (e) {
+                console.error('Failed to load virtual divisions:', e);
+            }
+        }
+        loadVirtualDivisions();
+    }, [token]);
+
+    // Load available periods when division changes
+    useEffect(() => {
+        async function loadPeriods() {
+            if (!token) return;
+            try {
+                const result = await fetchAvailablePeriods(token, division || null);
+                setPeriods(result.periods || []);
+            } catch (e) {
+                console.error('Failed to load periods:', e);
+            }
+        }
+        loadPeriods();
+    }, [token, division]);
+
+    // Fetch summary data
+    const fetchData = useCallback(async () => {
+        if (!token) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            if (reportMode === 'thr') {
+                const result = await otherIncomesService.getThrSummary(year, month, division);
+                if (result.success !== false) { // the backend returns success: true or error
+                    setSummaryData(result.data || []);
+                    setGrandTotal(result.grand_total || null);
+                    setFilteredHeaders([]); // not needed for THR
+                } else {
+                    setError('Failed to fetch THR summary data');
+                }
+            } else {
+                const result = await fetchDivisionSummary(token, {
+                    division: division || undefined,
+                    month: month || undefined,
+                    year: year || undefined,
+                    includeVirtual: divisionType !== 'real' // 'all' or 'virtual' -> true
+                });
+
+                if (result.success) {
+                    setSummaryData(result.data || []);
+                    setGrandTotal(result.grand_total || null);
+
+                    // [FIX] Remove duplicate headers (especially 'brondol')
+                    const rawHeaders = result.filtered_headers || [];
+                    const uniqueHeaders = [];
+                    const seen = new Set();
+                    for (const header of rawHeaders) {
+                        const normalized = header.toLowerCase().trim();
+                        if (!seen.has(normalized)) {
+                            seen.add(normalized);
+                            uniqueHeaders.push(header);
+                        }
+                    }
+                    setFilteredHeaders(uniqueHeaders);
+                } else {
+                    setError('Failed to fetch summary data');
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching summary:', e);
+            setError(e.message || 'Failed to fetch summary data');
+        } finally {
+            setLoading(false);
+        }
+    }, [token, division, month, year, reportMode, divisionType]);
+
+    // Handle saving all edited cells
+    const handleSaveEdits = useCallback(async () => {
+        if (!token || Object.keys(editedCells).length === 0) return;
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const editEntries = Object.entries(editedCells);
+            const totalEdits = editEntries.length;
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < editEntries.length; i++) {
+                const [editKey, value] = editEntries[i];
+                
+                // Find the first underscore to extract gang_code
+                const firstUnderscore = editKey.indexOf('_');
+                if (firstUnderscore === -1) {
+                    console.error(`Invalid edit key format: ${editKey}`);
+                    errorCount++;
+                    continue;
+                }
+                
+                const gangCode = editKey.substring(0, firstUnderscore);
+                const fullField = editKey.substring(firstUnderscore + 1);
+
+                try {
+                    const result = await updateGangCell(token, {
+                        month,
+                        year,
+                        gang_code: gangCode,
+                        field: fullField,
+                        value
+                    });
+
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                        console.error(`Failed to update ${editKey}:`, result.error);
+                    }
+                } catch (err) {
+                    errorCount++;
+                    console.error(`Error updating ${editKey}:`, err);
+                }
+            }
+
+            if (errorCount === 0) {
+                // All edits successful - refresh data and clear edited cells
+                setEditedCells({});
+                setEditMode(false);
+                await fetchData();
+            } else {
+                setError(`Saved ${successCount}/${totalEdits} edits. ${errorCount} failed.`);
+            }
+        } catch (e) {
+            console.error('Error saving edits:', e);
+            setError('Failed to save edits: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, editedCells, month, year, fetchData]);
+
+    // Fetch data when filters change
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Handle Seed All - uses EXACT same data as UI
+    const handleSeedAll = async () => {
+        if (!token) return;
+        if (!window.confirm(`Seed data PERSIS seperti yang tampil di UI untuk ${month}/${year}?`)) return;
+        
+        setIsSeeding(true);
+        setSeedingProgress('🔄 Mengekstrak data dari UI...');
+        
+        try {
+            // Use seed-ui endpoint with EXACT same parameters as current UI view
+            const response = await axios.post('payroll/aggregation/seed-ui', {
+                division: division || 'ALL',
+                month,
+                year,
+                gangCode: null,  // ALL gangs in division
+                gangPrefix: null  // ALL groups
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const result = response.data;
+            
+            if (result.success) {
+                const gangCount = result.data?.total_gangs || 0;
+                const empCount = result.data?.total_employees || 0;
+                setSeedingProgress(`✅ Seeding berhasil! ${gangCount} gangs, ${empCount} karyawan`);
+                
+                // Show breakdown
+                if (result.data?.results) {
+                    console.log('Seeded gangs:');
+                    result.data.results.forEach(r => {
+                        console.log(`  ${r.gang_code}: ${r.upah_bersih.toLocaleString('id-ID')}`);
+                    });
+                }
+                
+                // Refresh data setelah seeding
+                setTimeout(() => {
+                    fetchData();
+                    setSeedingProgress(null);
+                }, 2000);
+            } else {
+                setSeedingProgress(`❌ Gagal: ${result.error || 'Unknown error'}`);
+            }
+        } catch (e) {
+            console.error('UI Seed error:', e);
+            setSeedingProgress(`❌ Error: ${e.message}`);
+        } finally {
+            setIsSeeding(false);
+        }
+    };
+
+    // Handle Validation
+    const handleValidate = async () => {
+        setValidating(true);
+        setShowValidation(true);
+        setValidationResult(null);
+
+        try {
+            const result = await validateAggregation(token, {
+                month,
+                year,
+                division: division || undefined
+            });
+
+            if (result.success) {
+                setValidationResult(result);
+            } else {
+                setError('Failed to validate aggregation: ' + (result.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error('Error validating aggregation:', e);
+            setError(e.message || 'Failed to validate aggregation');
+        } finally {
+            setValidating(false);
+        }
+    };
+
+    const getMonthName = (m) => {
+        const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return months[m] || '';
+    };
+
+    const periodLabel = `${getMonthName(month)} ${year}`;
+    const printDate = new Date().toLocaleDateString('id-ID', {
+        day: 'numeric', month: 'long', year: 'numeric'
+    });
+
+    // Use filtered headers from backend
+    const dynamicPremiHeaders = filteredHeaders;
+    const premiumBreakdown = useMemo(
+        () => buildSummaryPremiumBreakdown(filteredSummaryData, dynamicPremiHeaders),
+        [filteredSummaryData, dynamicPremiHeaders]
+    );
+
+    // Helper function to get dynamic premi value from a row
+    const getDynamicPremiValue = useCallback((row, headerName) => {
+        if (!row._dynamic_premi_list || !Array.isArray(row._dynamic_premi_list)) return 0;
+        const item = row._dynamic_premi_list.find(
+            p => p.header && p.header.toLowerCase() === headerName.toLowerCase()
+        );
+        return item ? parseFloat(item.total || 0) : 0;
+    }, []);
+
+    // Handle Save PDF
+    const handleSavePDF = () => {
+        const element = document.getElementById('summary-report-content');
+        const filename = `Summary_Report_${division || 'ALL'}_${month}_${year}.pdf`;
+        generatePDF(element, filename, {
+            jsPDF: { orientation: reportMode === 'thr' ? 'portrait' : 'landscape' }
+        });
+    };
+
+    // Handle Print
+    const handlePrint = () => printReport({
+        orientation: reportMode === 'thr' ? 'portrait' : 'landscape'
+    });
+
+    // Handle Export CSV
+    const handleExport = () => {
+        if (reportMode === 'thr') {
+            let header = `Gang,Workers,Total THR\n`;
+            let csv = header;
+
+            mergedSummaryData.forEach(row => {
+                csv += `"${row.gang_description || row.gang_code}",` +
+                    `${row.total_employees || 0},` +
+                    `${row.total_thr || 0}\n`;
+            });
+
+            if (grandTotal) {
+                csv += `"GRAND TOTAL",` +
+                    `${grandTotal.total_employees || 0},` +
+                    `${grandTotal.total_thr || 0}\n`;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Summary_THR_${division || 'ALL'}_${month}_${year}.csv`;
+            link.click();
+            return;
+        }
+
+        let header = `Gang,Workers,HK Checkroll,${dynamicPremiHeaders.join(',')},Total Premi,Lembur,PPH 21,SPSI,Total Upah Bersih,Thumb Print,Selisih\n`;
+        let csv = header;
+        const reportExportComparison = {
+            thumbPrint: Number(grandTotal?.thumb_print || 0),
+            selisih: Number(grandTotal?.selisih || 0)
+        };
+
+        mergedSummaryData.forEach((row, idx) => {
+            const premis = dynamicPremiHeaders.map(h => getDynamicPremiValue(row, h) || 0).join(',');
+            const shouldRenderReportComparison = idx === 0;
+
+            csv += `"${row.gang_description || row.gang_code}",` +
+                `${row.total_employees || 0},` +
+                `${row.total_hk || 0},` +
+                `${premis},` +
+                `${row.total_premi || 0},` +
+                `${row.total_lembur || 0},` +
+                `${row.total_pph21 || 0},` +
+                `${row.total_spsi || 0},` +
+                `${row.total_upah_bersih || 0},` +
+                `${shouldRenderReportComparison ? reportExportComparison.thumbPrint : ''},` +
+                `${shouldRenderReportComparison ? reportExportComparison.selisih : ''}\n`;
+        });
+
+        if (grandTotal) {
+            // Use dynamic_premi_totals from backend grand total
+            const premis = dynamicPremiHeaders.map(h =>
+                (grandTotal.dynamic_premi_totals?.[h] || 0)
+            ).join(',');
+            csv += `"GRAND TOTAL",` +
+                `${grandTotal.total_employees},` +
+                `${grandTotal.total_hk},` +
+                `${premis},` +
+                `${grandTotal.total_premi},` +
+                `${grandTotal.total_lembur},` +
+                `${grandTotal.total_pph21},` +
+                `${grandTotal.total_spsi},` +
+                `${grandTotal.total_upah_bersih},` +
+                `${grandTotal.thumb_print || 0},` +
+                `${grandTotal.selisih || 0}\n`;
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Summary_Detail_${division || 'ALL'}_${month}_${year}.csv`;
+        link.click();
+    };
+
+    return (
+        <div className="wsp-container" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+            {/* Header & Actions */}
+            <div className="report-header-web no-print">
+                <div className="report-header-info">
+                    <h1>Summary Report Detail</h1>
+                    <p>{reportMode === 'thr' ? 'Rekapitulasi total pekerja dan pendapatan THR per estate/gang.' : 'Rekapitulasi total pekerja, HK, premi, dan upah bersih per estate/gang.'}</p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <select
+                            value={reportMode}
+                            onChange={e => setReportMode(e.target.value)}
+                            className="wsp-btn-secondary"
+                            style={{
+                                cursor: 'pointer',
+                                outline: 'none',
+                                backgroundColor: '#eef2ff',
+                                color: '#4f46e5',
+                                borderColor: '#c7d2fe',
+                                fontWeight: 'bold',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                height: '36px'
+                            }}
+                        >
+                            <option value="payroll">Mode Payroll</option>
+                            <option value="thr">Mode THR</option>
+                        </select>
+                        
+                        {/* Division Type Selector (All/Real/Virtual) */}
+                        <select
+                            value={divisionType}
+                            onChange={e => {
+                                setDivisionType(e.target.value);
+                                setDivision(''); // Reset division when switching type
+                                setGroupFilter('');
+                            }}
+                            className="wsp-btn-secondary"
+                            style={{
+                                cursor: 'pointer',
+                                outline: 'none',
+                                backgroundColor: divisionType === 'virtual' ? '#fef3c7' : divisionType === 'real' ? '#eef2ff' : '#dcfce7',
+                                color: divisionType === 'virtual' ? '#92400e' : divisionType === 'real' ? '#4f46e5' : '#166534',
+                                borderColor: divisionType === 'virtual' ? '#fde68a' : divisionType === 'real' ? '#c7d2fe' : '#86efac',
+                                fontWeight: 'bold',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                height: '36px'
+                            }}
+                        >
+                            <option value="all">Semua Divisi</option>
+                            <option value="real">Divisi Utama Saja</option>
+                            <option value="virtual">Divisi Virtual Saja</option>
+                        </select>
+                        
+                        <select
+                            value={division}
+                            onChange={e => {
+                                setDivision(e.target.value);
+                                setGroupFilter('');
+                            }}
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none' }}
+                        >
+                            <option value="">Semua {divisionType === 'virtual' ? 'Divisi Virtual' : divisionType === 'real' ? 'Divisi Utama' : 'Divisi'}</option>
+                            {(divisionType === 'all' ? [...divisions, ...virtualDivisions] : divisionType === 'virtual' ? virtualDivisions : divisions).map(d => (
+                                <option key={d} value={d}>{d}</option>
+                            ))}
+                        </select>
+
+                        {/* Group Selector */}
+                        <select
+                            value={groupFilter}
+                            onChange={e => setGroupFilter(e.target.value)}
+                            className="report-filter-badge"
+                            style={{ cursor: 'pointer', outline: 'none', backgroundColor: groupFilter ? '#e0f2fe' : undefined, borderColor: groupFilter ? '#7dd3fc' : undefined }}
+                        >
+                            <option value="">Semua Group</option>
+                            {availableGroups.map(g => (
+                                <option key={g} value={g}>Group {g}</option>
+                            ))}
+                        </select>
+
+                        <span className="report-filter-badge">{getMonthName(month)} {year}</span>
+                    </div>
+                </div>
+                <div className="report-header-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={handlePrint} className="wsp-btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Printer size={18} /> Cetak Report
+                    </button>
+                    <button onClick={handleExport} className="wsp-btn" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={18} /> Export CSV
+                    </button>
+                    <button 
+                        onClick={() => setShowDetail(!showDetail)} 
+                        className="wsp-btn"
+                        style={{ backgroundColor: showDetail ? '#f1f5f9' : '#fff', fontWeight: 700 }}
+                    >
+                        {showDetail ? 'Hide Detail' : 'Show Detail Premi'}
+                    </button>
+                    {reportMode === 'payroll' && (
+                        <button
+                            onClick={() => setShowPremiumReport(prev => !prev)}
+                            className="wsp-btn"
+                            style={{ backgroundColor: showPremiumReport ? '#ecfdf5' : '#fff', borderColor: showPremiumReport ? '#86efac' : undefined, fontWeight: 700 }}
+                        >
+                            <ListTree size={18} /> {showPremiumReport ? 'Hide Uraian Premi' : 'Report Uraian Premi'}
+                        </button>
+                    )}
+                    <button onClick={handleSeedAll} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isSeeding ? '#fef3c7' : '#10b981', color: isSeeding ? '#92400e' : '#fff', borderColor: isSeeding ? '#fde68a' : '#059669' }} disabled={isSeeding || loading}>
+                        <RefreshCw size={18} className={isSeeding ? 'animate-spin' : ''} />
+                        {isSeeding ? 'Seeding UI Data...' : 'Seed UI Data'}
+                    </button>
+                    <button onClick={() => setShowSeederModal(true)} className="wsp-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
+                        <RefreshCw size={18} /> Sync Data
+                    </button>
+                    <button
+                        onClick={() => setEditMode(prev => !prev)}
+                        className="wsp-btn-secondary"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            backgroundColor: editMode ? '#dbeafe' : '#f3f4f6',
+                            color: editMode ? '#1e40af' : '#374151',
+                            borderColor: editMode ? '#93c5fd' : '#d1d5db'
+                        }}
+                    >
+                        {editMode ? 'Selesai Edit' : 'Edit Nilai'}
+                    </button>
+                    {editMode && Object.keys(editedCells).length > 0 && (
+                        <button
+                            onClick={handleSaveEdits}
+                            className="wsp-btn-primary"
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                backgroundColor: '#10b981',
+                                color: '#fff',
+                                borderColor: '#059669'
+                            }}
+                            disabled={loading}
+                        >
+                            <Save size={18} /> Simpan ({Object.keys(editedCells).length})
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Seeding Progress */}
+            {seedingProgress && (
+                <div style={{ margin: '0 1rem 1rem', padding: '1rem', backgroundColor: seedingProgress.includes('✅') ? '#d1fae5' : seedingProgress.includes('❌') ? '#fee2e2' : '#fef3c7', border: `1px solid ${seedingProgress.includes('✅') ? '#10b981' : seedingProgress.includes('❌') ? '#ef4444' : '#f59e0b'}`, borderRadius: '8px' }}>
+                    <div style={{ fontWeight: '600', color: seedingProgress.includes('✅') ? '#065f46' : seedingProgress.includes('❌') ? '#991b1b' : '#92400e' }}>{seedingProgress}</div>
+                </div>
+            )}
+
+            {/* Content */}
+            {loading ? (
+                <div className="wsp-loading"><div className="wsp-spinner"></div>Loading...</div>
+            ) : error ? (
+                <div className="wsp-error">! {error}</div>
+            ) : (
+                <div className={`wsp-document ${reportMode === 'thr' ? 'thr-print-document' : ''}`} id="summary-report-content">
+                    <ReportWatermark />
+                    {/* Letterhead */}
+                    <div className="wsp-letterhead">
+                        <img
+                            src={companyInfo.logo}
+                            alt={companyInfo.name}
+                            className="wsp-logo"
+                            onError={(e) => {
+                                // Fallback logo if primary logo not found
+                                if (companyInfo.logoFallback) {
+                                    e.target.src = companyInfo.logoFallback;
+                                }
+                            }}
+                        />
+                        <h1 className="wsp-company-name">{companyInfo.name}</h1>
+                        <div className="wsp-report-title">{reportMode === 'thr' ? 'SUMMARY REPORT TUNJANGAN HARI RAYA' : 'SUMMARY REPORT DETAIL'}</div>
+                        <div className="wsp-report-period">
+                            Division: <strong style={{ color: '#0f172a' }}>{reportDivisionSummary}</strong> | Period: <strong style={{ color: '#0f172a' }}>{periodLabel}</strong>
+                        </div>
+                        <ReportPrintMetadata
+                            mode={reportMode === 'thr' ? 'THR' : 'Payroll'}
+                            source={reportMode === 'thr' ? 'THR Summary API' : 'Summary API'}
+                            scope={`${division || 'ALL'} / ${getDivisionTypeLabel(divisionType)}`}
+                            estate={division === 'IJL' ? 'IJL' : division ? 'Selected Division' : 'All Available'}
+                            items={[{ label: 'Deskripsi', value: reportDivisionSummary }]}
+                            note="Grand total mengikuti data backend; filter group hanya menyaring baris yang sedang dicetak."
+                        />
+                    </div>
+
+                    {/* KPI Cards */}
+                    {filteredGrandTotal && (
+                        <div className="wsp-kpi-grid">
+                            <div className="wsp-kpi-card">
+                                <div className="wsp-kpi-label">TOTAL WORKERS</div>
+                                <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.total_employees || 0)}</div>
+                            </div>
+                            {reportMode === 'payroll' ? (
+                                <>
+                                    <div className="wsp-kpi-card">
+                                        <div className="wsp-kpi-label">TOTAL HK CHEKROLL</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.total_hk || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card secondary">
+                                        <div className="wsp-kpi-label">TOTAL PREMI</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_premi || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card highlight">
+                                        <div className="wsp-kpi-label">TOTAL UPAH BERSIH</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_upah_bersih || 0)}</div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="wsp-kpi-card">
+                                        <div className="wsp-kpi-label">PEKERJA FULL (12/12)</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.full_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card secondary">
+                                        <div className="wsp-kpi-label">PEKERJA PROPORSI</div>
+                                        <div className="wsp-kpi-value">{formatNumber(filteredGrandTotal?.prop_workers || 0)}</div>
+                                    </div>
+                                    <div className="wsp-kpi-card highlight">
+                                        <div className="wsp-kpi-label">TOTAL THR</div>
+                                        <div className="wsp-kpi-value">Rp {formatNumber(filteredGrandTotal?.total_thr || 0)}</div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {reportMode === 'payroll' && showPremiumReport && (
+                        <SummaryPremiumBreakdownReport
+                            breakdown={premiumBreakdown}
+                            periodLabel={periodLabel}
+                            reportDivisionSummary={reportDivisionSummary}
+                        />
+                    )}
+
+                    {/* Table */}
+                    <div className={`wsp-table-wrapper ${reportMode === 'payroll' ? 'summary-detail-screen-wrapper no-print' : ''}`}>
+                        <table className={`wsp-table ${reportMode === 'payroll' ? 'summary-detail-screen-table' : 'summary-thr-table'}`}>
+                            <thead>
+                                {reportMode === 'payroll' ? (
+                                    <>
+                                        {/* SCREEN VERSION of Master Headers */}
+                                        <tr className="wsp-header-master no-print report-screen-header">
+                                            <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
+                                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                            <th colSpan={showDetail ? dynamicPremiHeaders.length + 1 : 1} className="th-group-income">PREMI INCOME</th>
+                                            <th rowSpan="2" className="th-group-income">LEMBUR</th>
+                                            <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
+                                            <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
+                                            <th rowSpan="2" className="th-group-compare">THUMBPRINT</th>
+                                        </tr>
+                                        <tr className="wsp-header-sub no-print report-screen-header">
+                                            <th className="th-group-manpower">WORKERS</th>
+                                            <th className="th-group-manpower">HK</th>
+                                            {showDetail && dynamicPremiHeaders.map((h, i) => (
+                                                <th key={i} className="th-group-premi">{h}</th>
+                                            ))}
+                                            <th className="th-group-premi">TOTAL PREMI</th>
+                                            <th className="th-group-deductions">PPH 21</th>
+                                            <th className="th-group-deductions">SPSI</th>
+                                        </tr>
+
+                                        {/* PRINT VERSION of Master Headers (Consolidated View) */}
+                                        <tr className="wsp-header-master print-only report-print-header">
+                                            <th rowSpan="2" className="th-gang-name" style={{ width: '25%' }}>ESTATE / GANG</th>
+                                            <th colSpan="2" className="th-group-manpower">MANPOWER</th>
+                                            <th colSpan="1" className="th-group-income">PREMI INCOME</th>
+                                            <th rowSpan="2" className="th-group-income">LEMBUR</th>
+                                            <th colSpan="2" className="th-group-deductions">DEDUCTIONS</th>
+                                            <th rowSpan="2" className="th-group-income">TOTAL UPAH BERSIH</th>
+                                            <th rowSpan="2" className="th-group-compare">THUMBPRINT</th>
+                                        </tr>
+                                        <tr className="wsp-header-sub print-only report-print-header">
+                                            <th className="th-group-manpower">WORKERS</th>
+                                            <th className="th-group-manpower">HK</th>
+                                            <th className="th-group-premi">TOTAL PREMI</th>
+                                            <th className="th-group-deductions">PPH 21</th>
+                                            <th className="th-group-deductions">SPSI</th>
+                                        </tr>
+                                    </>
+                                ) : (
+                                    <tr className="wsp-header-master" style={{ backgroundColor: '#000', color: '#fff', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                        <th style={{ minWidth: '300px', textAlign: 'left', border: '1.5pt solid #000', fontWeight: 800 }}>ESTATE / GANG</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>WORKERS</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>FULL</th>
+                                        <th style={{ width: '80px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>PROPORSI</th>
+                                        <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TUNJ. BERAS</th>
+                                        <th style={{ width: '140px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>MASA KERJA</th>
+                                        <th style={{ width: '160px', textAlign: 'right', border: '1.5pt solid #000', fontWeight: 800 }}>TOTAL THR</th>
+                                    </tr>
+                                )}
+                            </thead>
+                            <tbody>
+                                {filteredSummaryData.length === 0 ? (
+                                    <tr><td colSpan="15" className="text-center" style={{ padding: '3rem' }}>No Data Available</td></tr>
+                                ) : reportMode === 'payroll' ? (
+                                    groupedSummaryScreenRows.map(({ divisionKey, rows }, groupIdx) => {
+                                        return rows.map((row, idx) => {
+                                            const shouldRenderReportComparison = groupIdx === 0 && idx === 0 && summaryComparisonRowSpan > 0;
+
+                                            return (
+                                            <tr key={`${divisionKey}-${row.gang_code || idx}`}>
+                                                <td className="text-left division-name sticky-col">
+                                                    <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
+                                                    {row.gang_description && row.gang_description !== row.gang_code && (
+                                                        <div className="div-desc" style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                            {row.gang_description}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <EditableCell editMode={editMode} value={row.total_employees} onSave={(v) => handleCellEdit(row.gang_code, 'total_employees', v)} />
+                                                <EditableCell editMode={editMode} value={row.total_hk} onSave={(v) => handleCellEdit(row.gang_code, 'total_hk', v)} />
+
+                                                {/* Dynamic Premi Cols - Hidden when not in detail mode OR on print */}
+                                                {showDetail && dynamicPremiHeaders.map(header => {
+                                                    const val = getDynamicPremiValue(row, header);
+                                                    return (
+                                                        <td key={header} className={`text-right no-print print-hide-detail ${!val && 'val-zero'}`}>
+                                                            {formatNumber(val)}
+                                                        </td>
+                                                    );
+                                                })}
+
+                                                {/* Total Premi - Show FULL total from portal */}
+                                                <td className={`text-right ${!Number(row.total_premi) && 'val-zero'}`} style={{ fontWeight: 600 }}>
+                                                    <button
+                                                        type="button"
+                                                        className="summary-premi-total-button"
+                                                        onClick={() => setPremiumDetailRow(row)}
+                                                        title="Buka uraian total premi"
+                                                    >
+                                                        <span>{formatNumber(row.total_premi)}</span>
+                                                        <Eye size={14} />
+                                                    </button>
+                                                </td>
+
+                                                <EditableCell editMode={editMode} value={row.total_lembur} onSave={(v) => handleCellEdit(row.gang_code, 'total_lembur', v)} />
+                                                <td className="text-right">{formatNumber(row.total_pph21)}</td>
+                                                <EditableCell editMode={editMode} value={row.total_spsi} onSave={(v) => handleCellEdit(row.gang_code, 'total_spsi', v)} />
+
+                                                <EditableCell editMode={editMode} value={row.total_upah_bersih} onSave={(v) => handleCellEdit(row.gang_code, 'total_upah_bersih', v)} isCurrency />
+                                                {shouldRenderReportComparison && (
+                                                    <td rowSpan={summaryComparisonRowSpan} className="text-right summary-compare-cell">
+                                                        <div className="summary-compare-value">
+                                                            Thumbprint: {formatNumber(reportComparison.thumbPrint)}
+                                                        </div>
+                                                        <div className={`summary-compare-diff ${reportComparison.selisih > 0 ? 'text-diff-neg' : reportComparison.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
+                                                            Selisih: {formatNumber(reportComparison.selisih)}
+                                                        </div>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                            );
+                                        });
+                                    })
+                                ) : (
+                                    filteredSummaryData.map((row, idx) => (
+                                            <tr key={idx} style={{ borderBottom: '1pt solid #000', backgroundColor: idx % 2 === 0 ? '#fff' : '#f2f2f2', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                                <td className="text-left division-name sticky-col" style={{ border: '0.5pt solid #000' }}>
+                                                    <div className="div-code" style={{ fontSize: '1rem', fontWeight: 600 }}>{row.gang_code}</div>
+                                                    {row.gang_description && row.gang_description !== row.gang_code && (
+                                                        <div className="div-desc" style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                            {row.gang_description}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className={`text-right ${!Number(row.total_employees) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_employees)}</td>
+                                                <td className={`text-right ${!Number(row.full_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.full_workers)}</td>
+                                                <td className={`text-right ${!Number(row.prop_workers) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.prop_workers)}</td>
+                                                <td className={`text-right ${!Number(row.total_tunjangan_beras) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_tunjangan_beras)}</td>
+                                                <td className={`text-right ${!Number(row.total_masa_kerja) && 'val-zero'}`} style={{ border: '0.5pt solid #000' }}>{formatNumber(row.total_masa_kerja)}</td>
+                                                <td className={`text-right ${!Number(row.total_thr) ? 'val-zero' : 'val-positive'}`} style={{ fontWeight: 700, border: '0.5pt solid #000' }}>
+                                                    {formatNumber(row.total_thr)}
+                                                </td>
+                                            </tr>
+                                    ))
+                                )}
+                            </tbody>
+
+                            {filteredGrandTotal && (
+                                <tfoot>
+                                    {reportMode === 'payroll' ? (
+                                        <tr className="wsp-grand-total">
+                                            <td>{filteredGrandTotalLabel}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_hk)}</td>
+
+                                            {/* Dynamic Premi Totals - Hidden when not in detail mode OR on print */}
+                                            {showDetail && dynamicPremiHeaders.map(header => {
+                                                const total = filteredGrandTotal.dynamic_premi_totals?.[header] || 0;
+                                                return (
+                                                    <td key={header} className="text-right no-print print-hide-detail">{formatNumber(total)}</td>
+                                                );
+                                            })}
+
+                                            {/* Total Premi - FULL from portal */}
+                                            <td className="text-right" style={{ background: '#1e293b', color: 'white' }}>{formatNumber(filteredGrandTotal.total_premi)}</td>
+
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_lembur)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_pph21)}</td>
+                                            <td className="text-right">{formatNumber(filteredGrandTotal.total_spsi)}</td>
+
+                                            <td className="text-right" style={{ color: '#4ade80' }}>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
+                                            <td></td>
+                                        </tr>
+                                    ) : (
+                                        <tr className="wsp-grand-total" style={{ backgroundColor: '#000', color: '#fff', fontWeight: 800, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                                            <td style={{ border: '1.5pt solid #000' }}>{filteredGrandTotalLabel}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.full_workers)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.prop_workers)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_tunjangan_beras)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_masa_kerja)}</td>
+                                            <td className="text-right" style={{ border: '1.5pt solid #000' }}>{formatNumber(filteredGrandTotal.total_thr)}</td>
+                                        </tr>
+                                    )}
+                                </tfoot>
+                            )}
+                        </table>
+                    </div>
+
+                    {reportMode === 'payroll' && (
+                        <div className="wsp-table-wrapper summary-detail-print-wrapper print-only">
+                            <table className="wsp-table summary-detail-print-table">
+                                <colgroup>
+                                    <col className="summary-col-gang" />
+                                    <col className="summary-col-workers" />
+                                    <col className="summary-col-hk" />
+                                    <col className="summary-col-premi" />
+                                    <col className="summary-col-lembur" />
+                                    <col className="summary-col-pph" />
+                                    <col className="summary-col-spsi" />
+                                    <col className="summary-col-total" />
+                                    <col className="summary-col-compare" />
+                                </colgroup>
+                                <thead>
+                                    <tr className="wsp-header-master">
+                                        <th rowSpan="2">ESTATE / GANG</th>
+                                        <th colSpan="2">MANPOWER</th>
+                                        <th>PREMI INCOME</th>
+                                        <th rowSpan="2">LEMBUR</th>
+                                        <th colSpan="2">DEDUCTIONS</th>
+                                        <th rowSpan="2">TOTAL UPAH BERSIH</th>
+                                        <th rowSpan="2">THUMBPRINT</th>
+                                    </tr>
+                                    <tr className="wsp-header-sub">
+                                        <th>WORKERS</th>
+                                        <th>HK</th>
+                                        <th>TOTAL PREMI</th>
+                                        <th>PPH 21</th>
+                                        <th>SPSI</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredSummaryData.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="9">No Data Available</td>
+                                        </tr>
+                                    ) : (
+                                        groupedSummaryPrintRows.map(({ group, summaryGroupLabel, divisionGroups }, groupIdx) => {
+                                            return (
+                                                <React.Fragment key={`summary-print-group-${group}`}>
+                                                    <tr className="summary-print-group-row">
+                                                        <td colSpan="8">{formatSummaryGroupLabel(summaryGroupLabel)}</td>
+                                                        {groupIdx === 0 && summaryPrintComparisonRowSpan > 0 && (
+                                                            <td rowSpan={summaryPrintComparisonRowSpan} className="summary-compare-cell">
+                                                                <div className="summary-compare-value">Thumbprint: {formatNumber(reportComparison.thumbPrint)}</div>
+                                                                <div className={`summary-compare-diff ${reportComparison.selisih > 0 ? 'text-diff-neg' : reportComparison.selisih < 0 ? 'text-diff-pos' : 'text-neutral'}`}>
+                                                                    Selisih: {formatNumber(reportComparison.selisih)}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                    {divisionGroups.map(({ divisionKey, rows }) => {
+                                                        return rows.map((row, idx) => {
+                                                            const hasGangDescription = row.gang_description && row.gang_description !== row.gang_code;
+                                                            const gangDescription = hasGangDescription ? row.gang_description : row.gang_code;
+
+                                                            return (
+                                                                <tr key={`print-${group}-${divisionKey}-${row.gang_code || idx}`}>
+                                                                    <td>
+                                                                        <div className="summary-print-desc">{gangDescription}</div>
+                                                                        {hasGangDescription && (
+                                                                            <div className="summary-print-code">{row.gang_code}</div>
+                                                                        )}
+                                                                    </td>
+                                                                    <td>{formatNumber(row.total_employees)}</td>
+                                                                    <td>{formatNumber(row.total_hk)}</td>
+                                                                    <td>{formatNumber(row.total_premi)}</td>
+                                                                    <td>{formatNumber(row.total_lembur)}</td>
+                                                                    <td>{formatNumber(row.total_pph21)}</td>
+                                                                    <td>{formatNumber(row.total_spsi)}</td>
+                                                                    <td>{formatNumber(row.total_upah_bersih)}</td>
+                                                                </tr>
+                                                            );
+                                                        });
+                                                    })}
+                                                </React.Fragment>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                                {filteredGrandTotal && (
+                                    <tfoot>
+                                        <tr className="wsp-grand-total">
+                                            <td>{filteredGrandTotalLabel}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_employees)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_hk)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_premi)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_lembur)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_pph21)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_spsi)}</td>
+                                            <td>{formatNumber(filteredGrandTotal.total_upah_bersih)}</td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                )}
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Signature Section */}
+                    <div className="print-only">
+                        <PrintSignature />
+                    </div>
+
+                    {/* Report Footer */}
+                    <footer className="wsp-footer" style={{ marginTop: '4rem' }}>
+                        <div className="wsp-footer-left">
+                            <div>Dicetak: {printDate}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>User: {user?.username}</div>
+                        </div>
+                        <div className="wsp-footer-right">
+                            {companyInfo.name}
+                        </div>
+                    </footer>
+                </div>
+            )
+            }
+
+            <SummaryPremiumDetailModal
+                row={premiumDetailRow}
+                headers={dynamicPremiHeaders}
+                onClose={() => setPremiumDetailRow(null)}
+            />
+
+            {/* Validation Results Modal */}
+            {showValidation && validationResult && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white', borderRadius: '8px',
+                        maxWidth: '800px', maxHeight: '80vh', overflow: 'auto',
+                        padding: '20px', margin: '20px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2 style={{ margin: 0 }}>Aggregation Validation Results</h2>
+                            <button onClick={() => setShowValidation(false)} style={{
+                                background: 'none', border: 'none', fontSize: '24px',
+                                cursor: 'pointer', color: '#666'
+                            }}>&times;</button>
+                        </div>
+
+                        <div style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
+                            Period: {getMonthName(month)} {year} | Division: {division || 'ALL'}
+                        </div>
+
+                        {/* Division Summaries */}
+                        {validationResult.division_summaries && validationResult.division_summaries.length > 0 && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <h3 style={{ marginTop: 0 }}>Division Totals Comparison</h3>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #ddd' }}>Division</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Stored Aggregation</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Real-Time Payroll</th>
+                                            <th style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>Difference</th>
+                                            <th style={{ padding: '10px', textAlign: 'center', border: '1px solid #ddd' }}>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {validationResult.division_summaries.map((div, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ padding: '10px', border: '1px solid #ddd', fontWeight: 'bold' }}>{div.division_code}</td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>
+                                                    {formatNumber(div.stored_aggregation_total)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>
+                                                    {formatNumber(div.real_time_payroll_total)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd', color: Math.abs(div.difference) > 1 ? '#ef4444' : '#10b981' }}>
+                                                    {formatNumber(div.difference)}
+                                                </td>
+                                                <td style={{ padding: '10px', textAlign: 'center', border: '1px solid #ddd' }}>
+                                                    {div.is_match ? (
+                                                        <span style={{ backgroundColor: '#10b981', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                                                            ✓ MATCH
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ backgroundColor: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                                                            ✗ MISMATCH
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Discrepancies */}
+                        {validationResult.discrepancies_found > 0 ? (
+                            <div style={{ marginBottom: '20px' }}>
+                                <h3 style={{ marginTop: 0, color: '#ef4444' }}>
+                                    Discrepancies Found ({validationResult.discrepancies_found})
+                                </h3>
+                                <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                                    {validationResult.discrepancies.slice(0, 20).map((disc, idx) => (
+                                        <div key={idx} style={{
+                                            padding: '10px', borderBottom: '1px solid #ddd',
+                                            fontSize: '13px'
+                                        }}>
+                                            <div><strong>{disc.division_code} - {disc.gang_code}</strong></div>
+                                            <div style={{ color: '#666', marginTop: '4px' }}>
+                                                Status: <span style={{ color: '#ef4444' }}>{disc.status}</span>
+                                            </div>
+                                            {disc.field_discrepancies && (
+                                                <div style={{ marginTop: '6px', fontSize: '12px' }}>
+                                                    {Object.entries(disc.field_discrepancies).map(([field, values]) => (
+                                                        <div key={field} style={{ marginLeft: '10px', marginTop: '4px' }}>
+                                                            <strong>{field}:</strong> Stored={formatNumber(values.stored)}, Real-Time={formatNumber(values.real_time)}, Diff={formatNumber(values.difference)}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {disc.message && (
+                                                <div style={{ marginTop: '4px', color: '#666', fontStyle: 'italic' }}>
+                                                    {disc.message}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {validationResult.discrepancies.length > 20 && (
+                                        <div style={{ padding: '10px', textAlign: 'center', color: '#666' }}>
+                                            ... and {validationResult.discrepancies_found - 20} more discrepancies
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fef3c7', borderRadius: '4px', fontSize: '13px' }}>
+                                    <strong>⚠️ Recommendation:</strong> If discrepancies are found, click "Seed Aggregation" to refresh the aggregation data with current payroll data.
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#d1fae5', borderRadius: '4px', textAlign: 'center' }}>
+                                <span style={{ fontSize: '18px', marginRight: '10px' }}>✓</span>
+                                <strong>All aggregations match real-time payroll data!</strong>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button onClick={() => setShowValidation(false)} style={{
+                                padding: '10px 20px', borderRadius: '4px', border: '1px solid #ddd',
+                                backgroundColor: 'white', cursor: 'pointer'
+                            }}>
+                                Close
+                            </button>
+                            {!validationResult.division_summaries?.every(d => d.is_match) && (
+                                <button onClick={() => {
+                                    setShowValidation(false);
+                                    setShowSeederModal(true);
+                                }} style={{
+                                    padding: '10px 20px', borderRadius: '4px', border: 'none',
+                                    backgroundColor: '#fbbf24', color: '#78350f', cursor: 'pointer', fontWeight: 'bold'
+                                }}>
+                                    Re-Seed Aggregation
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Aggregation Seeder Modal */}
+            <AggregationSeederModal
+                isOpen={showSeederModal}
+                onClose={() => setShowSeederModal(false)}
+                month={month}
+                year={year}
+                division={division}
+                token={token}
+            />
+        </div >
+    );
+}

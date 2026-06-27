@@ -1,0 +1,273 @@
+{
+  "project_structure": "Monorepo: backend (Elysia/Bun) + frontend (React/Vite). Layers: api/, services/, repositories/, db/, types/. Premium system: PR_ADTRANS -> PremiumExtractor -> aggregation -> extend_db_ptrj. Manual adjustments in payroll_manual_adjustments. Definitions in premium_definitions.json.",
+  "relevant_files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "relevance": 1.0,
+      "rationale": "Existing Excel premium importer. Parses rows, groups by empcode+jenis, validates against premiumDefinitionService, saves via ManualAdjustmentService. Currently limited to PREMI PRUNING and PREMI RAKING only. Direct target for extension to support all premium types.",
+      "role": "modify_target",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "importPremiumExcel()",
+          "location": "L30-L141",
+          "description": "Main import: loads ExcelJS workbook, reads sheet row-by-row, groups by empcode+jenis, looks up PremiumDefinition, builds metadata_json, saves via saveAdjustment()"
+        },
+        {
+          "symbol": "ALLOWED_JENIS",
+          "location": "L21",
+          "description": "Hardcoded array restricting imports to PREMI PRUNING and PREMI RAKING. Core limitation to lift."
+        }
+      ],
+      "topic_relation": "Integration-points target: seeder connects here to leverage saveAdjustment pipeline, replaces hardcoded jenis restrictions with dynamic column-to-premium-type mapping from premiumDefinitionService."
+    },
+    {
+      "path": "backend/src/services/premiumDefinitionService.ts",
+      "relevance": 0.95,
+      "rationale": "Central registry of 20+ premium types with ad_code, input_type, task_desc. input_type (amount|blok|exp|kendaraan|blok,exp) determines Excel column format. Defines PremiumMetadata structures per type.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "getActivePremiumDefinitions()",
+          "location": "L166-L168",
+          "description": "Returns all active PREMI definitions. Authoritative list of importable premium types."
+        },
+        {
+          "symbol": "validatePremiumName()",
+          "location": "L243-L252",
+          "description": "Validates premium name exists, active, type PREMI. Used to reject unknown jenis."
+        },
+        {
+          "symbol": "PremiumInputType",
+          "location": "L21",
+          "description": "Union type: amount|blok|exp|kendaraan|blok,exp. Each implies different Excel column layout."
+        }
+      ],
+      "topic_relation": "Integration-points dependency: seeder queries getActivePremiumDefinitions() to discover types, reads input_type to determine column parsing strategy."
+    },
+    {
+      "path": "backend/data/premium_definitions.json",
+      "relevance": 0.9,
+      "rationale": "JSON definitions with 22 entries: 18 premiums, 1 POTONGAN_KOTOR, 2 POTONGAN_BERSIH. Source of truth for premium types and ad_code mapping. 6 amount, 10 blok, 3 exp, 8 kendaraan types.",
+      "role": "config",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "premium_definitions.json",
+          "location": "L1-L159",
+          "description": "22 entries: PREMI JAGA(blok), PREMI KINERJA(blok), PREMI TIKET(amount), PREMI PRUNING(blok), PREMI RAKING(blok), PREMI RITASE(kendaraan), PREMI TBS(blok, duplicate), PREMI BANTU BRONDOL(blok), PREMI INSENTIF PANEN(blok), 9 kendaraan types."
+        }
+      ],
+      "topic_relation": "Integration-points config: seeder maps each sheet to a premium definition. input_type drives column parsing. PREMI TBS duplicate needs dedup."
+    },
+    {
+      "path": "backend/src/services/manualAdjustmentService.ts",
+      "relevance": 0.85,
+      "rationale": "Core adjustment persistence. saveAdjustment() handles INSERT/UPDATE to payroll_manual_adjustments with identity resolution, metadata_json, auto-preset upsert. ImportPremiumExcel calls this. Seeder reuses same pipeline.",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "saveAdjustment()",
+          "location": "L2161-L2283",
+          "description": "Core: normalizes name, resolves identity (empCode+nik), UPSERT, validates via premiumDefinitionService. Returns id."
+        },
+        {
+          "symbol": "payroll_manual_adjustments schema",
+          "location": "L2242-L2252",
+          "description": "Columns: period_month,period_year,emp_code,nik,emp_name,gang_code,division_code,adjustment_type,adjustment_name,amount,remarks,metadata_json,created_by."
+        }
+      ],
+      "topic_relation": "Integration-points dependency: seeder calls saveAdjustment() per employee+premium_type. metadata_json carries structured detail from Excel."
+    },
+    {
+      "path": "backend/src/api/payroll.ts",
+      "relevance": 0.8,
+      "rationale": "Main payroll API routes (Elysia). Contains /premium-definitions GET/POST and /premium-import-excel POST. New seeder endpoint goes here or in dedicated route file.",
+      "role": "integration_point",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "POST /payroll/premium-import-excel",
+          "location": "L3487-L3536",
+          "description": "Accepts file Buffer, period_month, period_year, division_code. Delegates to importPremiumExcel(). LIMITED to PRUNING and RAKING."
+        },
+        {
+          "symbol": "GET /payroll/premium-definitions",
+          "location": "L3447-L3457",
+          "description": "Returns active premium definitions. Cache-Control: no-store."
+        }
+      ],
+      "topic_relation": "Integration-points endpoint: seeder extends /premium-import-excel or adds /premium/seed-excel-multi for multi-sheet Excel with per-sheet premium type designation."
+    },
+    {
+      "path": "backend/src/services/payroll/extractors/PremiumExtractor.ts",
+      "relevance": 0.7,
+      "rationale": "Extracts premium from PR_ADTRANS+PR_ADTRANSLN (live+archive) via UNION ALL. extractBrondolLooseFruit() for dual-source brondol. Validation reference post-import.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "extract()",
+          "location": "L92-L193",
+          "description": "UNION ALL on PR_ADTRANS+ARC, JOINs PR_ADTRANSLN, LEFT JOINs PR_TASKCODE. Filters: LIKE PREMI not PPH/ADJ, Amount over 0."
+        },
+        {
+          "symbol": "extractBrondolLooseFruit()",
+          "location": "L206-L249",
+          "description": "Extracts brondol from PR_LOOSEFRUITLN+PR_LOOSEFRUIT separately from ADTRANS source."
+        }
+      ],
+      "topic_relation": "Pattern reference for seeder validation: call PremiumExtractor post-import to cross-validate amounts against Plantware source DB."
+    },
+    {
+      "path": "backend/src/repositories/payroll/PayrollPremiPotonganRepository.ts",
+      "relevance": 0.65,
+      "rationale": "Repository for premium DB queries. getPremi() with INNER JOIN HR_GANGLN. normalizePremiName() shows DocDesc-to-field-key normalization.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "getPremi()",
+          "location": "L30-L153",
+          "description": "Batch: UNION ALL PR_ADTRANS+ARC, INNER JOIN HR_GANGLN, JOIN PR_ADTRANSLN. Historical filters out JABATAN/BERAS/LEMBUR/MASA/POTONGAN/KOREKSI/SPSI."
+        },
+        {
+          "symbol": "normalizePremiName()",
+          "location": "L275-L284",
+          "description": "KOREKSI->koreksi, BRONDOL->brondol, strips PREMI prefix, lowercase snake_case with premi_ prefix."
+        }
+      ],
+      "topic_relation": "Pattern reference for naming normalization when matching Excel headers to premium definition names."
+    },
+    {
+      "path": "backend/src/services/payroll/manualAdjustments/manualAdjustmentApplier.ts",
+      "relevance": 0.6,
+      "rationale": "Shows how manual adjustments merge into payroll. PREMI->empPremi, POTONGAN_KOTOR->empPotongan+koreksi. Seeder data flows through here.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "applyManualAdjustmentsToEmployee()",
+          "location": "L92-L225",
+          "description": "PREMI->empPremi(additive/override), POTONGAN_KOTOR->empPotongan+koreksiVariations. Uses metadata_json.total_amount."
+        }
+      ],
+      "topic_relation": "Downstream consumer: imported premiums become ManualAdjustmentLike objects during payroll calculation."
+    },
+    {
+      "path": "backend/src/db/client.ts",
+      "relevance": 0.65,
+      "rationale": "DB client with connection pooling via gateway API. getExtendedInstance() for extend_db_ptrj (payroll_manual_adjustments location).",
+      "role": "dependency",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "getExtendedInstance()",
+          "location": "L71-L73",
+          "description": "Returns DB instance for extend_db_ptrj via SERVER_PROFILE_1. All premium writes target this."
+        }
+      ],
+      "topic_relation": "Seeder connects to extend_db_ptrj via getExtendedInstance(). ManualAdjustmentService uses this internally."
+    },
+    {
+      "path": "backend/src/api/aggregationSeederRoutes.ts",
+      "relevance": 0.55,
+      "rationale": "Reference seeder: progress tracking, DELETE-then-INSERT idempotent writes, division mapping, per-record error handling.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "insertOrUpdateAggregation()",
+          "location": "L1060-L1144",
+          "description": "DELETE-then-INSERT for idempotent seeding. 33-column aggregation schema."
+        },
+        {
+          "symbol": "seederProgress",
+          "location": "L27-L49",
+          "description": "Global tracker: is_running, current_division, current_gang, divisions_total, started_at, last_update."
+        }
+      ],
+      "topic_relation": "Pattern reference: progress tracking, idempotent writes. Premium seeder follows similar pattern via saveAdjustment UPSERT."
+    },
+    {
+      "path": "backend/src/types/payroll/aggregation.ts",
+      "relevance": 0.5,
+      "rationale": "Type definitions with premium fields: total_premi_brondol, total_premi_prunning, total_premi_insentif, total_premi_kinerja, total_koreksi.",
+      "role": "type_definition",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "PayrollStatistics",
+          "location": "L24-L54",
+          "description": "Statistics: total_brondol, total_pruning, total_premi_dinamis_1-7. Endpoint fields seeder data feeds."
+        }
+      ],
+      "topic_relation": "End-to-end premium field naming. Seeder data flows: payroll_manual_adjustments -> manualAdjustmentApplier -> PayrollStatistics."
+    },
+    {
+      "path": "backend/src/services/payroll/components/PremiService.ts",
+      "relevance": 0.5,
+      "rationale": "Component premi calculator. Categorizes DocDesc into brondol, pruning, dynamic_premi via keywords. 22 DEFAULT_EXCLUDE_PATTERNS.",
+      "role": "pattern_reference",
+      "discovery_source": "bash-scan",
+      "key_code": [
+        {
+          "symbol": "processPremiData()",
+          "location": "L316-L374",
+          "description": "Categorizes: brondol(BRONDOL), pruning(PRUN/PRUNING), dynamic_premi(rest). Builds PayrollComponent wrappers."
+        }
+      ],
+      "topic_relation": "Context for premium categorization. Seeder imports bypass DocDesc but brondol/pruning/dynamic naming conventions apply."
+    }
+  ],
+  "patterns": "1. Premium Data Flow: PR_ADTRANS/ARC -> EmpPremi -> manualAdjustmentApplier -> PayrollStatistics -> daftar_upah_aggregation_history. 2. Seeder Pattern: DELETE-then-INSERT with progress tracking. 3. Definition-Based: JSON file consumed by PremiumDefinitionService singleton. 4. Identity Resolution: empCode+nik dual identity cascading resolution. 5. Database Routing: SERVER_PROFILE_1 for Plantware+extend_db_ptrj, SERVER_PROFILE_3 for VenusHR14+db_ptrj_mill. 6. Elysia Route: chained get()/post() with t.Object() validation. 7. ExcelJS Pipeline: workbook.load()->eachRow()->row.values[] with column indices.",
+  "dependencies": "exceljs, premium_definitions.json, payroll_manual_adjustments table, ManualAdjustmentService.saveAdjustment(), PremiumDefinitionService.getActivePremiumDefinitions(), Database.getExtendedInstance(), employeeIdentityResolverService, rateLimiter, auth.",
+  "integration_points": "PRIMARY: 1. premiumImportService.ts L21-L28 ALLOWED_JENIS replace with dynamic lookup. L48-L74 generalize 5-col layout by input_type. L96-L113 vary metadata by premium type. 2. api/payroll.ts L3487-L3536 extend POST /premium-import-excel for multi-sheet. SECONDARY: 3. manualAdjustmentService.ts L2161 saveAdjustment(). 4. premiumDefinitionService.ts L166 getActivePremiumDefinitions(). 5. premium_definitions.json. TERTIARY: 6. aggregationSeederRoutes.ts L27-L49 seederProgress. 7. adtransDocDescMapping.ts L66-L71 header matching. 8. DynamicColumnDetector.ts L64-L73 header normalization. DB: 9. extend_db_ptrj.dbo.payroll_manual_adjustments via saveAdjustment() UPSERT.",
+  "constraints": "1. ALLOWED_JENIS hardcap (only PRUNING/RAKING). 2. Hardcoded 5-column layout. 3. Single-sheet assumption. 4. metadata_json always blok. 5. No header auto-detection. 6. No progress reporting. 7. No transaction rollback. 8. DB_SEEDER_TIMEOUT=180s. 9. PREMI TBS duplicate definitions. 10. Identity resolution cascading failures.",
+  "clarification_needs": [
+    {
+      "question": "How should Excel column mapping work -- by fixed column position (index-based) or by column header name (label-based)?",
+      "context": "Current importer uses hardcoded column indices. For a generic seeder supporting all premium types, Excel templates from different divisions may have different column orders. Label-based mapping is more robust but requires header row detection.",
+      "options": [
+        "Fixed index-based: each premium type has pre-configured column order",
+        "Header label-based: parser finds columns by name with fuzzy matching",
+        "Hybrid: default to index-based, fallback to header-based when headers present",
+        "Config file per premium type in premium_definitions.json"
+      ],
+      "recommended": 2
+    },
+    {
+      "question": "Multi-type Excel format -- one premium type per sheet, or all types in one sheet with jenis column?",
+      "context": "Current importer expects 1 sheet with jenis column. For multi-type seeding, sheet-per-type is cleaner but requires workbook convention.",
+      "options": [
+        "One sheet per premium type: sheet name equals premium definition name",
+        "All types in single sheet: premium_type column plus dynamic columns",
+        "Both modes: auto-detect based on sheet count and column presence",
+        "Upload one file per premium type only"
+      ],
+      "recommended": 0
+    },
+    {
+      "question": "Import target table -- payroll_manual_adjustments or new dedicated seeder table?",
+      "context": "Current flow uses payroll_manual_adjustments which also serves UI manual adjustments. Mixing sources may confuse audits.",
+      "options": [
+        "Use existing payroll_manual_adjustments",
+        "New premium_seeder_imports table with FK",
+        "Use payroll_manual_adjustments with SEEDER: remarks prefix",
+        "Add source column to existing table"
+      ],
+      "recommended": 2
+    }
+  ],
+  "_metadata": {
+    "timestamp": "2026-06-02T00:00:00.000Z",
+    "task_description": "Build a seeder feature that parses premium data from Excel files and seeds it into premium tables in the database. Each premium type has its own column format. Understand existing premium table formats (Premi Brondol, Premi Prunning, Premi Insentif Panen, Premi Kinerja, Koreksi), Excel-to-table column mapping, and create a reader that maps Excel columns to the appropriate premium tables.",
+    "source": "cli-explore-agent",
+    "exploration_angle": "integration-points",
+    "exploration_index": 2,
+    "total_explorations": 3,
+    "duration_seconds": 45
+  }
+}

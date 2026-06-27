@@ -22,6 +22,7 @@ import { employeeGangHistoryRoutes } from "./api/employeeGangHistoryRoutes";
 import { employeeComparisonRoutes } from "./api/employeeComparisonRoutes";
 import { otherIncomesRoutes } from "./api/otherIncomesRoutes";
 import { millProductionRoutes } from "./api/millProductionRoutes";
+import { stagingRoutes } from "./api/stagingRoutes";
 import { Database } from "./db/client";
 import { employeeHrDataService } from "./services/employeeHrDataService";
 import { OtherIncomesService } from "./services/otherIncomesService";
@@ -29,92 +30,90 @@ import { historyDatabaseService } from "./services/historyDatabaseService";
 import { staticPlugin } from "@elysiajs/static";
 import { debug, info, warn, error } from "./utils/logger";
 
+// ============================================================
+// Static asset serving: precompression (br/gz) + cache headers
+// ============================================================
+const DIST_DIR = "../frontend/dist";
+
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+    js: "application/javascript; charset=utf-8",
+    mjs: "application/javascript; charset=utf-8",
+    css: "text/css; charset=utf-8",
+    html: "text/html; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    svg: "image/svg+xml",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    ico: "image/x-icon",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ttf: "font/ttf",
+    map: "application/json; charset=utf-8"
+};
+
+const contentTypeFor = (filePath: string): string | undefined => {
+    const ext = filePath.split(".").pop()?.toLowerCase();
+    return ext ? CONTENT_TYPE_BY_EXT[ext] : undefined;
+};
+
+// Serve a static file from dist, preferring a precompressed (.br/.gz) variant
+// based on the client's Accept-Encoding. Applies immutable long-term caching
+// because Vite asset filenames are content-hashed.
+const serveStaticAsset = async (
+    relPath: string,
+    accept: string | null,
+    set: { status?: number; headers: Record<string, string> }
+): Promise<any> => {
+    const basePath = `${DIST_DIR}/${relPath}`;
+    const baseFile = Bun.file(basePath);
+    if (!(await baseFile.exists())) {
+        set.status = 404;
+        return "Not found";
+    }
+
+    const ct = contentTypeFor(basePath);
+    if (ct) set.headers["Content-Type"] = ct;
+    set.headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    set.headers["Vary"] = "Accept-Encoding";
+
+    const enc = accept || "";
+    if (enc.includes("br")) {
+        const br = Bun.file(`${basePath}.br`);
+        if (await br.exists()) {
+            set.headers["Content-Encoding"] = "br";
+            return br;
+        }
+    }
+    if (enc.includes("gzip")) {
+        const gz = Bun.file(`${basePath}.gz`);
+        if (await gz.exists()) {
+            set.headers["Content-Encoding"] = "gzip";
+            return gz;
+        }
+    }
+    return baseFile;
+};
+
+// Serve index.html with no-cache so new deployments (with new hashed asset
+// names) are always picked up immediately.
+const serveIndexHtml = (set: { headers: Record<string, string> }): any => {
+    set.headers["Cache-Control"] = "no-cache, must-revalidate";
+    set.headers["Content-Type"] = "text/html; charset=utf-8";
+    return Bun.file(`${DIST_DIR}/index.html`);
+};
+
+const buildHealthPayload = () => ({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    database: Config.DEFAULT_DATABASE,
+    profile: Config.DB_PROFILE
+});
+
 // Initialize Database access
 Database.getInstance();
-
-const DIST_ROOT = "../frontend/dist";
-const COMPRESSIBLE_ASSET_EXTENSIONS = new Set(["js", "css", "html", "json", "svg", "txt", "map"]);
-const compressedAssetCache = new Map<string, { lastModified: number; bytes: Uint8Array; contentType: string }>();
-const noCacheHeaders = (set: any) => {
-    set.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-    set.headers['Pragma'] = 'no-cache';
-    set.headers['Expires'] = '0';
-};
-const assetCacheHeaders = (set: any) => {
-    set.headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-    set.headers['Vary'] = 'Accept-Encoding';
-};
-
-const getAssetContentType = (filePath: string): string | undefined => {
-    const ext = filePath.split('.').pop()?.toLowerCase();
-    switch (ext) {
-        case "js": return "application/javascript; charset=utf-8";
-        case "css": return "text/css; charset=utf-8";
-        case "json": return "application/json; charset=utf-8";
-        case "svg": return "image/svg+xml";
-        case "png": return "image/png";
-        case "jpg":
-        case "jpeg": return "image/jpeg";
-        case "webp": return "image/webp";
-        case "woff": return "font/woff";
-        case "woff2": return "font/woff2";
-        default: return undefined;
-    }
-};
-
-const isSafeDistPath = (relativePath: string): boolean => {
-    return !!relativePath &&
-        !relativePath.startsWith("/") &&
-        !relativePath.startsWith("\\") &&
-        !relativePath.includes("..") &&
-        !relativePath.includes("\\");
-};
-
-const serveDistAsset = async (relativePath: string, request: Request, set: any) => {
-    if (!isSafeDistPath(relativePath)) {
-        set.status = 400;
-        return "Invalid asset path";
-    }
-
-    const filePath = `${DIST_ROOT}/${relativePath}`;
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
-        set.status = 404;
-        return "Asset not found";
-    }
-
-    assetCacheHeaders(set);
-    const contentType = getAssetContentType(filePath);
-    if (contentType) {
-        set.headers['Content-Type'] = contentType;
-    }
-
-    const ext = filePath.split('.').pop()?.toLowerCase() || "";
-    const acceptsGzip = request.headers.get("accept-encoding")?.includes("gzip") || false;
-    if (!acceptsGzip || !COMPRESSIBLE_ASSET_EXTENSIONS.has(ext)) {
-        return file;
-    }
-
-    const lastModified = file.lastModified;
-    const cached = compressedAssetCache.get(filePath);
-    if (cached && cached.lastModified === lastModified) {
-        set.headers['Content-Encoding'] = 'gzip';
-        set.headers['Content-Type'] = cached.contentType;
-        return new Response(cached.bytes);
-    }
-
-    const rawBytes = new Uint8Array(await file.arrayBuffer());
-    const gzipped = Bun.gzipSync(rawBytes);
-    const cachedAsset = {
-        lastModified,
-        bytes: gzipped,
-        contentType: contentType || "application/octet-stream"
-    };
-    compressedAssetCache.set(filePath, cachedAsset);
-    set.headers['Content-Encoding'] = 'gzip';
-    set.headers['Content-Type'] = cachedAsset.contentType;
-    return new Response(cachedAsset.bytes);
-};
 
 // Background initialization
 setTimeout(() => {
@@ -180,80 +179,45 @@ const app = new Elysia()
     })
     // Root endpoints
     // Serve Frontend Static Files
-    .get("/", ({ set }) => {
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
-    .get("/index.html", ({ set }) => {
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
-    .get("/vite.svg", () => Bun.file("../frontend/dist/vite.svg"))
+    .get("/", ({ set }) => serveIndexHtml(set))
+    .get("/index.html", ({ set }) => serveIndexHtml(set))
+    .get("/vite.svg", ({ set, request }) =>
+        serveStaticAsset("vite.svg", request.headers.get("accept-encoding"), set))
 
-    // Serve all static files from dist root (handles /assets, /images, etc. naturally)
-    .use(staticPlugin({
-        assets: "../frontend/dist",
-        prefix: "/"
-    }))
-
-    // Explicit fallback for /assets in case static plugin doesn't work
-    .get("/assets/*", async ({ params, request, set }) => {
-        return serveDistAsset(`assets/${params["*"]}`, request, set);
-    })
-
-    // Explicit fallback for /images in case static plugin doesn't work
-    .get("/images/*", async ({ params, request, set }) => {
-        return serveDistAsset(`images/${params["*"]}`, request, set);
-    })
+    // Hashed JS/CSS bundles: immutable cache + precompressed br/gz when available.
+    .get("/assets/*", ({ params, set, request }) =>
+        serveStaticAsset(`assets/${params["*"]}`, request.headers.get("accept-encoding"), set))
+    .get("/images/*", ({ params, set, request }) =>
+        serveStaticAsset(`images/${params["*"]}`, request.headers.get("accept-encoding"), set))
 
     // ========================
     // PROXY MODE STATIC FILES
     // When frontend is built with base: '/upah/', assets are requested at /upah/assets/...
     // ========================
-    .get("/upah", ({ set }) => {
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
-    .get("/upah/", ({ set }) => {
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
-    .get("/upah/index.html", ({ set }) => {
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
+    .get("/upah", ({ set }) => serveIndexHtml(set))
+    .get("/upah/", ({ set }) => serveIndexHtml(set))
+    .get("/upah/index.html", ({ set }) => serveIndexHtml(set))
 
-    // Serve /upah/assets/* - main chunk files, CSS, JS
-    .get("/upah/assets/*", async ({ params, request, set }) => {
-        return serveDistAsset(`assets/${params["*"]}`, request, set);
-    })
+    .get("/upah/assets/*", ({ params, set, request }) =>
+        serveStaticAsset(`assets/${params["*"]}`, request.headers.get("accept-encoding"), set))
+    .get("/upah/images/*", ({ params, set, request }) =>
+        serveStaticAsset(`images/${params["*"]}`, request.headers.get("accept-encoding"), set))
 
-    // Serve /upah/images/*
-    .get("/upah/images/*", async ({ params, request, set }) => {
-        return serveDistAsset(`images/${params["*"]}`, request, set);
-    })
-
-    // Serve static files when the reverse proxy keeps the /backend/upah prefix.
-    .get("/backend/upah/assets/*", async ({ params, request, set }) => {
-        return serveDistAsset(`assets/${params["*"]}`, request, set);
-    })
-    .get("/backend/upah/images/*", async ({ params, request, set }) => {
-        return serveDistAsset(`images/${params["*"]}`, request, set);
-    })
-
-    // Serve any other /upah/* static files (like fonts, etc)
-    .get("/upah/*", async ({ params, set, request }) => {
+    // Serve any other /upah/* static files (fonts, etc); SPA routes fall back to index.html
+    .get("/upah/*", ({ params, set, request }) => {
         const pathname = params["*"];
-
-        // If it's a SPA route (no extension), serve index.html
-        if (!pathname.includes('.')) {
-            noCacheHeaders(set);
-            return Bun.file("../frontend/dist/index.html");
+        if (!pathname.includes(".")) {
+            return serveIndexHtml(set);
         }
-
-        // Otherwise try to serve the static file
-        return serveDistAsset(pathname, request, set);
+        return serveStaticAsset(pathname, request.headers.get("accept-encoding"), set);
     })
+
+    // Static files from dist root (favicon, manifest, etc.) — runs after the
+    // explicit, more specific asset routes above.
+    .use(staticPlugin({
+        assets: "../frontend/dist",
+        prefix: "/"
+    }))
 
     .get("/api-info", () => ({
         message: "Payroll Backend (Bun/Elysia) is running",
@@ -277,12 +241,8 @@ const app = new Elysia()
         cacheService.clear();
         return { cleared: true, entries_removed: before };
     })
-    .get("/health", () => ({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        database: Config.DEFAULT_DATABASE,
-        profile: Config.DB_PROFILE
-    }))
+    .get("/health", () => buildHealthPayload())
+    .get("/backend/upah/health", () => buildHealthPayload())
     // Development config routes (no prefix)
     .use(devConfigRoutes)
     // Auth routes: /auth/login, /auth/me
@@ -322,68 +282,82 @@ const app = new Elysia()
     // Mill Production Report
     .group("/api/mill-production", app => app.use(millProductionRoutes))
 
-    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
-    // --- PROXY SUPPORT: Mount API routes under /backend/upah as well ---
-    // Explicitly using the string literal to ensure matching
-    .group("/backend/upah", app => app
-        .use(authRoutes)
-        .use(usersRoutes)
-        .use(reportsRoutes)
-        .use(payrollRoutes)
-        .use(employeeRoutes)
-        .use(employeeEstateRoutes)
-        .use(tunjanganRoutes)
-        .use(aggregationSeederRoutes)
-        .use(spreadsheetRoutes)
-        .use(spreadsheetRoutes)
-        .use(summaryRoutes)
-        .use(dashboardRoutes)
-        .use(historyRoutes)
-        .use(wagesRoutes)
-        .use(logsRoutes)
-        .use(devConfigRoutes)
-        .use(taxReportRoutes)
-        .use(employeeHrDataRoutes)
-        .use(employeeGangHistoryRoutes)
-        .use(employeeComparisonRoutes)
-        .use(otherIncomesRoutes)
-        .group("/api/mill-production", nestedApp => nestedApp.use(millProductionRoutes))
-    )
+// Conditional: staging routes only when not disabled
+if (Config.DISABLE_STAGING_DB) {
+    // No-op: staging disabled
+}
 
-    // Test route - must be before wildcard
-    .get("/api/employee-compare/test", () => ({
-        test: "working"
-    }))
-    // SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
-    .get("*", async ({ request, set }) => {
-        const url = new URL(request.url);
-        const pathname = url.pathname;
+// Mount API routes under /backend/upah prefix (always active - proxy uses this path)
+app.group("/backend/upah", (g: any) => g
+    .use(authRoutes)
+    .use(usersRoutes)
+    .use(reportsRoutes)
+    .use(payrollRoutes)
+    .use(employeeRoutes)
+    .use(employeeEstateRoutes)
+    .use(tunjanganRoutes)
+    .use(aggregationSeederRoutes)
+    .use(spreadsheetRoutes)
+    .use(summaryRoutes)
+    .use(dashboardRoutes)
+    .use(historyRoutes)
+    .use(wagesRoutes)
+    .use(logsRoutes)
+    .use(devConfigRoutes)
+    .use(taxReportRoutes)
+    .use(employeeHrDataRoutes)
+    .use(employeeGangHistoryRoutes)
+    .use(employeeComparisonRoutes)
+    .use(otherIncomesRoutes)
+    .group("/api/mill-production", (n: any) => n.use(millProductionRoutes))
+    .use(stagingRoutes)
+);
 
-        // If it looks like an API call, return 404
-        const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/");
-        if (isApi) {
-            set.status = 404;
-            return { error: "Route not found", path: pathname };
-        }
+// Test route - must be before wildcard
+app.get("/api/employee-compare/test", () => ({
+    test: "working"
+}));
 
-        // If it looks like a static file (has extension), return 404 - static plugin should have handled it
-        const hasExtension = pathname.includes(".");
-        if (hasExtension) {
-            set.status = 404;
-            return "File not found";
-        }
+// SPA Fallback: Serve index.html for any unknown routes (excluding API and files with extensions)
+app.get("*", async ({ request, set }) => {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
 
-        // Otherwise, serve index.html for SPA routing
-        noCacheHeaders(set);
-        return Bun.file("../frontend/dist/index.html");
-    })
-    // Start server
-    .listen({
-        port: Config.PORT,
-        hostname: Config.HOST
-    });
+    // If it looks like an API call, return 404
+    const isApi = pathname.startsWith("/api") || pathname.includes("/payroll/") || pathname.startsWith("/backend/upah/api");
+    if (isApi) {
+        set.status = 404;
+        return { error: "Route not found", path: pathname };
+    }
 
-console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
-console.log(`Run Mode: ${Config.RUN_MODE}`);
-console.log(`Auth Mode: ${Config.AUTH_MODE}`);
-console.log(`Database: ${Config.DEFAULT_DATABASE} @ ${Config.DB_PROFILE}`);
+    // If it looks like a static file (has extension), return 404 - static plugin should have handled it
+    const hasExtension = pathname.includes(".");
+    if (hasExtension) {
+        set.status = 404;
+        return "File not found";
+    }
+
+    // Otherwise, serve index.html for SPA routing
+    return Bun.file("../frontend/dist/index.html");
+});
+
+// Start server
+app.listen({
+    port: Config.PORT,
+    hostname: Config.HOST
+});
+
+console.log(`\n========================================`);
+console.log(`  Daftar Upah Backend`);
+console.log(`========================================`);
+console.log(`  Host     : ${app.server?.hostname}:${app.server?.port}`);
+console.log(`  Run Mode : ${Config.RUN_MODE}`);
+console.log(`  Auth     : ${Config.AUTH_MODE}`);
+console.log(`----------------------------------------`);
+console.log(`  Databases:`);
+console.log(`    db_ptrj   : ${Config.DEFAULT_DATABASE} @ ${Config.DB_PROFILE}`);
+console.log(`    extend    : ${Config.DB_EXTEND_DATABASE} @ ${Config.DB_EXTEND_PROFILE}`);
+console.log(`    staging   : ${Config.DB_STAGING_DATABASE} @ ${Config.DB_STAGING_PROFILE}${Config.DISABLE_STAGING_DB ? ' [DISABLED]' : ' [ENABLED]'}`);
+console.log(`    venus     : ${Config.DB_VENUS_DATABASE} @ ${Config.DB_VENUS_PROFILE}`);
+console.log(`    mill      : ${Config.DB_MILL_DATABASE} @ ${Config.DB_MILL_PROFILE}`);
+console.log(`========================================\n`);

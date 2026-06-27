@@ -1,0 +1,30 @@
+{
+  "id": "IMPL-2",
+  "title": "Dashboard shell polish and IA completion",
+  "description": "Finish V3 dashboard structure with header, sticky filters, KPI section, role modules, analytics, reports, and activity/status.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "files": [
+    "frontend/src/pages/ProfessionalDashboard.jsx",
+    "frontend/src/components/dashboard/*"
+  ],
+  "convergence": [
+    "Dashboard follows the requested information architecture.",
+    "Filter bar is sticky and mobile-friendly.",
+    "Visual hierarchy is clean and scannable."
+  ],
+  "meta": {
+    "type": "frontend_ui",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
+}

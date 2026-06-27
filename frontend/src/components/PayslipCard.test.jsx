@@ -205,32 +205,7 @@ describe('PayslipCard', () => {
         expect(html).toContain('---- +');
     });
 
-    it('nets koreksi brondol against premi brondol instead of showing it as separate koreksi income', () => {
-        const html = renderToString(
-            <PayslipCard
-                data={{
-                    ...basePayslipData,
-                    payroll_data: {
-                        ...basePayslipData.payroll_data,
-                        premi_brondol: 25000,
-                        total_premi: 25000,
-                        pot_koreksi: 5000,
-                        koreksi_brondol: -5000,
-                    },
-                }}
-                month={4}
-                year={2026}
-            />
-        );
-
-        expect(html).toContain('Brondol');
-        expect(html).toContain('20.000');
-        expect(html).not.toContain('25.000');
-        expect(html).not.toContain('Koreksi Pendapatan (-)');
-        expect(html).not.toContain('Koreksi Brondol');
-    });
-
-    it('keeps income details on the left and does not move them below deductions', () => {
+    it('keeps all income detail in the left income column before deductions', () => {
         const html = renderToString(
             <PayslipCard
                 data={{
@@ -254,18 +229,19 @@ describe('PayslipCard', () => {
             />
         );
 
+        expect(html).toContain('Subtotal Premi');
         expect(html).not.toContain('payslip-income-overflow-section');
         expect(html).not.toContain('LANJUTAN PENERIMAAN');
         expect(html).not.toContain('BUKAN POTONGAN');
-        expect(html).toContain('Subtotal Premi');
 
-        const incomeIndex = html.indexOf('PENERIMAAN');
         const deductionIndex = html.indexOf('POTONGAN');
-        const premiumIndex = html.indexOf('Subtotal Premi');
-        expect(incomeIndex).toBeGreaterThan(-1);
-        expect(deductionIndex).toBeGreaterThan(incomeIndex);
-        expect(premiumIndex).toBeGreaterThan(incomeIndex);
-        expect(premiumIndex).toBeLessThan(deductionIndex);
+        const subtotalTunjanganIndex = html.indexOf('Subtotal Tunjangan');
+        const subtotalPremiIndex = html.indexOf('Subtotal Premi');
+        expect(deductionIndex).toBeGreaterThan(-1);
+        expect(subtotalTunjanganIndex).toBeGreaterThan(-1);
+        expect(subtotalPremiIndex).toBeGreaterThan(-1);
+        expect(subtotalTunjanganIndex).toBeLessThan(deductionIndex);
+        expect(subtotalPremiIndex).toBeLessThan(deductionIndex);
     });
 
     it('renders a subtle repeated Rebinmas logo and label watermark pattern', () => {
@@ -442,55 +418,6 @@ describe('PayslipCard', () => {
         expect(html).not.toContain('Astek/BPJS');
         expect(html).not.toContain('Tarif TER A (TK/0)');
         expect(html).not.toContain('5.00%');
-    });
-
-    it('uses worker-only ASTEK and never falls back to ASTEK total/majikan as employee deduction', () => {
-        const html = renderToString(
-            <PayslipCard
-                data={{
-                    ...basePayslipData,
-                    payroll_data: {
-                        ...basePayslipData.payroll_data,
-                        jumlah_upah_kotor: 2000000,
-                        pot_astek_pekerja: 30000,
-                        pot_astek_majikan: 40000,
-                        pot_astek_jumlah: 70000,
-                        total_potongan: 70000,
-                    },
-                }}
-                month={4}
-                year={2026}
-            />
-        );
-
-        expect(html).toContain('Astek (2%)');
-        expect(html).toContain('30.000');
-        expect(html).toContain('payslip-negative">30.000');
-        expect(html).not.toContain('payslip-negative">70.000');
-    });
-
-    it('adds premi PPh to take-home pay instead of cancelling it in total potongan', () => {
-        const html = renderToString(
-            <PayslipCard
-                data={{
-                    ...basePayslipData,
-                    payroll_data: {
-                        ...basePayslipData.payroll_data,
-                        jumlah_upah_kotor: 2000000,
-                        pot_spsi: 100000,
-                        premi_pph: 20000,
-                        total_potongan: 100000,
-                    },
-                }}
-                month={4}
-                year={2026}
-            />
-        );
-
-        expect(html).toContain('Premi PPh (+)');
-        expect(html).toContain('80.000');
-        expect(html).toContain('Rp <!-- -->1.920.000');
-        expect(html).not.toContain('Rp <!-- -->1.900.000');
     });
 
     it('removes the compact tax calculation detail markup from the payslip component', () => {

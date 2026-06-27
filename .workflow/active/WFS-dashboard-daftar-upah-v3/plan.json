@@ -1,0 +1,35 @@
+{
+  "session_id": "WFS-dashboard-daftar-upah-v3",
+  "task_ids": [
+    "IMPL-1",
+    "IMPL-2",
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5",
+    "IMPL-6",
+    "IMPL-7",
+    "IMPL-8",
+    "IMPL-9",
+    "IMPL-10"
+  ],
+  "recommended_execution": {
+    "strategy": "phased_with_optional_parallel_lanes",
+    "waves": [
+      ["IMPL-1"],
+      ["IMPL-2", "IMPL-6"],
+      ["IMPL-3", "IMPL-7"],
+      ["IMPL-4", "IMPL-8"],
+      ["IMPL-5"],
+      ["IMPL-9"],
+      ["IMPL-10"]
+    ]
+  },
+  "complexity": "medium_high",
+  "conflict_risk": "high",
+  "shared_context": [
+    "Existing dashboard V3 work is already present in ProfessionalDashboard.jsx.",
+    "Table instability likely comes from responsive scale and scroll-driven active group styling.",
+    "Dirty worktree includes target files; implementation must audit diffs before editing.",
+    "Routes and report navigation must remain stable."
+  ]
+}

@@ -2,15 +2,22 @@ import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from '
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import '../styles/CustomPayrollTable.css';
+import {
+    formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
+    normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
+    NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
+    isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
+} from './payrollTableFormatters';
 import { getLockedRawTree, saveLockedManualEdit, saveLockedProfileOverride, saveLockedValueOverrides, seedLockedAutoBufferToManualAdjustment, deleteLockedManualAdjustmentColumn } from '../services/lockedDivisionService';
 import { isProdMode } from '../utils/prodModeUtils';
 import { exportPayrollToExcel } from '../utils/exportPayrollToExcel';
+import { debounce } from '../utils/debounce';
 import PayrollScrollChapterBar from './PayrollScrollChapterBar';
 import PayrollViewModeToolbar from './PayrollViewModeToolbar';
 import ManualAdjustmentColumnModal from './ManualAdjustmentColumnModal';
 import PremiumDetailPopup from './PremiumDetailPopup';
 import { DeferredPayrollNumberInput } from './PayrollDeferredEditInput';
-import { deleteManualAdjustmentColumn, saveManualAdjustment, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
+import { deleteManualAdjustmentColumn, saveManualAdjustment, saveManualAdjustmentBatch, fetchPremiumDefinitions } from '../services/manualAdjustmentService';
 import SelectionStatusBar from './common/SelectionStatusBar';
 import TableContextMenu from './common/TableContextMenu';
 import LoadingScreen from './common/LoadingScreen';
@@ -36,6 +43,7 @@ import { PAYROLL_HEADER_GROUPS, getPayrollHeaderGroup, isPayrollGroupToggleable,
 import { buildPayrollHeaderRows, getPayrollChapterWindowForGroup } from '../utils/payrollHeaderLayout';
 import { resolvePayrollClientRuntimePolicy } from '../utils/payrollClientRuntime';
 import { compareEmpCodeValues, sortEmployeesByEmpCode } from '../utils/employeeSort';
+import { buildBackendUrl } from '../utils/apiBase';
 import {
     buildPayrollViewportChapters,
     detectActivePayrollChapter,
@@ -98,42 +106,12 @@ import {
  * - HR_PAYROLL (Konfigurasi Gaji)
  */
 
-const formatNumber = (value) => {
-    if (value === null || value === undefined) return '-';
-    const n = Number(value);
-    if (isNaN(n)) return '-';
-    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
-};
+// formatNumber, formatDecimal, formatNegativeTotalNumber, formatBytes, clampNumber,
+// normalizeFieldKey, normalizeHeaderLabel, normalizeValuePriorityMode, formatSourceCompareValue,
+// NEGATIVE_TOTAL_DISPLAY_FIELDS, MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks,
+// isManualCellDeleteEdit, parseMetadataObjectValue, toFiniteNumber
+// → imported from ./payrollTableFormatters.js
 
-const formatDecimal = (value) => {
-    if (value === null || value === undefined) return '-';
-    const n = Number(value);
-    if (isNaN(n)) return '-';
-    return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
-};
-
-const NEGATIVE_TOTAL_DISPLAY_FIELDS = new Set([
-    'potongan_upah_kotor_total',
-    'total_potongan',
-    'total_potongan_bersih'
-]);
-
-const formatNegativeTotalNumber = (value) => {
-    const n = Number(value) || 0;
-    if (n === 0) return '-';
-    return `-${formatNumber(Math.abs(n))}`;
-};
-
-const toFiniteNumber = toFinitePayrollNumber;
-
-const formatBytes = (bytes) => {
-    if (!bytes || bytes === 0) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 const EMPTY_CELL_STYLE = Object.freeze({});
 
 const getInitialViewportWidth = () => {
@@ -155,21 +133,9 @@ const formatHeaderLabel = (label) => {
 
 const VALUE_PRIORITY_MODE_STORAGE_KEY = 'payroll.value_priority_mode';
 
-const normalizeValuePriorityMode = (value) => {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'db_ptrj_only') return 'db_ptrj_only';
-    return 'non_db_ptrj';
-};
-
-const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase();
-
-const formatSourceCompareValue = (value) => {
-    if (value === null || value === undefined || value === '') return '-';
-    if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak';
-    const n = Number(value);
-    if (!Number.isNaN(n) && String(value).trim() !== '') return formatNumber(n);
-    return String(value);
-};
+// normalizeValuePriorityMode → imported from ./payrollTableFormatters.js
+// normalizeFieldKey → imported from ./payrollTableFormatters.js
+// formatSourceCompareValue → imported from ./payrollTableFormatters.js
 
 const STATIC_PREMI_FIELDS = new Set(['premi_brondol']);
 const STATIC_BRONDOL_FIELD_KEYS = new Set([
@@ -194,7 +160,7 @@ const STATIC_BRONDOL_LABELS = new Set([
 ]);
 const STATIC_POTONGAN_FIELDS = new Set(['pot_spsi']);
 
-const normalizeHeaderLabel = (value) => String(value || '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+// normalizeHeaderLabel → imported from ./payrollTableFormatters.js
 
 const isBrondolFieldKey = (value) => {
     const normalized = normalizeFieldKey(value);
@@ -259,12 +225,8 @@ const getManualDetailValidation = ({ metadata, inputType, amount, adjustmentType
     return validation.isComplete ? null : validation;
 };
 
-const MANUAL_CELL_DELETE_MARKER = 'DELETE_CELL';
-
-const buildManualCellDeleteRemarks = (name) => `${name || 'MANUAL ADJUSTMENT'} | ${MANUAL_CELL_DELETE_MARKER} | 0`;
-
-const isManualCellDeleteEdit = (edit) => Boolean(edit?.delete_cell)
-    || (Number(edit?.value || 0) === 0 && String(edit?.remarks || '').toUpperCase().includes(MANUAL_CELL_DELETE_MARKER));
+// MANUAL_CELL_DELETE_MARKER, buildManualCellDeleteRemarks, isManualCellDeleteEdit
+// → imported from ./payrollTableFormatters.js
 
 const isAutomaticPayrollKoreksiFieldKey = (value) => normalizeFieldKey(value) === 'koreksi_hk';
 
@@ -315,15 +277,7 @@ const formatFallbackPotonganLabel = (field) => {
     return String(field || '').replace(/_/g, ' ').trim().toUpperCase();
 };
 
-const parseMetadataObjectValue = (value) => {
-    if (!value) return null;
-    try {
-        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-        return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-        return null;
-    }
-};
+// parseMetadataObjectValue → imported from ./payrollTableFormatters.js
 
 const resolveInitialValuePriorityMode = () => {
     try {
@@ -440,6 +394,15 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const [pendingDeletedColumns, setPendingDeletedColumns] = useState([]);
     const [manualAdjustmentModal, setManualAdjustmentModal] = useState({ isOpen: false, groupLabel: null, adjustmentType: 'PREMI' });
     const [isSavingEdits, setIsSavingEdits] = useState(false);
+    const [savedCellKeys, setSavedCellKeys] = useState(new Set()); // keys yang baru saja tersimpan (untuk animasi hijau)
+
+    // Helper: return CSS class untuk cell berdasarkan edit/saving/saved state
+    const getEditCellClass = useCallback((editKey) => {
+        if (savedCellKeys.has(editKey)) return 'cell-saved';
+        if (isSavingEdits && editedCells[editKey]) return 'cell-saving cell-edited';
+        if (editedCells[editKey]) return 'cell-edited';
+        return '';
+    }, [savedCellKeys, isSavingEdits, editedCells]);
     const [isSeedingAutoBuffer, setIsSeedingAutoBuffer] = useState(false);
 
     // Premium detail popup state
@@ -484,6 +447,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     const initialDisplayState = useMemo(() => resolvePayrollDisplayModeState(), []);
     const [displayMode, setDisplayMode] = useState(initialDisplayState.mode);
     const [focusLensEnabled, setFocusLensEnabled] = useState(initialDisplayState.focusLens);
+    const [compactMode, setCompactMode] = useState(() => {
+        try { return localStorage.getItem('payroll.compactMode') === 'true'; } catch { return false; }
+    });
+    // Virtual scroll state: track scroll position for row windowing
+    const [vsScrollTop, setVsScrollTop] = useState(0);
+    const [vsContainerHeight, setVsContainerHeight] = useState(600);
     const [internalValuePriorityMode, setInternalValuePriorityMode] = useState(resolveInitialValuePriorityMode);
     const valuePriorityMode = controlledValuePriorityMode === null || controlledValuePriorityMode === undefined
         ? internalValuePriorityMode
@@ -560,11 +529,24 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     // Replace the old fetch/process approach with SSE streaming
     // ================================================================
     const [streamEnabled, setStreamEnabled] = useState(true); // Always use streaming
+    const streamFallbackKeyRef = useRef(null);
     const effectiveGangPrefix = useMemo(
         () => resolveEffectiveGangPrefix(gangCode, gangPrefix, division),
         [division, gangCode, gangPrefix]
     );
     const canStartDataFlow = !!token && !!division && !!month && !!year && !currentPeriodLoading;
+    const dataRequestKey = useMemo(() => [
+        token ? 'auth' : 'no-auth',
+        division || '',
+        month || '',
+        year || '',
+        effectiveGangPrefix || '',
+        gangCode || '',
+        useHistoryDb ? 'history' : 'origin',
+        valuePriorityMode || '',
+        snapshotVersion || '',
+        refreshTrigger || 0
+    ].join('|'), [division, effectiveGangPrefix, gangCode, month, refreshTrigger, snapshotVersion, token, useHistoryDb, valuePriorityMode, year]);
 
     // Use SSE streaming for progressive data delivery
     // CRITICAL FIX: Remove gangLoading from enabled condition to allow streaming to start immediately
@@ -582,6 +564,13 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         refreshTrigger,
         enabled: canStartDataFlow && streamEnabled
     });
+
+    useEffect(() => {
+        streamFallbackKeyRef.current = null;
+        setStreamEnabled(true);
+        setError('');
+        setDataReady(false);
+    }, [dataRequestKey]);
 
     const triggerPayrollRefresh = useCallback(() => {
         if (typeof onRefresh === 'function') {
@@ -923,14 +912,22 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     }, [streamRows, streamActiveFields, stream.isComplete]);
 
-    // Fallback: if stream errors and we have no data, fall back to old fetch
+    // Fallback: if stream errors and we have no data, fall back to old fetch once per request.
     useEffect(() => {
-        if (stream.error && !stream.gangs?.length && streamEnabled) {
-            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch');
+        if (!stream.error || stream.gangs?.length || !streamEnabled) return;
+
+        const fallbackAlreadyUsed = streamFallbackKeyRef.current === dataRequestKey;
+        if (!fallbackAlreadyUsed) {
+            console.warn('[CustomPayrollTable] Stream failed, falling back to legacy fetch once', stream.error);
+            streamFallbackKeyRef.current = dataRequestKey;
             setStreamEnabled(false);
-            setError(null); // Clear stream error
+            setError('');
+            return;
         }
-    }, [stream.error, stream.gangs, streamEnabled]);
+
+        setError(stream.error);
+        setDataReady(true);
+    }, [dataRequestKey, stream.error, stream.gangs, streamEnabled]);
 
     // Update rows when streaming or legacy fetch is active
     useEffect(() => {
@@ -1732,7 +1729,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode profile override failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/profile', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/profile'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1761,7 +1758,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     console.error('Prod Mode value overrides failed:', err);
                 }
             } else {
-                const res = await fetch('/payroll/overrides/values', {
+                    const res = await fetch(buildBackendUrl('/payroll/overrides/values'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1778,59 +1775,55 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (resOk && resJson?.success) successCount += valueItems.length;
         }
 
-        for (const edit of legacyEdits) {
-            const isDeleteEdit = isManualCellDeleteEdit(edit);
-            const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
-            const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
-            const payload = {
-                period_month: month,
-                period_year: year,
-                emp_code: edit.emp_code || edit.nik,
-                nik: edit.nik,
-                emp_name: edit.emp_name || null,
-                gang_code: edit.gang_code,
-                division_code: division,
-                adjustment_type: edit.type,
-                adjustment_name: edit.name,
-                amount: isDeleteEdit ? 0 : edit.value,
-                remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode
-                    ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL`
-                    : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
-                ad_code: edit.ad_code,
-                task_code: edit.task_code,
-                base_task_code: edit.base_task_code,
-                task_desc: edit.task_desc,
-                metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
-            };
-
-            let resOk = false;
-            let resJson = null;
-
+        // Batch save legacy manual edits (premi, potongan, dll) — replaces serial loop
+        if (legacyEdits.length > 0) {
             if (isProdMode()) {
-                try {
-                    resJson = await saveLockedManualEdit(token, payload);
-                    resOk = true;
-                } catch (err) {
-                    console.error('Prod Mode specific manual edit failed:', err);
+                // Prod mode: fallback ke serial (locked endpoint belum punya batch)
+                for (const edit of legacyEdits) {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    const payload = {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
+                    try {
+                        const resJson = await saveLockedManualEdit(token, payload);
+                        if (resJson?.success) successCount++;
+                    } catch (err) { console.error('Prod Mode specific manual edit failed:', err); }
                 }
             } else {
-                const res = await fetch('/payroll/manual-edit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(payload)
+                // Non-prod: batch endpoint
+                const batchItems = legacyEdits.map(edit => {
+                    const isDeleteEdit = isManualCellDeleteEdit(edit);
+                    const editAdCode = edit.ad_code || edit.base_task_code || edit.task_code || '';
+                    const shouldUseStoredRemarks = isDeleteEdit || (edit.value === 0 && edit.remarks);
+                    return {
+                        period_month: month, period_year: year,
+                        emp_code: edit.emp_code || edit.nik, nik: edit.nik, emp_name: edit.emp_name || null,
+                        gang_code: edit.gang_code, division_code: division,
+                        adjustment_type: edit.type, adjustment_name: edit.name,
+                        amount: isDeleteEdit ? 0 : edit.value,
+                        remarks: isDeleteEdit ? (edit.remarks || buildManualCellDeleteRemarks(edit.name)) : shouldUseStoredRemarks ? edit.remarks : (editAdCode ? `${edit.name} | ${editAdCode}${edit.task_desc ? ` - ${edit.task_desc}` : ''} | ${edit.value} | sync:MANUAL | match:MANUAL` : `${edit.name} | MANUAL EDIT | ${edit.value} | sync:MANUAL | match:MANUAL`),
+                        ad_code: edit.ad_code, task_code: edit.task_code, base_task_code: edit.base_task_code, task_desc: edit.task_desc,
+                        metadata_json: isDeleteEdit ? undefined : edit.metadata_json || undefined
+                    };
                 });
-                if (res.ok) {
-                    resOk = true;
-                    resJson = await res.json();
+                try {
+                    const batchResult = await saveManualAdjustmentBatch(token, batchItems);
+                    successCount += batchResult?.successCount || 0;
+                    if (batchResult?.failedCount > 0) {
+                        console.warn(`[batch] ${batchResult.failedCount} items gagal disimpan`);
+                    }
+                } catch (err) {
+                    console.error('Batch manual edit failed:', err);
                 }
-            }
-
-            if (resOk && resJson?.success) {
-                successCount++;
-                if (isDeleteEdit) deleteCount++;
             }
         }
 
@@ -1900,7 +1893,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         console.error('Prod Mode other income save failed:', err);
                     }
                 } else {
-                    const res = await fetch('/payroll/manual-edit', {
+                    const res = await fetch(buildBackendUrl('/payroll/manual-edit'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1914,7 +1907,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     }
                 }
             } else {
-                const res = await fetch('/payroll/locked/pendapatan-lainnya-edit', {
+                const res = await fetch(buildBackendUrl('/payroll/locked/pendapatan-lainnya-edit'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1955,6 +1948,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     const performSaveAllEdits = async () => {
         setIsSavingEdits(true);
+        // Snapshot keys yang akan disimpan untuk animasi
+        const keysToSave = new Set([
+            ...Object.keys(editedCells),
+            ...Object.keys(editedOtherIncomeCells)
+        ]);
         try {
             let savedCount = 0;
             let deleteCount = 0;
@@ -1981,6 +1979,10 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 showPayrollToast('info', 'Tidak ada perubahan', 'Belum ada data edit yang perlu disimpan.');
                 return;
             }
+
+            // Animasi cell-saved: tampilkan hijau lalu fade
+            setSavedCellKeys(keysToSave);
+            setTimeout(() => setSavedCellKeys(new Set()), 2000);
 
             showPayrollToast(
                 'success',
@@ -2107,7 +2109,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             if (isProdMode()) {
                 responseJson = await seedLockedAutoBufferToManualAdjustment(token, payload);
             } else {
-                const response = await fetch('/payroll/manual-adjustment/seed-auto-buffer', {
+                const response = await fetch(buildBackendUrl('/payroll/manual-adjustment/seed-auto-buffer'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2389,7 +2391,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
                 if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
                 appendSnapshotVersionToSearchParams(params, snapshotVersion);
-                const url = `/payroll/report/division-raw-tree?${params.toString()}`;
+                const url = buildBackendUrl(`/payroll/report/division-raw-tree?${params.toString()}`);
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` },
                     signal: controller.signal
@@ -2444,6 +2446,18 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             fetchDivisionData();
         }
     }, [canStartDataFlow, gangLoading, refreshTrigger, useHistoryDb, valuePriorityMode, snapshotVersion, fetchDivisionData, streamEnabled]);
+
+    const retryPayrollLoad = useCallback(() => {
+        streamFallbackKeyRef.current = null;
+        setError('');
+        setDataReady(false);
+        setStreamEnabled(true);
+        if (typeof onRefresh === 'function') {
+            onRefresh();
+        } else if (streamEnabled && typeof stream.startStream === 'function') {
+            void stream.startStream();
+        }
+    }, [onRefresh, stream.startStream, streamEnabled]);
 
     // === COLUMN DEFINITIONS (Single Source of Truth) ===
     // Each column knows its header hierarchy: [level0, level1, level2, level3]
@@ -2572,65 +2586,6 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     );
                 }
             },
-            {
-                field: 'alamat',
-                headers: ['IDENTITAS', null, 'ALAMAT'],
-                w: displayMode === 'detail' ? 200 : 130,
-                className: 'text-left cell-wrap cell-wrap-address',
-                render: (row) => row.alamat || row.res_address || '-'
-            },
-            {
-                field: 'join_date',
-                headers: ['IDENTITAS', null, 'TGL MASUK'],
-                w: 100,
-                className: 'text-center',
-                render: (row) => {
-                    if (row.type !== 'employee') {
-                        const jd = row.join_date || row.tanggal_masuk;
-                        if (!jd) return '-';
-                        try {
-                            const d = new Date(jd);
-                            if (isNaN(d.getTime())) return jd;
-                            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                        } catch {
-                            return jd;
-                        }
-                    }
-                    const jd = row.join_date || row.tanggal_masuk;
-                    // Edit mode: use effective_start_date for editing
-                    const editKey = `${row.emp_code || row.nik}-effective_start_date`;
-                    const isEdited = !!editedCells[editKey];
-
-                    if (isEditMode) {
-                        const displayDate = jd ? (() => {
-                            try {
-                                const d = new Date(jd);
-                                if (isNaN(d.getTime())) return '';
-                                return d.toISOString().split('T')[0]; // YYYY-MM-DD for input
-                            } catch { return ''; }
-                        })() : '';
-                        return (
-                            <input
-                                type="date"
-                                className={`edit-input ${isEdited ? 'cell-edited' : ''}`}
-                                value={editedCells[editKey]?.value ?? displayDate}
-                                onChange={(e) => handleProfileEdit(row, 'effective_start_date', e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                            />
-                        );
-                    }
-
-                    if (!jd) return '-';
-                    try {
-                        const d = new Date(jd);
-                        if (isNaN(d.getTime())) return jd;
-                        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-                    } catch {
-                        return jd;
-                    }
-                }
-            },
-
             // PAJAK [Conditionally Expanded]
             ...(isTaxExpanded ? [
                 {
@@ -3997,7 +3952,8 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             return;
         }
 
-        const nextWidth = Math.max(0, Math.round(Number(container.clientWidth) || 0));
+        const rectWidth = container.getBoundingClientRect?.().width;
+        const nextWidth = Math.max(0, Math.round(Number(rectWidth || container.offsetWidth || container.clientWidth) || 0));
         setTableContainerWidth((prev) => {
             if (Math.abs(prev - nextWidth) < 1) return prev;
             return nextWidth;
@@ -4162,6 +4118,9 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
             scrollSyncRafRef.current = window.requestAnimationFrame(() => {
                 scrollSyncRafRef.current = 0;
                 syncActiveGangMarker(container);
+                // Update virtual scroll position
+                setVsScrollTop(container.scrollTop);
+                setVsContainerHeight(container.clientHeight);
 
                 if (didScrollHorizontally) {
                     setChapterBarVisible(true);
@@ -4200,28 +4159,33 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
     }, [displayRows.length, renderColumnDefs.length, displayMode, syncActiveGangMarker, syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
-        const onResize = () => {
+        const onResize = debounce(() => {
             syncTableContainerWidth();
             syncHorizontalScrollState();
-        };
+        }, 100);
         window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
+        return () => {
+            onResize.cancel();
+            window.removeEventListener('resize', onResize);
+        };
     }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     useEffect(() => {
         const container = tableContainerRef.current;
-        const table = tableRef.current;
         if (!container || typeof ResizeObserver === 'undefined') return undefined;
 
-        const observer = new ResizeObserver(() => {
+        const debouncedSync = debounce(() => {
             syncTableContainerWidth(container);
             syncHorizontalScrollState(container);
-        });
+        }, 100);
+        const observer = new ResizeObserver(debouncedSync);
         observer.observe(container);
-        if (table) observer.observe(table);
 
-        return () => observer.disconnect();
-    }, [syncHorizontalScrollState, syncTableContainerWidth, displayMode, renderColumnDefs.length, displayRows.length]);
+        return () => {
+            debouncedSync.cancel();
+            observer.disconnect();
+        };
+    }, [syncHorizontalScrollState, syncTableContainerWidth]);
 
     // === EXPORT TO EXCEL HANDLER (with ALL columns including conditional ones) ===
     const handleExportToExcel = useCallback(async () => {
@@ -4318,8 +4282,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
         }
     };
 
+    const mouseOverRafRef = useRef(0);
     const handleMouseOver = (rowIndex, colIndex) => {
-        if (isSelecting && selection.length > 0) {
+        if (!isSelecting || selection.length === 0) return;
+        if (mouseOverRafRef.current) return; // throttle ke 1 frame
+        mouseOverRafRef.current = requestAnimationFrame(() => {
+            mouseOverRafRef.current = 0;
             // Extend selection range from first cell to current
             const start = selection[0];
             const newSelection = [];
@@ -4331,7 +4299,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                 }
             }
             setSelection(newSelection);
-        }
+        }); // end RAF
     };
 
     const handleMouseUp = () => { setIsSelecting(false); calculateSelectionStats(); };
@@ -4438,7 +4406,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                         <button
                             onClick={() => {
                                 console.log('[CustomPayrollTable] 🔄 Retry triggered');
-                                onRefresh?.();
+                                retryPayrollLoad();
                             }}
                             style={{
                                 padding: '10px 24px', background: '#dc2626', color: 'white',
@@ -4486,7 +4454,7 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     <button
                         onClick={() => {
                             console.log('[CustomPayrollTable] 🔄 Refresh button clicked');
-                            onRefresh?.();
+                            retryPayrollLoad();
                         }}
                         style={{
                             padding: '10px 24px', background: '#1e3a8a', color: 'white',
@@ -4525,6 +4493,23 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     onSeedAutoBuffer={handleSeedAutoBufferToManualAdjustment}
                     onToggleTax={() => toggleGroup('PAJAK')}
                 />
+                <button
+                    onClick={() => {
+                        const next = !compactMode;
+                        setCompactMode(next);
+                        try { localStorage.setItem('payroll.compactMode', String(next)); } catch {}
+                    }}
+                    title="Compact mode: tampilan lebih padat untuk monitor sempit"
+                    style={{
+                        marginTop: '6px', width: '100%', padding: '4px 8px', borderRadius: '4px',
+                        border: `1px solid ${compactMode ? '#3b82f6' : '#e2e8f0'}`,
+                        background: compactMode ? '#eff6ff' : 'transparent',
+                        color: compactMode ? '#1e40af' : '#64748b',
+                        cursor: 'pointer', fontSize: '0.75rem', textAlign: 'left'
+                    }}
+                >
+                    {compactMode ? '⊟ Compact ON' : '⊞ Compact OFF'}
+                </button>
             </div>
             {false && [
                 { label: 'Pajak (PPH21)', state: isTaxExpanded, toggle: () => toggleGroup('PAJAK') }
@@ -4551,11 +4536,11 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
 
     return (
         <div
-            className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'}`}
+            className={`payroll-table-shell mode-${displayMode} ${focusLensEnabled ? 'focus-lens-on' : 'focus-lens-off'} ${compactMode ? 'compact' : ''}`}
             onMouseUp={handleMouseUp}
             style={{ 
-                height: 'calc(100vh - 120px)', 
-                minHeight: '400px',
+                height: '100%',
+                minHeight: 0,
                 ...payrollResponsiveVars,
                 '--payroll-bottom-safe-area': `${activeBottomSafeArea}px`,
                 '--payroll-grand-total-offset': `${shellGrandTotalOffset}px`
@@ -4900,9 +4885,25 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                     ))}
                 </thead>
                 <tbody>
-                    {displayRows.map((row, rIdx) => {
-                        if (row.type === 'gang_header') {
-                            return (
+                    {(() => {
+                        // Virtual windowing: hanya render baris yang visible + buffer
+                        // Ini mengurangi DOM nodes dari ~12k ke ~600 untuk 200 employee × 60 col
+                        const BUFFER = 10; // baris buffer di atas dan bawah viewport
+                        const visibleStart = Math.max(0, Math.floor(vsScrollTop / rowHeight) - BUFFER);
+                        const visibleEnd = Math.min(displayRows.length, Math.ceil((vsScrollTop + vsContainerHeight) / rowHeight) + BUFFER);
+                        const topSpacerHeight = visibleStart * rowHeight;
+                        const bottomSpacerHeight = (displayRows.length - visibleEnd) * rowHeight;
+                        const visibleRows = displayRows.slice(visibleStart, visibleEnd);
+
+                        return (
+                            <>
+                                {topSpacerHeight > 0 && (
+                                    <tr style={{ height: topSpacerHeight, display: 'block' }} aria-hidden="true" />
+                                )}
+                                {visibleRows.map((row, localIdx) => {
+                                    const rIdx = visibleStart + localIdx;
+                                    if (row.type === 'gang_header') {
+                                        return (
                                 <tr key={row.id} className="gang-header-row" data-gang-code={row.gang_code}>
                                     <td
                                         colSpan={renderColumnDefs.length}
@@ -5001,6 +5002,12 @@ const CustomPayrollTable = memo(function CustomPayrollTable({
                             </tr>
                         );
                     })}
+                                {bottomSpacerHeight > 0 && (
+                                    <tr style={{ height: bottomSpacerHeight, display: 'block' }} aria-hidden="true" />
+                                )}
+                            </>
+                        );
+                    })()}
                 </tbody>
                 {grandTotal && (
                     <tfoot>

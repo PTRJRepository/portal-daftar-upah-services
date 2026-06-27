@@ -16,6 +16,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { appendSnapshotVersionToSearchParams } from '../utils/payrollSnapshotQuery';
 import { resolveEffectiveGangPrefix } from '../utils/payrollRequestScope';
+import { buildBackendUrl } from '../utils/apiBase';
+
+const STREAM_IDLE_TIMEOUT_MS = 45000;
+const STREAM_TIMEOUT_MESSAGE = 'Koneksi stream payroll timeout. Sistem mencoba fallback non-stream.';
+const STREAM_INCOMPLETE_MESSAGE = 'Koneksi stream payroll terputus sebelum data selesai dimuat.';
 
 /**
  * Main stream hook
@@ -70,6 +75,24 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        let timedOut = false;
+        let sawEvent = false;
+        let terminalEvent = false;
+        let failedEvent = false;
+        let watchdogId = null;
+        const clearWatchdog = () => {
+            if (watchdogId) {
+                clearTimeout(watchdogId);
+                watchdogId = null;
+            }
+        };
+        const armWatchdog = () => {
+            clearWatchdog();
+            watchdogId = setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+            }, STREAM_IDLE_TIMEOUT_MS);
+        };
 
         // Reset state for new stream
         gangsMapRef.current = {};
@@ -92,6 +115,8 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
         });
 
         try {
+            armWatchdog();
+
             const params = new URLSearchParams({
                 division_code: division,
                 month: String(month),
@@ -102,7 +127,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
             if (effectiveGangPrefix) params.set('gang_prefix', effectiveGangPrefix);
             if (gangCode && gangCode !== 'ALL') params.set('gang_code', gangCode);
             appendSnapshotVersionToSearchParams(params, snapshotVersion);
-            const url = `/payroll/report/division-raw-tree/stream?${params.toString()}`;
+            const url = buildBackendUrl(`/payroll/report/division-raw-tree/stream?${params.toString()}`);
 
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` },
@@ -131,6 +156,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
 
                 const chunk = decoder.decode(value, { stream: true });
                 buffer += chunk;
+                armWatchdog();
 
                 // Process complete SSE events
                 while (true) {
@@ -142,6 +168,7 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
 
                     const eventMatch = eventString.match(/^event: ([^\n]+)\ndata: ([\s\S]*?)\n\n$/);
                     if (!eventMatch) continue;
+                    sawEvent = true;
 
                     const eventName = eventMatch[1];
                     const eventData = eventMatch[2];
@@ -237,6 +264,8 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                             case 'complete': {
                                 const gangsCount = data.gangs_count ?? data.total_gangs ?? 0;
                                 const employeesCount = data.employees_count ?? data.total_employees ?? 0;
+                                terminalEvent = true;
+                                clearWatchdog();
                                 setGrandTotal(data.grand_total);
                                 setIsComplete(true);
                                 setProgress(prev => ({
@@ -253,12 +282,15 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                             }
 
                             case 'error': {
-                                setError(data.message || 'Unknown error');
+                                failedEvent = true;
+                                const message = data.message || 'Unknown error';
+                                setError(message);
                                 setProgress(prev => ({
                                     ...prev,
                                     stage: 'error',
-                                    message: data.message || 'Error'
+                                    message
                                 }));
+                                controller.abort();
                                 break;
                             }
                         }
@@ -267,13 +299,23 @@ export function usePayrollStream({ token, division, month, year, gangPrefix, gan
                     }
                 }
             }
+
+            if (!terminalEvent && !failedEvent && !controller.signal.aborted) {
+                throw new Error(sawEvent ? STREAM_INCOMPLETE_MESSAGE : 'Proxy stream tidak mengirim event payroll. Periksa route /backend/upah.');
+            }
         } catch (err) {
             if (err.name === 'AbortError') {
+                if (!timedOut) return;
+                console.error('[usePayrollStream] Timeout:', STREAM_TIMEOUT_MESSAGE);
+                setError(STREAM_TIMEOUT_MESSAGE);
+                setProgress(prev => ({ ...prev, stage: 'error', message: STREAM_TIMEOUT_MESSAGE }));
                 return;
             }
             console.error('[usePayrollStream] Error:', err);
             setError(err.message);
             setProgress(prev => ({ ...prev, stage: 'error', message: err.message }));
+        } finally {
+            clearWatchdog();
         }
     }, [token, division, month, year, effectiveGangPrefix, gangCode, useHistoryDb, valuePriorityMode, snapshotVersion, refreshTrigger, enabled]);
 

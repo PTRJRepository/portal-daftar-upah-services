@@ -175,6 +175,7 @@ const DetailedSalaryAnalysisPage = ({ onBack, initialMonth, initialYear, initial
                                     selectedMonth={month}
                                     selectedYear={year}
                                     onChange={(m, y) => { setMonth(m); setYear(y); }}
+                                    compact
                                 />
                                 <button
                                     onClick={handleFetchData}

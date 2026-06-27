@@ -1,0 +1,21 @@
+{
+  "id": "IMPL-6",
+  "title": "Run verification and write runbook",
+  "description": "Run focused frontend/backend tests, frontend build, and manual proxy smoke checklist. Document required env flags and rollback notes.",
+  "depends_on": [
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5"
+  ],
+  "files": [
+    "docs/proxy-payroll-runbook.md",
+    ".workflow/active/WFS-proxy-loading-payroll-performance/.process/verification-summary.md"
+  ],
+  "convergence": "All planned verification commands pass or have documented blockers; runbook explains proxy URL, env, smoke URLs, and common failure signs.",
+  "meta": {
+    "type": "verification-documentation",
+    "agent": "validation_archivist"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

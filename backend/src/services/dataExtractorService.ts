@@ -5126,7 +5126,6 @@ export class DataExtractorService {
                 emp.jumlah_upah_kotor = calc.jumlah_upah_kotor;
                 emp.upah_kotor_pajak = calc.upah_kotor_pajak;
                 emp.penghasilan_bruto = calc.penghasilan_bruto;
-                emp.pph21_ter = calc.pph21_ter;
                 emp.tarif_pajak_ter = calc.tarif_pajak_ter;
                 emp.value_source_compare ||= {};
                 emp.value_source_compare.pph21_ter = {

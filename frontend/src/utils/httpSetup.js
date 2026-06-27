@@ -1,39 +1,10 @@
 import axios from 'axios'
+import { getBackendBaseUrl } from './apiBase'
+import { getExternalLoginUrl, isProdMode } from './prodModeUtils'
 
 const TEST_MODE = (import.meta.env?.VITE_DEV_MODE === 'true') || (import.meta.env?.DEV_MODE === 'true')
 
-// Get backend URL based on access mode
-const getBackendURL = () => {
-  // 1. Explicit VITE_BACKEND_URL from environment
-  if (import.meta.env?.VITE_BACKEND_URL) {
-    return import.meta.env.VITE_BACKEND_URL
-  }
-
-  // 1.5. Explicit proxy mode from environment (dev:proxy script)
-  if (import.meta.env?.VITE_PROXY_MODE === 'true') {
-    console.log('🔀 Explicit proxy mode enabled via VITE_PROXY_MODE, using relative path /backend/upah')
-    return '/backend/upah'
-  }
-
-  // 2. Check if accessed via proxy gateway (port 3001 or path contains /upah/)
-  const isProxyGateway = window.location.port === '3001' || window.location.pathname.startsWith('/upah')
-
-  if (isProxyGateway) {
-    // Use relative path that goes through proxy gateway
-    // Proxy routes: /backend/upah -> localhost:8002
-    console.log('🔀 Proxy gateway detected, using relative path /backend/upah')
-    return '/backend/upah'
-  }
-
-  // 3. Default: Use relative path
-  // This allows requests to go through the configured Proxy (Vite or Nginx)
-  // which is safer and avoids CORS/host binding issues.
-  // The Vite proxy is configured to forward /auth, /payroll, etc. to the backend.
-  console.log('🔗 using relative backend path (via proxy)')
-  return ''
-}
-
-const _url = getBackendURL()
+const _url = getBackendBaseUrl()
 axios.defaults.baseURL = _url
 
 console.log('🔗 HTTP Setup - Backend URL:', _url)
@@ -91,7 +62,7 @@ axios.interceptors.response.use(
         // However, the request was: "etia tokennya sudah expired saya inign ke halaman login yang versi proxy"
 
         // Force Redirect to Proxy Login (Relative Path)
-        window.location.href = '/login'
+        window.location.href = isProdMode() ? getExternalLoginUrl() : '/login'
       }
 
     } catch (_) { }

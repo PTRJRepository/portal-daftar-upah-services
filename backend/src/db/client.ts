@@ -79,6 +79,15 @@ export class Database {
         return Database.getInstance(Config.DB_MILL_DATABASE, Config.DB_MILL_PROFILE);
     }
 
+    /**
+     * Get Staging database instance (for FFB scanner / PlantWare data)
+     * staging database before transferred to db_ptrj
+     * Uses staging profile  staging_PTRJ_iFES_Plantware
+     */
+    public static getStagingInstance(): Database {
+        return Database.getInstance(Config.DB_STAGING_DATABASE, Config.DB_STAGING_PROFILE);
+    }
+
     private prepareParams(sql: string, params?: any[] | Record<string, any>): { sql: string; params: any[] | Record<string, any> } {
         if (!params) return { sql, params: {} };
 

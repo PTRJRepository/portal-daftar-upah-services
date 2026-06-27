@@ -1,0 +1,22 @@
+{
+  "id": "IMPL-3",
+  "title": "Harden loading and auth UX",
+  "description": "Add stream watchdog, bounded one-shot fallback, clear retryable payroll error UI, and proxy-safe login redirects for expired tokens. Avoid endless loading if SSE stalls, returns HTML, 401, 403, or 404.",
+  "depends_on": [
+    "IMPL-2"
+  ],
+  "files": [
+    "frontend/src/hooks/usePayrollStream.js",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/context/AuthContext.jsx",
+    "frontend/src/utils/prodModeUtils.js",
+    "frontend/src/App.jsx"
+  ],
+  "convergence": "A stalled or failed stream reaches visible error/retry state within bounded timeout; valid fallback fetch runs once; expired auth redirects intentionally.",
+  "meta": {
+    "type": "frontend-implementation",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

@@ -1,0 +1,3 @@
+{"ts":"2026-06-01T09:55:00+07:00","worker":"IMPL-1","type":"code_pattern","data":{"name":"canonical-api-base","file":"frontend/src/utils/apiBase.js","description":"Direct fetch callers use buildBackendUrl; axios uses getBackendBaseUrl via httpSetup."}}
+{"ts":"2026-06-01T09:55:00+07:00","worker":"IMPL-4","type":"integration_point","data":{"file":"backend/src/api/payroll.ts","description":"/payroll/locked/verify validates existing currentUser from auth middleware for proxy AuthContext."}}
+{"ts":"2026-06-01T09:55:00+07:00","worker":"IMPL-5","type":"convention","data":{"naming":"Stream logs include div/month/year/gangCode/elapsed for proxy performance triage."}}

@@ -1,0 +1,17 @@
+{
+  "plan_id": "PLAN-env-profile-switching-2026-06-02",
+  "summary": "Aktifkan DISABLE_STAGING_DB sebagai functional config (dari dead config), kondisional mount staging routes, tambahkan comprehensive startup banner untuk semua 5 database profile, dan perbaiki hardcoded STAGING_CATALOG agar pakai Config.DB_STAGING_DATABASE.",
+  "approach": "Minimal changes di 5 file. Config jadi satu-satunya source of truth untuk semua profile database. Startup banner menampilkan status enabled/disabled setiap database. Staging routes tidak di-mount saat DISABLE_STAGING_DB=true. Service singleton di-lazy-init untuk mencegah koneksi DB saat staging disabled.",
+  "complexity": "medium",
+  "estimated_time": "30-45 menit",
+  "recommended_execution": "Agent",
+  "task_ids": [
+    "TASK-001",
+    "TASK-002"
+  ],
+  "_metadata": {
+    "exploration_angles": ["patterns", "integration-points", "dependencies"],
+    "session_folder": ".workflow/.lite-plan/env-profile-switching-2026-06-02",
+    "generated_at": "2026-06-02T10:05:00.000+08:00"
+  }
+}

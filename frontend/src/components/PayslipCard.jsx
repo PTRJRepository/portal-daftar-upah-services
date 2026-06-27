@@ -51,19 +51,10 @@ const sumPositiveFields = (source, predicate) => {
   }, 0);
 };
 
-const deductionAmount = (value) => Math.abs(toFiniteNumber(value));
-
-const sumDeductionFields = (source, predicate) => {
-  return Object.entries(source || {}).reduce((sum, [key, val]) => {
-    if (!predicate(key)) return sum;
-    return sum + deductionAmount(val);
-  }, 0);
-};
-
 const isPositiveAmount = (value) => toFiniteNumber(value) > 0;
 
 /**
- * PayslipCard - Compact payslip component for printing (6 per A4)
+ * PayslipCard - Compact payslip component for printing (4 per A4)
  * @param {Object} props
  * @param {Object} props.data - Employee checkroll data
  * @param {number} props.month - Month number
@@ -141,23 +132,10 @@ export default function PayslipCard({ data, month, year }) {
     0,
   );
 
-  const koreksiBrondolTotal = Object.entries(payroll || {}).reduce(
-    (sum, [key, val]) => {
-      const normalizedKey = key.toLowerCase().replace(/berondol/g, "brondol");
-      if (!normalizedKey.startsWith("koreksi_") || !normalizedKey.includes("brondol")) {
-        return sum;
-      }
-      return sum + Math.abs(toFiniteNumber(val));
-    },
-    0,
-  );
-
   // Premi Breakdown
   const premiList = [];
-  const premiBrondolBase = getNum("premi_brondol") || toFiniteNumber(payroll.premi?.brondol);
-  const premiBrondolDisplay = Math.max(0, premiBrondolBase - koreksiBrondolTotal);
-  if (premiBrondolDisplay > 0)
-    premiList.push({ label: "Brondol", value: premiBrondolDisplay });
+  if (getNum("premi_brondol") > 0)
+    premiList.push({ label: "Brondol", value: getNum("premi_brondol") });
 
   // Dynamic premiums from premi object (API format)
   if (payroll.premi && typeof payroll.premi === "object") {
@@ -189,7 +167,7 @@ export default function PayslipCard({ data, month, year }) {
     });
   }
 
-  const totalPremi = Math.max(0, getNum("total_premi") - koreksiBrondolTotal);
+  const totalPremi = getNum("total_premi");
   const totalPremiDetail = premiList.reduce((sum, item) => sum + item.value, 0);
   const displayedTotalPremi = totalPremi > 0 ? totalPremi : totalPremiDetail;
   const lemburJam = getNum("lembur_jam") || getNum("total_jam_lembur");
@@ -199,18 +177,13 @@ export default function PayslipCard({ data, month, year }) {
     getNum("upah_lembur");
 
   // Koreksi mengurangi pendapatan langsung, bukan potongan bersih.
-  // Guardrail: deductions/koreksi are magnitude values in payslip math.
-  // Do not subtract raw signed values, because `gross - (-200)` would increase pay.
-  const dynamicKoreksiTotal = sumDeductionFields(
+  const dynamicKoreksiTotal = sumPositiveFields(
     payroll,
-    (key) => {
-      const normalizedKey = key.toLowerCase().replace(/berondol/g, "brondol");
-      return key.startsWith("koreksi_") && key !== "koreksi_hk" && !normalizedKey.includes("brondol");
-    },
+    (key) => key.startsWith("koreksi_") && key !== "koreksi_hk",
   );
   const totalPotKotor =
-    Math.max(0, deductionAmount(getNum("potongan_upah_kotor_total")) - koreksiBrondolTotal) ||
-    Math.max(0, deductionAmount(getNum("pot_koreksi")) - koreksiBrondolTotal) ||
+    getNum("potongan_upah_kotor_total") ||
+    getNum("pot_koreksi") ||
     dynamicKoreksiTotal;
 
   // Potongan Upah Bersih
@@ -218,20 +191,20 @@ export default function PayslipCard({ data, month, year }) {
     {
       label: "BPJS Kes (1%)",
       value:
-        deductionAmount(getNum("pot_bpjs_kesehatan_pekerja") || getNum("pot_bpjs_kesehatan")),
+        getNum("pot_bpjs_kesehatan_pekerja") || getNum("pot_bpjs_kesehatan"),
     },
     {
       label: "BPJS Pens (1%)",
-      value: deductionAmount(getNum("pot_bpjs_pensiun_pekerja") || getNum("pot_bpjs_pensiun")),
+      value: getNum("pot_bpjs_pensiun_pekerja") || getNum("pot_bpjs_pensiun"),
     },
     {
       label: "Astek (2%)",
       value:
-        deductionAmount(getNum("pot_astek_pekerja") || getNum("pot_astek") || getNum("pot_jht")),
+        getNum("pot_astek") || getNum("pot_astek_jumlah") || getNum("pot_jht"),
     },
-    { label: "SPSI", value: deductionAmount(getNum("pot_spsi")) },
-    { label: "PPh 21", value: deductionAmount(getNum("pot_pph21") || getNum("pph21_ter")) },
-    { label: "Potongan PPh21", value: deductionAmount(getNum("POTONGAN_PPH21")) },
+    { label: "SPSI", value: getNum("pot_spsi") },
+    { label: "PPh 21", value: getNum("pot_pph21") || getNum("pph21_ter") },
+    { label: "Potongan PPh21", value: getNum("POTONGAN_PPH21") },
   ].filter((item) => item.value > 0);
 
   // Dynamic deductions from 'potongan_' fields in payroll record
@@ -243,7 +216,7 @@ export default function PayslipCard({ data, month, year }) {
       normalizedKey.includes("pendapatan_lain")
     )
       return;
-    if (key.startsWith("potongan_") && typeof val === "number" && deductionAmount(val) > 0) {
+    if (key.startsWith("potongan_") && typeof val === "number" && val > 0) {
       const label = key
         .replace("potongan_", "")
         .replace(/_/g, " ")
@@ -256,7 +229,7 @@ export default function PayslipCard({ data, month, year }) {
         !isDuplicate &&
         !potBersihList.some((p) => p.label.toUpperCase() === label)
       ) {
-        potBersihList.push({ label, value: deductionAmount(val) });
+        potBersihList.push({ label, value: val });
       }
     }
   });
@@ -354,8 +327,8 @@ export default function PayslipCard({ data, month, year }) {
 
   // Payslip deductions exclude other income; other income is tax-detail-only.
   const rawTotalPotongan =
-    deductionAmount(getNum("total_potongan_bersih") || getNum("total_potongan"));
-  const otherIncomeDeduction = sumDeductionFields(
+    getNum("total_potongan_bersih") || getNum("total_potongan");
+  const otherIncomeDeduction = sumPositiveFields(
     payroll,
     (key) => key.startsWith("potongan_") && key.includes("pendapatan_lain"),
   );
@@ -363,12 +336,12 @@ export default function PayslipCard({ data, month, year }) {
     potBersihList.reduce(
       (acc, curr) => acc + (curr.isCredit ? -curr.value : curr.value),
       0,
-    );
+    ) + premiPph;
   const totalPotongan =
     itemizedTotalPotongan > 0
       ? itemizedTotalPotongan
       : Math.max(0, rawTotalPotongan - otherIncomeDeduction);
-  // Payslip displays total potongan as magnitude, so THP subtracts that magnitude once.
+  // upahBersih should be Gross - Total Potongan Bersih
   const upahBersih = payslipGrossIncome - totalPotongan;
 
   return (
@@ -593,6 +566,7 @@ export default function PayslipCard({ data, month, year }) {
               </span>
             </div>
           </div>
+
         </div>
       </div>
 

@@ -1,0 +1,1909 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual Adjustment Grouped Endpoint Tester</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #eef3f8;
+      --line: #cfd7e3;
+      --text: #15202b;
+      --muted: #5c6b7a;
+      --accent: #0f766e;
+      --accent-2: #7c3aed;
+      --danger: #b42318;
+      --ok: #067647;
+      --warn: #b54708;
+      --info: #175cd3;
+      --mono: Consolas, "SFMono-Regular", Menlo, Monaco, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .wrap {
+      width: min(1440px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .endpoint-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    main {
+      padding: 18px 0 28px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-2);
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .form {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #263341;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid #bac6d4;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      padding: 7px 9px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.22);
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 64px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding-top: 4px;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--text);
+      border-color: #bac6d4;
+    }
+
+    button.danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.72;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .audit-summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(100px, 1fr));
+      gap: 8px;
+      padding: 0 12px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric.ok {
+      border-color: #abefc6;
+      background: #ecfdf3;
+    }
+
+    .metric.warn {
+      border-color: #fedf89;
+      background: #fffaeb;
+    }
+
+    .metric.error {
+      border-color: #fecdca;
+      background: #fef3f2;
+    }
+
+    .metric.info {
+      border-color: #b2ddff;
+      background: #eff8ff;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 10px 12px 0;
+    }
+
+    .tab {
+      min-height: 32px;
+      padding: 6px 10px;
+      border-color: #bac6d4;
+      background: #fff;
+      color: var(--muted);
+    }
+
+    .tab.active {
+      color: #fff;
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+    }
+
+    .output {
+      padding: 12px;
+      max-height: calc(100vh - 230px);
+      overflow: auto;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 9px 11px;
+      font-weight: 700;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nested {
+      padding: 0 10px 10px;
+    }
+
+    .employee-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+
+    .name {
+      font-weight: 800;
+    }
+
+    .subtext {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #ecfdf3;
+      color: var(--ok);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.warn {
+      background: #fffaeb;
+      color: var(--warn);
+    }
+
+    .badge.error {
+      background: #fef3f2;
+      color: var(--danger);
+    }
+
+    .badge.info {
+      background: #eff8ff;
+      color: var(--info);
+    }
+
+    .badge.muted {
+      background: #f2f4f7;
+      color: var(--muted);
+    }
+
+    .audit-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+
+    .audit-toolbar strong {
+      font-size: 13px;
+    }
+
+    .audit-row {
+      border-left: 4px solid #d0d5dd;
+    }
+
+    .audit-row.sync {
+      border-left-color: var(--ok);
+    }
+
+    .audit-row.diff {
+      border-left-color: var(--warn);
+    }
+
+    .audit-row.miss,
+    .audit-row.skipped {
+      border-left-color: var(--danger);
+    }
+
+    .audit-row summary {
+      align-items: flex-start;
+    }
+
+    .audit-title {
+      display: grid;
+      gap: 3px;
+      min-width: 240px;
+    }
+
+    .audit-title strong {
+      font-size: 13px;
+    }
+
+    .audit-table th,
+    .audit-table td {
+      font-size: 12px;
+    }
+
+    .request-preview {
+      min-height: 108px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 10px;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      padding: 8px;
+      border-bottom: 1px solid #e4e9f0;
+    }
+
+    th {
+      color: #263341;
+      font-size: 11px;
+      text-transform: uppercase;
+      background: #f8fafc;
+    }
+
+    td.amount {
+      text-align: right;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      background: #101828;
+      color: #e6edf7;
+      border-radius: 6px;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .metadata {
+      margin-top: 8px;
+    }
+
+    .tree-list {
+      display: grid;
+      gap: 6px;
+      margin: 8px 0 10px;
+      padding-left: 12px;
+      border-left: 2px solid #d8e0ea;
+    }
+
+    .tree-node {
+      display: grid;
+      gap: 3px;
+      padding: 6px 8px;
+      border: 1px solid #e4e9f0;
+      border-radius: 6px;
+      background: #fbfcfd;
+    }
+
+    .tree-node strong {
+      font-size: 13px;
+    }
+
+    .tree-node .line {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .subblok-picker {
+      display: grid;
+      gap: 6px;
+      margin: 8px 0 10px;
+      padding: 8px;
+      border: 1px solid #d8e0ea;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+
+    .subblok-picker select {
+      min-height: 34px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .empty {
+      padding: 22px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .summary {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+
+      .audit-summary {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+
+      .output {
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .wrap {
+        width: min(100vw - 20px, 1440px);
+      }
+
+      .topbar,
+      .employee-head {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+
+      .endpoint-label {
+        white-space: normal;
+      }
+
+      .field-row,
+      .summary,
+      .audit-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .badge-row {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <h1>Manual Adjustment Endpoint Tester</h1>
+      <div id="endpoint-label" class="endpoint-label">GET /payroll/manual-adjustment/by-api-key</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="layout">
+      <section class="panel" aria-labelledby="request-title">
+        <div class="panel-header">
+          <h2 id="request-title">Request</h2>
+        </div>
+        <form id="request-form" class="form">
+          <div class="field">
+            <label for="base-url">Base URL</label>
+            <select id="base-url">
+              <option value="http://localhost:8002">http://localhost:8002</option>
+              <option value="http://localhost/backend/upah">http://localhost/backend/upah</option>
+              <option value="http://localhost:8002/backend/upah">http://localhost:8002/backend/upah</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="api-key">X-API-Key</label>
+            <input id="api-key" type="password" autocomplete="off" value="88217c42101662147aee16779663caa22ff1e896b57568a6576ed56f2f3d124a" placeholder="Paste API key">
+          </div>
+
+          <div class="field">
+            <label for="request-mode">Request Mode</label>
+            <select id="request-mode">
+              <option value="browse" selected>Browse grouped data</option>
+              <option value="audit">Audit sync vs db_ptrj</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="period-month">Period Month</label>
+              <select id="period-month">
+                <option value="1">1 - Jan</option>
+                <option value="2">2 - Feb</option>
+                <option value="3">3 - Mar</option>
+                <option value="4" selected>4 - Apr</option>
+                <option value="5">5 - May</option>
+                <option value="6">6 - Jun</option>
+                <option value="7">7 - Jul</option>
+                <option value="8">8 - Aug</option>
+                <option value="9">9 - Sep</option>
+                <option value="10">10 - Oct</option>
+                <option value="11">11 - Nov</option>
+                <option value="12">12 - Dec</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="period-year">Period Year</label>
+              <input id="period-year" type="number" min="2000" max="2100" value="2026">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="view">View</label>
+              <select id="view">
+                <option value="grouped" selected>grouped</option>
+                <option value="flat">flat</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="adjustment-type">Adjustment Type</label>
+              <select id="adjustment-type">
+                <option value="">ALL</option>
+                <option value="PREMI" selected>PREMI</option>
+                <option value="POTONGAN_KOTOR">POTONGAN_KOTOR</option>
+                <option value="POTONGAN_BERSIH">POTONGAN_BERSIH</option>
+                <option value="PENDAPATAN_LAINNYA">PENDAPATAN_LAINNYA</option>
+                <option value="AUTO_BUFFER">AUTO_BUFFER</option>
+                <option value="MANUAL">MANUAL</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="metadata-only">Metadata Filter</label>
+            <select id="metadata-only">
+              <option value="true" selected>Only rows with metadata_json (new detail data)</option>
+              <option value="">Include old rows without metadata</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="division-code">Division</label>
+              <select id="division-code">
+                <option value="">ALL</option>
+                <option value="PG1A">PG1A</option>
+                <option value="PG1B">PG1B</option>
+                <option value="PG2A">PG2A</option>
+                <option value="PG2B">PG2B</option>
+                <option value="PGE">PGE</option>
+                <option value="AB1" selected>AB1</option>
+                <option value="AB2">AB2</option>
+                <option value="ARA">ARA</option>
+                <option value="ARC">ARC</option>
+                <option value="DME">DME</option>
+                <option value="IJL">IJL</option>
+                <option value="INF">INF</option>
+                <option value="NRS">NRS</option>
+                <option value="WKS_AR">WKS_AR</option>
+                <option value="WKS_PG">WKS_PG</option>
+                <option value="WORKSHOP">WORKSHOP</option>
+                <option value="MILL">MILL</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="gang-code">Gang</label>
+              <input id="gang-code" list="gang-options" placeholder="ALL">
+              <datalist id="gang-options">
+                <option value="G1H"></option>
+                <option value="G2H"></option>
+                <option value="H1H"></option>
+                <option value="H2H"></option>
+                <option value="B2N"></option>
+                <option value="A2M"></option>
+                <option value="AMC"></option>
+                <option value="HMC"></option>
+                <option value="INF"></option>
+                <option value="M"></option>
+              </datalist>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="emp-code">Emp Code</label>
+              <input id="emp-code" placeholder="A0001 / B0745">
+            </div>
+            <div class="field">
+              <label for="adjustment-name">Adjustment Name</label>
+              <input id="adjustment-name" placeholder="PREMI PRUNING">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="emp-code-list">Batch Emp Codes for Audit</label>
+            <textarea id="emp-code-list" placeholder="G0597&#10;J0618&#10;B0069"></textarea>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="sync-result-filter">Audit Result Filter</label>
+              <select id="sync-result-filter">
+                <option value="PROBLEMS" selected>DIFF + MISS + skipped</option>
+                <option value="ALL">All audit rows</option>
+                <option value="SYNC">SYNC only</option>
+                <option value="DIFF">DIFF only</option>
+                <option value="MISS">MISS only</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="sync-limit">Audit Limit</label>
+              <input id="sync-limit" type="number" min="1" max="5000" value="1000">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="generated-url">Generated Request</label>
+            <textarea id="generated-url" class="request-preview" readonly></textarea>
+          </div>
+
+          <div class="actions">
+            <button id="send-button" class="primary" type="submit">Load Data</button>
+            <button id="audit-button" class="secondary" type="button">Dry Run Audit</button>
+            <button id="fill-risk-emps-button" class="secondary" type="button">Fill Risk EmpCodes</button>
+            <button id="apply-sync-button" class="danger" type="button">Apply Sync Status</button>
+            <button id="reset-button" class="secondary" type="button">Reset Filters</button>
+          </div>
+          <div id="status" class="status">Ready</div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="response-title">
+        <div class="panel-header">
+          <h2 id="response-title">Response</h2>
+          <span id="response-code" class="status">No request</span>
+        </div>
+        <div class="summary">
+          <div class="metric"><span id="metric-divisions-label">Divisions</span><strong id="metric-divisions">0</strong></div>
+          <div class="metric"><span id="metric-gangs-label">Gangs</span><strong id="metric-gangs">0</strong></div>
+          <div class="metric"><span id="metric-employees-label">Employees</span><strong id="metric-employees">0</strong></div>
+          <div class="metric"><span id="metric-rows-label">Rows</span><strong id="metric-rows">0</strong></div>
+        </div>
+        <div id="audit-summary" class="audit-summary hidden">
+          <div class="metric info"><span>Checked</span><strong id="audit-checked">0</strong></div>
+          <div class="metric ok"><span>SYNC</span><strong id="audit-sync">0</strong></div>
+          <div class="metric warn"><span>DIFF</span><strong id="audit-diff">0</strong></div>
+          <div class="metric error"><span>MISS</span><strong id="audit-miss">0</strong></div>
+          <div class="metric error"><span>Skipped</span><strong id="audit-skipped">0</strong></div>
+          <div class="metric info"><span>Updated</span><strong id="audit-updated">0</strong></div>
+        </div>
+        <div class="tabs">
+          <button id="tree-tab" class="tab active" type="button">Tree</button>
+          <button id="raw-tab" class="tab" type="button">Raw JSON</button>
+        </div>
+        <div id="tree-output" class="output">
+          <div class="empty">No response yet.</div>
+        </div>
+        <div id="raw-output" class="output hidden">
+          <pre>{}</pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const browseEndpointPath = "/payroll/manual-adjustment/by-api-key";
+    const syncEndpointPath = "/payroll/manual-adjustment/seed-sync-status/by-api-key";
+    const fields = {
+      baseUrl: document.getElementById("base-url"),
+      apiKey: document.getElementById("api-key"),
+      mode: document.getElementById("request-mode"),
+      month: document.getElementById("period-month"),
+      year: document.getElementById("period-year"),
+      view: document.getElementById("view"),
+      type: document.getElementById("adjustment-type"),
+      metadataOnly: document.getElementById("metadata-only"),
+      division: document.getElementById("division-code"),
+      gang: document.getElementById("gang-code"),
+      emp: document.getElementById("emp-code"),
+      empList: document.getElementById("emp-code-list"),
+      name: document.getElementById("adjustment-name"),
+      resultFilter: document.getElementById("sync-result-filter"),
+      syncLimit: document.getElementById("sync-limit"),
+      generatedUrl: document.getElementById("generated-url")
+    };
+    const endpointLabelEl = document.getElementById("endpoint-label");
+    const statusEl = document.getElementById("status");
+    const responseCodeEl = document.getElementById("response-code");
+    const treeOutput = document.getElementById("tree-output");
+    const rawOutput = document.getElementById("raw-output");
+    const sendButton = document.getElementById("send-button");
+    const auditButton = document.getElementById("audit-button");
+    const fillRiskEmpsButton = document.getElementById("fill-risk-emps-button");
+    const applySyncButton = document.getElementById("apply-sync-button");
+    const auditSummaryEl = document.getElementById("audit-summary");
+    const riskEmpCodes = ["G0597", "J0618", "J0130", "L0055", "L0069", "L0021", "L0057", "A0947", "A0115", "B0127", "B0069"];
+    const metrics = {
+      divisionsLabel: document.getElementById("metric-divisions-label"),
+      gangsLabel: document.getElementById("metric-gangs-label"),
+      employeesLabel: document.getElementById("metric-employees-label"),
+      rowsLabel: document.getElementById("metric-rows-label"),
+      divisions: document.getElementById("metric-divisions"),
+      gangs: document.getElementById("metric-gangs"),
+      employees: document.getElementById("metric-employees"),
+      rows: document.getElementById("metric-rows")
+    };
+    const auditMetrics = {
+      checked: document.getElementById("audit-checked"),
+      sync: document.getElementById("audit-sync"),
+      diff: document.getElementById("audit-diff"),
+      miss: document.getElementById("audit-miss"),
+      skipped: document.getElementById("audit-skipped"),
+      updated: document.getElementById("audit-updated")
+    };
+
+    function trimSlash(value) {
+      return String(value || "").replace(/\/+$/, "");
+    }
+
+    function addParam(params, key, value) {
+      const normalized = String(value || "").trim();
+      if (normalized) params.set(key, normalized);
+    }
+
+    function buildBrowseUrl() {
+      const base = trimSlash(fields.baseUrl.value);
+      const params = new URLSearchParams();
+      addParam(params, "period_month", fields.month.value);
+      addParam(params, "period_year", fields.year.value);
+      addParam(params, "division_code", fields.division.value);
+      addParam(params, "gang_code", fields.gang.value);
+      addParam(params, "emp_code", fields.emp.value);
+      addParam(params, "adjustment_type", fields.type.value);
+      addParam(params, "adjustment_name", fields.name.value);
+      addParam(params, "view", fields.view.value);
+      addParam(params, "metadata_only", fields.metadataOnly.value);
+      return `${base}${browseEndpointPath}?${params.toString()}`;
+    }
+
+    function buildSyncUrl() {
+      return `${trimSlash(fields.baseUrl.value)}${syncEndpointPath}`;
+    }
+
+    function parseEmpCodes() {
+      const values = `${fields.emp.value || ""}\n${fields.empList.value || ""}`
+        .split(/[\s,;]+/)
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean);
+      return Array.from(new Set(values));
+    }
+
+    function buildSyncPayload(dryRun) {
+      const payload = {
+        period_month: Number(fields.month.value),
+        period_year: Number(fields.year.value),
+        sync_status: "SYNC",
+        only_if_adtrans_exists: true,
+        dry_run: dryRun,
+        limit: Math.min(Math.max(Number(fields.syncLimit.value || 1000), 1), 5000),
+        updated_by: "manual_adjustment_grouped_tester"
+      };
+
+      const addBodyValue = (key, value) => {
+        const normalized = String(value || "").trim();
+        if (normalized) payload[key] = normalized;
+      };
+
+      addBodyValue("division_code", fields.division.value);
+      addBodyValue("gang_code", fields.gang.value);
+      addBodyValue("emp_code", fields.emp.value);
+      addBodyValue("adjustment_type", fields.type.value);
+      addBodyValue("adjustment_name", fields.name.value);
+      return payload;
+    }
+
+    function buildSyncPayloadForEmp(dryRun, empCode) {
+      const payload = buildSyncPayload(dryRun);
+      if (empCode) payload.emp_code = empCode;
+      return payload;
+    }
+
+    function buildGeneratedRequest() {
+      if (fields.mode.value === "audit") {
+        const empCodes = parseEmpCodes();
+        if (empCodes.length > 1) {
+          const samplePayloads = empCodes.slice(0, 3).map((empCode) => buildSyncPayloadForEmp(true, empCode));
+          return [
+            `POST ${buildSyncUrl()}`,
+            `${empCodes.length} requests, one request per EmpCode`,
+            JSON.stringify(samplePayloads, null, 2),
+            empCodes.length > 3 ? `... ${empCodes.length - 3} more EmpCode(s)` : ""
+          ].filter(Boolean).join("\n\n");
+        }
+        return [
+          `POST ${buildSyncUrl()}`,
+          JSON.stringify(empCodes.length === 1 ? buildSyncPayloadForEmp(true, empCodes[0]) : buildSyncPayload(true), null, 2)
+        ].join("\n\n");
+      }
+      return buildBrowseUrl();
+    }
+
+    function saveSettings() {
+      localStorage.setItem("manualAdjustmentTester", JSON.stringify({
+        baseUrl: fields.baseUrl.value,
+        apiKey: fields.apiKey.value,
+        mode: fields.mode.value,
+        month: fields.month.value,
+        year: fields.year.value,
+        view: fields.view.value,
+        type: fields.type.value,
+        metadataOnly: fields.metadataOnly.value,
+        division: fields.division.value,
+        gang: fields.gang.value,
+        emp: fields.emp.value,
+        empList: fields.empList.value,
+        name: fields.name.value,
+        resultFilter: fields.resultFilter.value,
+        syncLimit: fields.syncLimit.value
+      }));
+    }
+
+    function loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem("manualAdjustmentTester") || "{}");
+        for (const [key, value] of Object.entries(saved)) {
+          if (key === "apiKey" && !String(value || "").trim()) continue;
+          if (fields[key]) fields[key].value = value;
+        }
+      } catch (_) {
+        localStorage.removeItem("manualAdjustmentTester");
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatAmount(value) {
+      const amount = Number(value || 0);
+      return amount.toLocaleString("id-ID");
+    }
+
+    function parseJsonValue(value) {
+      if (!value) return null;
+      if (typeof value === "object") return value;
+      try {
+        return JSON.parse(String(value));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function getPremiumMetadata(premium) {
+      return premium?.metadata || parseJsonValue(premium?.metadata_json) || null;
+    }
+
+    function detailAmount(item) {
+      return Number(item?.jumlah ?? item?.Jumlah ?? item?.amount ?? item?.Amount ?? item?.total_amount ?? 0) || 0;
+    }
+
+    function normalizeSubblokCode(value) {
+      return String(value ?? "").trim().replace(/[^0-9A-Za-z]/g, "");
+    }
+
+    function detailRawSubblok(item) {
+      return item?.subblok || item?.SubBlok || item?.sub_blok || item?.sub_block || item?.blok || item?.block || "";
+    }
+
+    function detailSubblok(item) {
+      return normalizeSubblokCode(detailRawSubblok(item));
+    }
+
+    function normalizedSubblokFields(item) {
+      const rawSubblok = String(detailRawSubblok(item) || "").trim();
+      const subblok = normalizeSubblokCode(rawSubblok);
+      if (!rawSubblok || rawSubblok === subblok) return { subblok };
+      return { subblok, subblok_raw: rawSubblok };
+    }
+
+    function deriveDivisionCodeFromGang(value) {
+      const code = String(value ?? "").trim().toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 2);
+      return code ? code.split("").join(" ") : "";
+    }
+
+    function detailGang(item, fallback) {
+      return item?.gang_code || item?.GangCode || item?.gang || item?.Gang || fallback || "";
+    }
+
+    function detailExpense(item) {
+      return item?.expense_code || item?.ExpenseCode || item?.expense || "";
+    }
+
+    function detailVehicle(item) {
+      return item?.nomor_kendaraan || item?.vehicle_no || item?.kendaraan || "";
+    }
+
+    function buildDetailItemsFromMetadata(premium) {
+      const metadata = getPremiumMetadata(premium);
+      if (!metadata || typeof metadata !== "object") return premium?.detail_items || [];
+      const inputType = String(metadata.input_type || "detail");
+      const detailItems = [];
+
+      if (Array.isArray(metadata.items)) {
+        metadata.items.forEach((item) => {
+          detailItems.push({
+            ...item,
+            detail_type: inputType,
+            ...normalizedSubblokFields(item),
+            gang_code: detailGang(item, premium?.gang_code),
+            expense_code: detailExpense(item),
+            nomor_kendaraan: detailVehicle(item),
+            jumlah: detailAmount(item),
+            amount: detailAmount(item)
+          });
+        });
+      }
+
+      if (Array.isArray(metadata.blok_items)) {
+        metadata.blok_items.forEach((item) => {
+          detailItems.push({
+            ...item,
+            detail_type: "blok",
+            ...normalizedSubblokFields(item),
+            gang_code: detailGang(item, premium?.gang_code),
+            jumlah: detailAmount(item),
+            amount: detailAmount(item)
+          });
+        });
+      }
+
+      if (metadata.expense && typeof metadata.expense === "object") {
+        const item = metadata.expense;
+        detailItems.push({
+          ...item,
+          detail_type: "exp",
+          expense_code: detailExpense(item),
+          jumlah: detailAmount(item),
+          amount: detailAmount(item)
+        });
+      }
+
+      return detailItems.length ? detailItems : (premium?.detail_items || []);
+    }
+
+    function getEmployeePremiums(employee) {
+      const premiums = Array.isArray(employee?.premiums) ? employee.premiums : [];
+      if (premiums.length) return premiums;
+      return (employee?.adjustments || []).filter((item) => String(item.adjustment_type || "").toUpperCase() === "PREMI");
+    }
+
+    function buildTransactionsFromPremiums(employee) {
+      return getEmployeePremiums(employee).flatMap((premium) =>
+        buildDetailItemsFromMetadata(premium).map((item, index) => ({
+          transaction_index: index + 1,
+          adjustment_name: premium.adjustment_name,
+          ad_code: premium.ad_code || "",
+          ad_code_desc: premium.ad_code_desc || "",
+          detail_type: item.detail_type,
+          subblok: detailSubblok(item),
+          subblok_raw: item.subblok_raw || undefined,
+          gang_code: detailGang(item, premium.gang_code || employee.gang_code),
+          estate: premium.estate || employee.estate || employee.estate_code || "",
+          estate_code: premium.estate_code || employee.estate_code || employee.estate || "",
+          division_code: premium.division_code || employee.division_code || deriveDivisionCodeFromGang(premium.gang_code || employee.gang_code),
+          expense_code: detailExpense(item),
+          nomor_kendaraan: detailVehicle(item),
+          jumlah: detailAmount(item),
+          amount: detailAmount(item)
+        }))
+      ).map((item, index) => ({ ...item, transaction_index: index + 1 }));
+    }
+
+    function setStatus(message, mode) {
+      statusEl.textContent = message;
+      statusEl.className = `status ${mode || ""}`.trim();
+    }
+
+    function updateGeneratedUrl() {
+      fields.generatedUrl.value = buildGeneratedRequest();
+      syncModeUi();
+      saveSettings();
+    }
+
+    function syncModeUi() {
+      const isAudit = fields.mode.value === "audit";
+      endpointLabelEl.textContent = isAudit
+        ? `POST ${syncEndpointPath}`
+        : `GET ${browseEndpointPath}`;
+      sendButton.textContent = isAudit ? "Dry Run Audit" : "Load Data";
+      auditButton.classList.toggle("hidden", isAudit);
+      applySyncButton.classList.toggle("hidden", !isAudit);
+      auditSummaryEl.classList.toggle("hidden", true);
+    }
+
+    function updateMetrics(summary, rowCount) {
+      metrics.divisionsLabel.textContent = "Divisions";
+      metrics.gangsLabel.textContent = "Gangs";
+      metrics.employeesLabel.textContent = "Employees";
+      metrics.rowsLabel.textContent = "Rows";
+      metrics.divisions.textContent = summary?.division_count ?? 0;
+      metrics.gangs.textContent = summary?.gang_count ?? 0;
+      metrics.employees.textContent = summary?.employee_count ?? 0;
+      metrics.rows.textContent = rowCount ?? summary?.adjustment_count ?? 0;
+    }
+
+    function updateAuditMetrics(data) {
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const counts = rows.reduce((acc, row) => {
+        const next = String(row.new_sync_status || "").toUpperCase();
+        if (next === "SYNC") acc.sync += 1;
+        if (next === "DIFF") acc.diff += 1;
+        if (next === "MISS") acc.miss += 1;
+        if (row.status === "SKIPPED" || row.skip_reason) acc.skipped += 1;
+        return acc;
+      }, { sync: 0, diff: 0, miss: 0, skipped: 0 });
+
+      metrics.divisionsLabel.textContent = "Matched";
+      metrics.gangsLabel.textContent = "Eligible";
+      metrics.employeesLabel.textContent = "ADTRANS Found";
+      metrics.rowsLabel.textContent = "Rows";
+      metrics.divisions.textContent = data?.matched_count ?? rows.length;
+      metrics.gangs.textContent = data?.eligible_count ?? 0;
+      metrics.employees.textContent = data?.adtrans_matched_count ?? 0;
+      metrics.rows.textContent = rows.length;
+
+      auditMetrics.checked.textContent = data?.matched_count ?? rows.length;
+      auditMetrics.sync.textContent = counts.sync;
+      auditMetrics.diff.textContent = counts.diff;
+      auditMetrics.miss.textContent = counts.miss;
+      auditMetrics.skipped.textContent = data?.skipped_count ?? counts.skipped;
+      auditMetrics.updated.textContent = data?.updated_count ?? 0;
+      auditSummaryEl.classList.remove("hidden");
+    }
+
+    function renderPremiumTable(premiums) {
+      if (!premiums.length) return `<div class="empty">No premium rows for this employee.</div>`;
+      const detailCount = (premium) => buildDetailItemsFromMetadata(premium).length;
+      const rows = premiums.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.adjustment_name)}</td>
+          <td>${escapeHtml(item.ad_code || "")}</td>
+          <td>${escapeHtml(item.adjustment_type)}</td>
+          <td class="amount">${formatAmount(item.amount)}</td>
+          <td>${escapeHtml(detailCount(item))}</td>
+        </tr>
+        ${renderMetadataRow(item)}
+      `).join("");
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Premium</th>
+              <th>ADCode</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderTransactionTable(transactions) {
+      if (!transactions.length) return `<div class="empty">No metadata detail transactions for this employee.</div>`;
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Premium</th>
+              <th>ADCode</th>
+              <th>Detail Type</th>
+              <th>Subblok</th>
+              <th>Expense</th>
+              <th>Kendaraan</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${transactions.map((trx) => `
+              <tr>
+                <td>${escapeHtml(trx.transaction_index || "")}</td>
+                <td>${escapeHtml(trx.adjustment_name || "")}</td>
+                <td>${escapeHtml(trx.ad_code || "")}</td>
+                <td>${escapeHtml(trx.detail_type || "")}</td>
+                <td>${escapeHtml(trx.subblok || "")}</td>
+                <td>${escapeHtml(trx.expense_code || "")}</td>
+                <td>${escapeHtml(trx.nomor_kendaraan || "")}</td>
+                <td class="amount">${formatAmount(trx.amount || trx.jumlah || 0)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderSubblokDetails(premiums) {
+      const premiumSections = (premiums || [])
+        .map((premium) => {
+          const subblokItems = buildDetailItemsFromMetadata(premium)
+            .filter((item) => item.detail_type === "blok" || detailSubblok(item));
+          const subblokRows = subblokItems
+            .map((item, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(detailSubblok(item))}</td>
+                <td>${escapeHtml(detailGang(item, premium.gang_code))}</td>
+                <td class="amount">${formatAmount(detailAmount(item))}</td>
+              </tr>
+            `).join("");
+
+          if (!subblokRows) return "";
+
+          const metadata = getPremiumMetadata(premium);
+          const metadataItems = Array.isArray(metadata?.items)
+            ? metadata.items
+            : Array.isArray(metadata?.blok_items)
+              ? metadata.blok_items
+              : [];
+          const metadataPreview = {
+            input_type: metadata?.input_type ?? null,
+            total_amount: metadata?.total_amount ?? premium.amount ?? 0,
+            items: metadataItems.filter((item) => item && item.subblok)
+          };
+
+          return `
+            <details open>
+              <summary>
+                <span>${escapeHtml(premium.adjustment_name)}</span>
+                <span class="badge-row">
+                  <span class="badge warn">${subblokItems.length} subblok</span>
+                  <span class="badge">${formatAmount(premium.amount || 0)}</span>
+                </span>
+              </summary>
+              <div class="nested">
+                <div class="subblok-picker">
+                  <label>Dropdown Subblok dari metadata_json</label>
+                  <select>
+                    ${subblokItems.map((item, index) => `
+                      <option value="${escapeHtml(detailSubblok(item))}">
+                        ${index + 1}. ${escapeHtml(detailSubblok(item) || "-")} | gang ${escapeHtml(detailGang(item, premium.gang_code) || "-")} | ${formatAmount(detailAmount(item))}
+                      </option>
+                    `).join("")}
+                  </select>
+                </div>
+                <div class="tree-list">
+                  ${subblokItems.map((item, index) => `
+                    <div class="tree-node">
+                      <div class="line">
+                        <strong>${index + 1}. Subblok ${escapeHtml(detailSubblok(item) || "-")}</strong>
+                        <span class="badge">${formatAmount(detailAmount(item))}</span>
+                      </div>
+                      <div class="subtext">gang detail=${escapeHtml(detailGang(item, premium.gang_code) || "-")} | source=${escapeHtml(premium.adjustment_name)}</div>
+                    </div>
+                  `).join("")}
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Subblok</th>
+                      <th>Gang Detail</th>
+                      <th>Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>${subblokRows}</tbody>
+                </table>
+                <details>
+                  <summary>metadata_json source for this premium</summary>
+                  <div class="nested metadata"><pre>${escapeHtml(JSON.stringify(metadataPreview, null, 2))}</pre></div>
+                </details>
+              </div>
+            </details>
+          `;
+        })
+        .filter(Boolean)
+        .join("");
+
+      if (!premiumSections) return `<div class="empty">No subblok detail found in metadata_json for this employee.</div>`;
+      return premiumSections;
+    }
+
+    function renderMetadataRow(item) {
+      const payload = {
+        metadata_json: item.metadata_json ?? null,
+        metadata: getPremiumMetadata(item),
+        detail_items: buildDetailItemsFromMetadata(item),
+        metadata_parse_error: item.metadata_parse_error ?? null
+      };
+      return `
+        <tr>
+          <td colspan="5">
+            <details>
+              <summary>metadata_json and detail_items</summary>
+              <div class="nested metadata"><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></div>
+            </details>
+          </td>
+        </tr>
+      `;
+    }
+
+    function buildGroupedResponseFromFlatRows(json) {
+      const rows = Array.isArray(json.data) ? json.data : [];
+      const divisionMap = new Map();
+
+      rows.forEach((row) => {
+        const estateCode = String(row.estate || row.estate_code || row.division_code || "UNKNOWN_ESTATE").trim().toUpperCase();
+        const gangCode = String(row.gang_code || "UNKNOWN_GANG").trim().toUpperCase();
+        const divisionCode = String(row.division_code || deriveDivisionCodeFromGang(gangCode) || "UNKNOWN_DIVISION").trim().toUpperCase();
+        const empCode = String(row.emp_code || "UNKNOWN_EMPLOYEE").trim().toUpperCase();
+        const nik = row.nik ? String(row.nik).trim().toUpperCase() : null;
+        const empName = row.emp_name ? String(row.emp_name).trim().toUpperCase() : null;
+        const employeeKey = `${empCode}|${nik || ""}|${empName || ""}`;
+
+        if (!divisionMap.has(estateCode)) {
+          divisionMap.set(estateCode, new Map());
+        }
+        const gangMap = divisionMap.get(estateCode);
+        if (!gangMap.has(gangCode)) {
+          gangMap.set(gangCode, new Map());
+        }
+        const employeeMap = gangMap.get(gangCode);
+        if (!employeeMap.has(employeeKey)) {
+          employeeMap.set(employeeKey, {
+            emp_code: empCode,
+            nik,
+            emp_name: empName,
+            gang_code: gangCode,
+            estate: estateCode,
+            estate_code: estateCode,
+            division_code: divisionCode,
+            adjustment_count: 0,
+            premium_count: 0,
+            total_amount: 0,
+            premium_total: 0,
+            adjustments: [],
+            premiums: [],
+            premium_transactions: []
+          });
+        }
+
+        const employee = employeeMap.get(employeeKey);
+        const normalizedRow = {
+          ...row,
+          emp_code: empCode,
+          nik,
+          emp_name: empName,
+          gang_code: gangCode,
+          estate: estateCode,
+          estate_code: estateCode,
+          division_code: divisionCode,
+          metadata: getPremiumMetadata(row),
+          detail_items: buildDetailItemsFromMetadata(row)
+        };
+        const amount = Number(row.amount || 0) || 0;
+        employee.adjustments.push(normalizedRow);
+        employee.adjustment_count += 1;
+        employee.total_amount += amount;
+
+        if (String(row.adjustment_type || "").toUpperCase() === "PREMI") {
+          employee.premiums.push(normalizedRow);
+          employee.premium_count += 1;
+          employee.premium_total += amount;
+        }
+      });
+
+      const divisions = Array.from(divisionMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([estateCode, gangMap]) => {
+        const gangs = Array.from(gangMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([gangCode, employeeMap]) => {
+          const employees = Array.from(employeeMap.values()).sort((a, b) => String(a.emp_name || a.emp_code).localeCompare(String(b.emp_name || b.emp_code))).map((employee) => {
+            const premiumTransactions = buildTransactionsFromPremiums(employee);
+            return {
+              ...employee,
+              premiums: [...employee.premiums].sort((a, b) => String(a.adjustment_name || "").localeCompare(String(b.adjustment_name || ""))),
+              adjustments: [...employee.adjustments].sort((a, b) => String(a.adjustment_name || "").localeCompare(String(b.adjustment_name || ""))),
+              premium_transactions: premiumTransactions
+            };
+          });
+          return {
+            gang_code: gangCode,
+            estate: estateCode,
+            estate_code: estateCode,
+            division_code: deriveDivisionCodeFromGang(gangCode) || "UNKNOWN_DIVISION",
+            employee_count: employees.length,
+            adjustment_count: employees.reduce((sum, employee) => sum + employee.adjustment_count, 0),
+            premium_count: employees.reduce((sum, employee) => sum + employee.premium_count, 0),
+            total_amount: employees.reduce((sum, employee) => sum + employee.total_amount, 0),
+            premium_total: employees.reduce((sum, employee) => sum + employee.premium_total, 0),
+            employees
+          };
+        });
+        return {
+          estate: estateCode,
+          estate_code: estateCode,
+          employee_count: gangs.reduce((sum, gang) => sum + gang.employee_count, 0),
+          gang_count: gangs.length,
+          adjustment_count: gangs.reduce((sum, gang) => sum + gang.adjustment_count, 0),
+          premium_count: gangs.reduce((sum, gang) => sum + gang.premium_count, 0),
+          total_amount: gangs.reduce((sum, gang) => sum + gang.total_amount, 0),
+          premium_total: gangs.reduce((sum, gang) => sum + gang.premium_total, 0),
+          gangs
+        };
+      });
+
+      return {
+        success: json.success,
+        view: "grouped-client",
+        count: rows.length,
+        summary: {
+          division_count: divisions.length,
+          gang_count: divisions.reduce((sum, division) => sum + division.gang_count, 0),
+          employee_count: divisions.reduce((sum, division) => sum + division.employee_count, 0),
+          adjustment_count: rows.length
+        },
+        data: divisions
+      };
+    }
+
+    function hasFlatMetadataRows(json) {
+      return Array.isArray(json.data) && json.data.some((row) => row && (row.metadata_json || row.metadata || row.detail_items));
+    }
+
+    function renderGrouped(json) {
+      const divisions = Array.isArray(json.data) ? json.data : [];
+      if (!divisions.length) {
+        treeOutput.innerHTML = `<div class="empty">No grouped data returned.</div>`;
+        return;
+      }
+
+      treeOutput.innerHTML = divisions.map((division) => `
+        <details open>
+          <summary>
+            <span>Estate ${escapeHtml(division.estate || division.estate_code || division.division_code || "-")}</span>
+            <span class="badge-row">
+              <span class="badge">${division.gang_count || 0} gangs</span>
+              <span class="badge">${division.employee_count || 0} employees</span>
+              <span class="badge warn">${division.premium_count || 0} premiums</span>
+            </span>
+          </summary>
+          <div class="nested">
+            ${(division.gangs || []).map((gang) => `
+              <details open>
+                <summary>
+                  <span>Gang ${escapeHtml(gang.gang_code)}</span>
+                  <span class="badge-row">
+                    <span class="badge">division ${escapeHtml(gang.division_code || "-")}</span>
+                    <span class="badge">${gang.employee_count || 0} employees</span>
+                    <span class="badge warn">${gang.premium_count || 0} premiums</span>
+                  </span>
+                </summary>
+                <div class="nested">
+                  ${(gang.employees || []).map((employee) => {
+                    const premiums = getEmployeePremiums(employee);
+                    const transactions = (employee.premium_transactions || []).length
+                      ? employee.premium_transactions
+                      : buildTransactionsFromPremiums(employee);
+                    return `
+                    <div class="employee-head">
+                      <div>
+                        <div class="name">${escapeHtml(employee.emp_name || employee.emp_code)}</div>
+                        <div class="subtext">emp_code=${escapeHtml(employee.emp_code)} | nik=${escapeHtml(employee.nik || "-")} | estate=${escapeHtml(employee.estate || employee.estate_code || "-")} | division=${escapeHtml(employee.division_code || "-")} | gang=${escapeHtml(employee.gang_code)}</div>
+                      </div>
+                      <div class="badge-row">
+                        <span class="badge warn">${employee.premium_count || 0} premiums</span>
+                        <span class="badge warn">${transactions.length} detail trx</span>
+                        <span class="badge">${formatAmount(employee.premium_total || 0)}</span>
+                      </div>
+                    </div>
+                    ${renderSubblokDetails(premiums)}
+                    ${renderTransactionTable(transactions)}
+                    ${renderPremiumTable(premiums)}
+                  `}).join("")}
+                </div>
+              </details>
+            `).join("")}
+          </div>
+        </details>
+      `).join("");
+    }
+
+    function renderFlat(json) {
+      const rows = Array.isArray(json.data) ? json.data : [];
+      if (!rows.length) {
+        treeOutput.innerHTML = `<div class="empty">No rows returned.</div>`;
+        return;
+      }
+      treeOutput.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Division</th>
+              <th>Estate</th>
+              <th>Gang</th>
+              <th>Employee</th>
+              <th>ADCode</th>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.division_code || "")}</td>
+                <td>${escapeHtml(row.estate || row.estate_code || "")}</td>
+                <td>${escapeHtml(row.gang_code || "")}</td>
+                <td>${escapeHtml(row.emp_name || row.emp_code || "")}</td>
+                <td>${escapeHtml(row.ad_code || "")}</td>
+                <td>${escapeHtml(row.adjustment_type || "")}</td>
+                <td>${escapeHtml(row.adjustment_name || "")}</td>
+                <td class="amount">${formatAmount(row.amount || 0)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function auditStatusClass(row) {
+      const next = String(row.new_sync_status || "").toUpperCase();
+      if (row.status === "SKIPPED" || row.skip_reason) return "skipped";
+      if (next === "SYNC") return "sync";
+      if (next === "DIFF") return "diff";
+      if (next === "MISS") return "miss";
+      return "";
+    }
+
+    function auditStatusBadge(row) {
+      const next = String(row.new_sync_status || "").toUpperCase() || "UNKNOWN";
+      const cls = next === "SYNC" ? "" : next === "DIFF" ? "warn" : "error";
+      return `<span class="badge ${cls}">${escapeHtml(next)}</span>`;
+    }
+
+    function isRiskyOldSync(row) {
+      const oldSync = String(row.old_sync_status || "").toUpperCase();
+      const next = String(row.new_sync_status || "").toUpperCase();
+      return oldSync === "SYNC" && next !== "SYNC";
+    }
+
+    function getAuditRows(data) {
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const filter = String(fields.resultFilter.value || "PROBLEMS").toUpperCase();
+      if (filter === "ALL") return rows;
+      if (filter === "PROBLEMS") {
+        return rows.filter((row) =>
+          row.status === "SKIPPED" ||
+          row.skip_reason ||
+          ["DIFF", "MISS"].includes(String(row.new_sync_status || "").toUpperCase())
+        );
+      }
+      return rows.filter((row) => String(row.new_sync_status || "").toUpperCase() === filter);
+    }
+
+    function renderAdtransDetails(details) {
+      const rows = Array.isArray(details) ? details : [];
+      if (!rows.length) {
+        return `<div class="empty">Tidak ada transaksi pembanding di PR_ADTRANS / PR_ADTRANS_ARC.</div>`;
+      }
+      return `
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Doc ID</th>
+              <th>DocDesc</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((detail, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(detail.doc_id || "")}</td>
+                <td>${escapeHtml(detail.doc_desc || "")}</td>
+                <td class="amount">${formatAmount(detail.amount || 0)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderAudit(json) {
+      const data = json?.data || {};
+      updateAuditMetrics(data);
+      const rows = getAuditRows(data);
+      const problemCount = (data.rows || []).filter((row) =>
+        row.status === "SKIPPED" ||
+        row.skip_reason ||
+        ["DIFF", "MISS"].includes(String(row.new_sync_status || "").toUpperCase())
+      ).length;
+
+      if (!rows.length) {
+        treeOutput.innerHTML = `
+          <div class="audit-toolbar">
+            <strong>Audit sync vs db_ptrj</strong>
+            <span class="badge ${problemCount ? "warn" : ""}">${problemCount} problem rows</span>
+          </div>
+          <div class="empty">Tidak ada row untuk filter ini.</div>
+        `;
+        return;
+      }
+
+      treeOutput.innerHTML = `
+        <div class="audit-toolbar">
+          <strong>Audit sync vs db_ptrj</strong>
+          <span class="badge-row">
+            <span class="badge ${problemCount ? "warn" : ""}">${problemCount} problem rows</span>
+            <span class="badge info">filter ${escapeHtml(fields.resultFilter.value)}</span>
+            <span class="badge muted">${data.dry_run ? "dry run" : "applied"}</span>
+          </span>
+        </div>
+        ${rows.map((row) => {
+          const risky = isRiskyOldSync(row);
+          return `
+            <details class="audit-row ${auditStatusClass(row)}" open>
+              <summary>
+                <span class="audit-title">
+                  <strong>${escapeHtml(row.emp_code || "-")} - ${escapeHtml(row.adjustment_name || "-")}</strong>
+                  <span class="subtext">id=${escapeHtml(row.id || "")} | estate=${escapeHtml(row.estate || "-")} | gang=${escapeHtml(row.gang_code || "-")} | type=${escapeHtml(row.adjustment_type || "-")}</span>
+                </span>
+                <span class="badge-row">
+                  ${auditStatusBadge(row)}
+                  <span class="badge ${row.match_status === "MATCH" ? "" : "warn"}">${escapeHtml(row.match_status || "-")}</span>
+                  ${risky ? `<span class="badge error">was SYNC</span>` : ""}
+                  <span class="badge ${row.status === "UPDATED" ? "info" : "muted"}">${escapeHtml(row.status || "-")}</span>
+                </span>
+              </summary>
+              <div class="nested">
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Manual Amount</th>
+                      <th>Target Amount</th>
+                      <th>db_ptrj Total</th>
+                      <th>Diff</th>
+                      <th>Old Sync</th>
+                      <th>New Sync</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="amount">${formatAmount(row.amount || 0)}</td>
+                      <td class="amount">${formatAmount(row.target_amount || 0)}</td>
+                      <td class="amount">${row.adtrans_amount === null || row.adtrans_amount === undefined ? "-" : formatAmount(row.adtrans_amount)}</td>
+                      <td class="amount">${row.diff === null || row.diff === undefined ? "-" : formatAmount(row.diff)}</td>
+                      <td>${escapeHtml(row.old_sync_status || "-")}</td>
+                      <td>${escapeHtml(row.new_sync_status || "-")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="subtext">ADCode=${escapeHtml(row.ad_code || "-")} | TaskDesc=${escapeHtml(row.task_desc || row.ad_code_desc || "-")}</div>
+                ${row.skip_reason ? `<div class="subtext">skip_reason=${escapeHtml(row.skip_reason)}</div>` : ""}
+                ${renderAdtransDetails(row.adtrans_details)}
+                <details>
+                  <summary>Remarks before/after</summary>
+                  <div class="nested metadata">
+                    <pre>${escapeHtml(JSON.stringify({
+                      remarks_before: row.remarks_before,
+                      remarks_after: row.remarks_after
+                    }, null, 2))}</pre>
+                  </div>
+                </details>
+              </div>
+            </details>
+          `;
+        }).join("")}
+      `;
+    }
+
+    function mergeSyncResults(results, dryRun) {
+      const dataItems = results.map((item) => item?.data || {});
+      const rows = dataItems.flatMap((data) => Array.isArray(data.rows) ? data.rows : []);
+      const sum = (key) => dataItems.reduce((total, data) => total + Number(data[key] || 0), 0);
+      return {
+        success: results.every((item) => item?.success !== false),
+        message: `Batch audit checked ${sum("matched_count")} rows`,
+        data: {
+          seeder: "manual_adjustment_sync_status",
+          period_month: Number(fields.month.value),
+          period_year: Number(fields.year.value),
+          target_sync_status: "SYNC",
+          only_if_adtrans_exists: true,
+          dry_run: dryRun,
+          matched_count: sum("matched_count"),
+          eligible_count: sum("eligible_count"),
+          adtrans_matched_count: sum("adtrans_matched_count"),
+          updated_count: sum("updated_count"),
+          unchanged_count: sum("unchanged_count"),
+          skipped_count: sum("skipped_count"),
+          partial_count: sum("partial_count"),
+          rows
+        },
+        responses: results
+      };
+    }
+
+    async function postSyncPayload(payload, apiKey) {
+      const response = await fetch(buildSyncUrl(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey
+        },
+        body: JSON.stringify(payload)
+      });
+      const json = await response.json();
+      return { response, json };
+    }
+
+    async function sendSyncAudit(dryRun) {
+      fields.mode.value = "audit";
+      updateGeneratedUrl();
+      const apiKey = fields.apiKey.value.trim();
+      if (!apiKey) {
+        setStatus("X-API-Key is required.", "error");
+        return;
+      }
+
+      const empCodes = parseEmpCodes();
+      const payloads = empCodes.length
+        ? empCodes.map((empCode) => buildSyncPayloadForEmp(dryRun, empCode))
+        : [buildSyncPayload(dryRun)];
+
+      sendButton.disabled = true;
+      auditButton.disabled = true;
+      applySyncButton.disabled = true;
+      setStatus(dryRun ? "Auditing db_ptrj..." : "Applying sync status...", "");
+      responseCodeEl.textContent = "Loading";
+      responseCodeEl.className = "status";
+
+      try {
+        const results = [];
+        for (let index = 0; index < payloads.length; index += 1) {
+          setStatus(`${dryRun ? "Auditing" : "Applying"} ${index + 1}/${payloads.length}...`, "");
+          const { response, json } = await postSyncPayload(payloads[index], apiKey);
+          results.push(json);
+          if (!response.ok) {
+            responseCodeEl.textContent = `HTTP ${response.status}`;
+            responseCodeEl.className = "status error";
+            rawOutput.innerHTML = `<pre>${escapeHtml(JSON.stringify(json, null, 2))}</pre>`;
+            treeOutput.innerHTML = `<div class="empty">${escapeHtml(json.error || "Request failed.")}</div>`;
+            setStatus(json.error || "Request failed.", "error");
+            return;
+          }
+        }
+
+        const combined = results.length === 1 ? results[0] : mergeSyncResults(results, dryRun);
+        rawOutput.innerHTML = `<pre>${escapeHtml(JSON.stringify(combined, null, 2))}</pre>`;
+        responseCodeEl.textContent = "HTTP 200";
+        responseCodeEl.className = "status ok";
+        renderAudit(combined);
+        const problemCount = getAuditRows({ rows: combined.data?.rows || [] }).length;
+        setStatus(dryRun
+          ? `Dry run selesai. ${problemCount} row tampil sesuai filter.`
+          : `Apply selesai. ${combined.data?.updated_count || 0} row diupdate.`,
+          "ok"
+        );
+      } catch (error) {
+        rawOutput.innerHTML = `<pre>${escapeHtml(String(error?.stack || error))}</pre>`;
+        treeOutput.innerHTML = `<div class="empty">Audit failed. Check backend URL, API key, and CORS.</div>`;
+        responseCodeEl.textContent = "Request error";
+        responseCodeEl.className = "status error";
+        updateMetrics(null, 0);
+        auditSummaryEl.classList.add("hidden");
+        setStatus(error?.message || "Request error.", "error");
+      } finally {
+        sendButton.disabled = false;
+        auditButton.disabled = false;
+        applySyncButton.disabled = false;
+      }
+    }
+
+    async function sendRequest(event) {
+      event.preventDefault();
+      if (fields.mode.value === "audit") {
+        await sendSyncAudit(true);
+        return;
+      }
+      updateGeneratedUrl();
+      const url = buildBrowseUrl();
+      const apiKey = fields.apiKey.value.trim();
+      if (!apiKey) {
+        setStatus("X-API-Key is required.", "error");
+        return;
+      }
+
+      sendButton.disabled = true;
+      setStatus("Requesting...", "");
+      responseCodeEl.textContent = "Loading";
+      responseCodeEl.className = "status";
+
+      try {
+        const response = await fetch(url, {
+          headers: { "X-API-Key": apiKey }
+        });
+        const json = await response.json();
+        rawOutput.innerHTML = `<pre>${escapeHtml(JSON.stringify(json, null, 2))}</pre>`;
+        responseCodeEl.textContent = `HTTP ${response.status}`;
+        responseCodeEl.className = response.ok ? "status ok" : "status error";
+        auditSummaryEl.classList.add("hidden");
+        updateMetrics(json.summary, json.count);
+
+        if (json.view === "grouped") {
+          renderGrouped(json);
+        } else if (fields.view.value === "grouped" || hasFlatMetadataRows(json)) {
+          const grouped = buildGroupedResponseFromFlatRows(json);
+          updateMetrics(grouped.summary, grouped.count);
+          renderGrouped(grouped);
+        } else {
+          renderFlat(json);
+        }
+
+        setStatus(response.ok ? "Response loaded." : (json.error || "Request failed."), response.ok ? "ok" : "error");
+      } catch (error) {
+        rawOutput.innerHTML = `<pre>${escapeHtml(String(error?.stack || error))}</pre>`;
+        treeOutput.innerHTML = `<div class="empty">Request failed. Check backend URL, API key, and CORS.</div>`;
+        responseCodeEl.textContent = "Request error";
+        responseCodeEl.className = "status error";
+        updateMetrics(null, 0);
+        setStatus(error?.message || "Request error.", "error");
+      } finally {
+        sendButton.disabled = false;
+      }
+    }
+
+    function resetFilters() {
+      fields.mode.value = "browse";
+      fields.view.value = "grouped";
+      fields.type.value = "PREMI";
+      fields.metadataOnly.value = "true";
+      fields.division.value = "AB1";
+      fields.gang.value = "";
+      fields.emp.value = "";
+      fields.empList.value = "";
+      fields.name.value = "";
+      fields.resultFilter.value = "PROBLEMS";
+      fields.syncLimit.value = "1000";
+      updateGeneratedUrl();
+    }
+
+    function activateTab(tabName) {
+      const treeTab = document.getElementById("tree-tab");
+      const rawTab = document.getElementById("raw-tab");
+      treeTab.classList.toggle("active", tabName === "tree");
+      rawTab.classList.toggle("active", tabName === "raw");
+      treeOutput.classList.toggle("hidden", tabName !== "tree");
+      rawOutput.classList.toggle("hidden", tabName !== "raw");
+    }
+
+    loadSettings();
+    updateGeneratedUrl();
+    document.getElementById("request-form").addEventListener("submit", sendRequest);
+    auditButton.addEventListener("click", () => sendSyncAudit(true));
+    fillRiskEmpsButton.addEventListener("click", () => {
+      fields.mode.value = "audit";
+      fields.emp.value = "";
+      fields.empList.value = riskEmpCodes.join("\n");
+      fields.resultFilter.value = "PROBLEMS";
+      updateGeneratedUrl();
+    });
+    applySyncButton.addEventListener("click", () => {
+      if (confirm("Apply sync status ke remarks payroll_manual_adjustments? Jalankan dry run dulu sebelum apply.")) {
+        sendSyncAudit(false);
+      }
+    });
+    document.getElementById("reset-button").addEventListener("click", resetFilters);
+    document.getElementById("tree-tab").addEventListener("click", () => activateTab("tree"));
+    document.getElementById("raw-tab").addEventListener("click", () => activateTab("raw"));
+    Object.values(fields).forEach((field) => {
+      if (field && field !== fields.generatedUrl) {
+        field.addEventListener("input", updateGeneratedUrl);
+        field.addEventListener("change", updateGeneratedUrl);
+      }
+    });
+  </script>
+</body>
+</html>

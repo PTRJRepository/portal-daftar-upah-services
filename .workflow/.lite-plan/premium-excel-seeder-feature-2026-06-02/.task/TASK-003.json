@@ -1,0 +1,103 @@
+{
+  "id": "TASK-003",
+  "title": "Generalize premium import function with progress tracking and UPSERT support",
+  "scope": "backend/src/services/premiumImportService.ts",
+  "action": "Refactor",
+  "description": "Replace the hardcoded ALLOWED_JENIS restriction and single-sheet assumption with a generalized importPremiumExcel() that supports all active blok premium types from premiumDefinitionService. Accept premium type parameter per sheet. Build correct metadata_json based on input_type. Add progress tracking following SeederProgress pattern. Leverage saveAdjustment's built-in UPSERT for idempotent imports.",
+  "files": [
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "refactor",
+      "target": "L21-L141",
+      "change": "Remove ALLOWED_JENIS constant. Replace hardcoded jenis validation with dynamic PremiumDefinitionService.validatePremiumName(). Replace hardcoded metadata_json (always blok) with input_type-aware metadata builder. Add SeederProgress tracking. Support multi-sheet import with per-sheet premium type designation."
+    },
+    {
+      "path": "backend/src/services/premiumImportService.ts",
+      "action": "add",
+      "target": "importPremiumExcel() signature",
+      "change": "Add premiumType parameter and dryRunConfirmationId parameter. Return type extended to include progress tracking fields (current_step, rows_processed, rows_total)."
+    }
+  ],
+  "implementation": [
+    "Remove ALLOWED_JENIS constant and normalizeJenis function",
+    "Add premiumType parameter to importPremiumExcel(): accepts premium definition name from active definitions",
+    "Validate premium type: call premiumDefinitionService.validatePremiumName(premiumType) for each sheet",
+    "Build metadata_json dynamically based on input_type: for blok -> MetadataBlok with items[] and total_amount",
+    "Add SeederProgress tracking: track total_rows, processed_rows, current_step, errors_count",
+    "Batch processing: group rows by empcode+premium_type, save each group via manualAdjustmentService.saveAdjustment()",
+    "Handle saveAdjustment UPSERT: existing records updated (amount, metadata_json, gang_code), new records inserted",
+    "Return extended PremiumImportResult with progress fields and per-row status",
+    "Add timeout protection: track elapsed time, stop if >180s, return partial results with remaining count"
+  ],
+  "reference": {
+    "pattern": "historySeederService.ts SeederResult + SeederProgress pattern: success, imported/skipped counts, errors array, progress tracking with is_running/current_step",
+    "files": [
+      "backend/src/services/premiumImportService.ts",
+      "backend/src/services/historySeederService.ts",
+      "backend/src/services/manualAdjustmentService.ts",
+      "backend/src/services/premiumDefinitionService.ts"
+    ],
+    "examples": "historySeederService.ts L29-L47 SeederResult: success, imported records count, errors array. premiumImportService.ts L96-L113 existing metadata_json build (hardcoded blok). manualAdjustmentService.ts L2190-L2237 existing record check + UPSERT logic."
+  },
+  "convergence": {
+    "criteria": [
+      "importPremiumExcel() imports any active blok premium type from premium_definitions.json (not limited to PRUNING/RAKING)",
+      "metadata_json structure matches input_type (blok produces MetadataBlok with items[] and total_amount)",
+      "Re-importing same Excel file updates existing records (no duplicates created)",
+      "Progress tracking reports total/processed/error counts during import",
+      "Timeout at 180s returns partial results with clear remaining count"
+    ]
+  },
+  "depends_on": [
+    "TASK-001",
+    "TASK-002"
+  ],
+  "rationale": {
+    "chosen_approach": "Generalize the existing importPremiumExcel() function rather than creating a separate service. Leverage saveAdjustment's built-in UPSERT. Add progress tracking for visibility on large imports. Phase 1 limits to blok input_type but engine supports extension.",
+    "alternatives_considered": [
+      "Create entirely new PremiumExcelSeederService separate from existing premiumImportService",
+      "DELETE-then-INSERT per premium type for simplicity",
+      "No progress tracking, just synchronous import"
+    ],
+    "decision_factors": [
+      "Code reuse: premiumImportService already has saveAdjustment integration",
+      "Data safety: UPSERT prevents data loss on re-import",
+      "Observability: progress tracking needed for files with hundreds of rows",
+      "Extensibility: engine design supports adding exp/kendaraan/amount input_types later"
+    ],
+    "tradeoffs": "Generalizing existing function risks breaking current PRUNING/RAKING imports. Must preserve backward compatibility or provide migration path. Multi-sheet support adds complexity but enables one-file multi-premium-type imports."
+  },
+  "test": {
+    "manual_checks": [
+      "Import Excel with PREMI KINERJA (new type, was not in ALLOWED_JENIS) and verify success",
+      "Re-import same Excel file twice, verify no duplicate records in payroll_manual_adjustments",
+      "Import Excel with 500 rows, verify progress tracking updates during import",
+      "Import Excel with mixed valid/invalid rows, verify partial success with error reporting"
+    ],
+    "success_metrics": [
+      "7 blok premium types importable (not just 2)",
+      "0 duplicate records on re-import",
+      "Progress tracking updates at least every 50 rows processed",
+      "180s timeout enforcement with graceful partial results"
+    ],
+    "unit": [
+      "test_import_allows_blok_premium_types",
+      "test_import_builds_correct_metadata_json_blok",
+      "test_import_upsert_prevents_duplicates",
+      "test_import_progress_tracking_updates",
+      "test_import_timeout_returns_partial_results"
+    ],
+    "integration": [
+      "test_import_end_to_end_pruning_raking_regression",
+      "test_import_end_to_end_new_premium_type_kinerja"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-003",
+  "cli_execution": {
+    "strategy": "merge_fork",
+    "merge_from": [
+      "premium-excel-seeder-feature-2026-06-02-TASK-001",
+      "premium-excel-seeder-feature-2026-06-02-TASK-002"
+    ]
+  }
+}

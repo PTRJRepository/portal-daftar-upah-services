@@ -1,0 +1,411 @@
+{
+  "exploration": {
+    "topic": ".env profile switching untuk db_ptrj dan staging database",
+    "scope": "1) DISABLE_STAGING_DB jadi functional, 2) Startup logging profile aktif, 3) DB_PROFILE/DB_EXTEND_PROFILE/DB_STAGING_PROFILE/DB_VENUS_PROFILE/DB_MILL_PROFILE terbaca dari .env dan ditampilkan saat startup",
+    "mode": "patterns",
+    "session_folder": ".workflow/.lite-plan/env-profile-switching-2026-06-02",
+    "generated_at": "2026-06-02T00:00:00Z"
+  },
+  "findings": {
+    "summary": "No conditional route mounting pattern exists. DISABLE_STAGING_DB is dead config with zero code references. Startup logging uses raw console.log for only DB_PROFILE+DEFAULT_DATABASE -- missing 4 other profiles. Staging catalog string hardcoded in services, not sourced from Config.",
+    "patterns_found": {
+      "startup_logging": {
+        "location": "backend/src/index.ts L347-351",
+        "pattern": "Raw console.log (bypasses centralized logger)",
+        "current_output": "4 lines: host:port, run mode, auth mode, DB_PROFILE + DEFAULT_DATABASE",
+        "missing_profiles": [
+          "DB_EXTEND_PROFILE",
+          "DB_STAGING_PROFILE",
+          "DB_VENUS_PROFILE",
+          "DB_MILL_PROFILE",
+          "DB_STAGING_DATABASE",
+          "DISABLE_STAGING_DB status"
+        ],
+        "logger_available": "utils/logger.ts has info() for structured logging but not used for startup banner",
+        "risk_note": "ADMIN needs to know which profile each DB targets at startup. Currently only DB_PROFILE shown -- misleading because .env has DB_PROFILE=SERVER_PROFILE_2 but Config defaults to SERVER_PROFILE_1 if .env not read."
+      },
+      "route_registration": {
+        "location": "backend/src/index.ts L247-311",
+        "pattern": "Unconditional .use() chaining -- all routes always mounted",
+        "staging_mounts": [
+          {
+            "scope": "root",
+            "line": 285,
+            "expression": ".use(stagingRoutes)"
+          },
+          {
+            "scope": "/backend/upah group",
+            "line": 310,
+            "expression": ".use(stagingRoutes)"
+          }
+        ],
+        "conditional_mount_exists": false,
+        "risk_note": "Staging routes always active. If staging DB unreachable, routes respond with 500 at query time -- no graceful disable. No isDev/isProd guard on staging."
+      },
+      "conditional_mount": {
+        "exists": false,
+        "closest_approximation": "PROXY_MOUNT boolean in Config (L26) controls whether routes mount under /backend/upah group -- always true when USE_PROXY=true. No DISABLE_STAGING_DB equivalent pattern."
+      },
+      "config_loading": {
+        "location": "backend/src/config.ts L1-11",
+        "pattern": "dotenv.config() at module load time with error log on failure",
+        "dead_config": {
+          "key": "DISABLE_STAGING_DB",
+          "in_env": true,
+          "env_value": "true",
+          "in_config_class": false,
+          "in_any_source": false,
+          "references_found": 0
+        },
+        "profile_properties_defined": 5,
+        "profile_properties_list": [
+          "DB_PROFILE",
+          "DB_EXTEND_PROFILE",
+          "DB_STAGING_PROFILE",
+          "DB_VENUS_PROFILE",
+          "DB_MILL_PROFILE"
+        ]
+      },
+      "db_client_factory": {
+        "location": "backend/src/db/client.ts L52-89",
+        "pattern": "Named factory methods wrapping getInstance(database, profile)",
+        "factories": [
+          "getInstance(database?, profile?) -> Map-cached singleton",
+          "getVenusInstance() -> Config.DB_VENUS_DATABASE + DB_VENUS_PROFILE",
+          "getExtendedInstance() -> Config.DB_EXTEND_DATABASE + DB_EXTEND_PROFILE",
+          "getMillInstance() -> Config.DB_MILL_DATABASE + DB_MILL_PROFILE",
+          "getStagingInstance() -> Config.DB_STAGING_DATABASE + DB_STAGING_PROFILE"
+        ],
+        "staging_no_disable_check": "getStagingInstance() has no disable guard. Always returns live instance.",
+        "hardcoded_catalog": "StagingExplorerService L26, StagingComparisonService L5 both hardcode STAGING_CATALOG = 'staging_PTRJ_iFES_Plantware' instead of using Config.DB_STAGING_DATABASE"
+      }
+    },
+    "relevant_files": [
+      {
+        "path": "backend/src/index.ts",
+        "relevance": 1,
+        "rationale": "Startup logging target (L347-351) and all route registration (L247-311) reside here. Both DISABLE_STAGING_DB check and profile banner must be added here.",
+        "role": "modify_target",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "startup console.log block",
+            "location": "L347-351",
+            "description": "Four raw console.log calls printing host port run mode auth mode and DB_PROFILE. Missing 4 other profile outputs."
+          },
+          {
+            "symbol": "stagingRoutes mount root",
+            "location": "L285",
+            "description": "Unconditional .use(stagingRoutes) at app root level. No DISABLE_STAGING_DB guard."
+          },
+          {
+            "symbol": "stagingRoutes mount backend/upah",
+            "location": "L310",
+            "description": "Unconditional .use(stagingRoutes) inside backend/upah group. No DISABLE_STAGING_DB guard."
+          },
+          {
+            "symbol": "buildHealthPayload()",
+            "location": "L108-L113",
+            "description": "Health endpoint returns DB_PROFILE and DEFAULT_DATABASE. Does not include staging status or other profiles."
+          }
+        ],
+        "topic_relation": "Ground zero for all 3 scope items. Startup profile logging rewrite here. DISABLE_STAGING_DB check must gate L285 and L310. All 5 profiles displayed at startup."
+      },
+      {
+        "path": "backend/src/config.ts",
+        "relevance": 1,
+        "rationale": "All database profile Config properties defined here. DISABLE_STAGING_DB is absent -- must be added as new property.",
+        "role": "modify_target",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "Config.DB_PROFILE",
+            "location": "L36",
+            "description": "Default SERVER_PROFILE_1. Overridden by .env to SERVER_PROFILE_2."
+          },
+          {
+            "symbol": "Config.DB_EXTEND_PROFILE",
+            "location": "L49",
+            "description": "Default SERVER_PROFILE_1. Extended DB profile."
+          },
+          {
+            "symbol": "Config.DB_STAGING_PROFILE",
+            "location": "L53",
+            "description": "Default SERVER_PROFILE_2. Staging FFB scanner DB profile."
+          },
+          {
+            "symbol": "Config.DB_VENUS_PROFILE",
+            "location": "L59",
+            "description": "Default SERVER_PROFILE_3. VenusHR14."
+          },
+          {
+            "symbol": "Config.DB_MILL_PROFILE",
+            "location": "L63",
+            "description": "Default SERVER_PROFILE_3. Mill DB."
+          },
+          {
+            "symbol": "MISSING DISABLE_STAGING_DB",
+            "location": "N/A",
+            "description": "Present in .env L42 but no Config property reads it."
+          }
+        ],
+        "topic_relation": "Central config file. Must add DISABLE_STAGING_DB property. All 5 profile properties already exist -- only DISABLE_STAGING_DB is the gap."
+      },
+      {
+        "path": "backend/src/db/client.ts",
+        "relevance": 0.9,
+        "rationale": "Factory methods for all 5 database instances. getStagingInstance() has no disable guard. Constructor debug-logs profile+database on init.",
+        "role": "dependency",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "Database.getStagingInstance()",
+            "location": "L87-L89",
+            "description": "Always constructs Database. No DISABLE_STAGING_DB check."
+          },
+          {
+            "symbol": "Database.getVenusInstance()",
+            "location": "L64-L66",
+            "description": "Returns DB with Venus DB and profile."
+          },
+          {
+            "symbol": "Database.getExtendedInstance()",
+            "location": "L71-L73",
+            "description": "Returns DB with Extended DB and profile."
+          },
+          {
+            "symbol": "Database.getMillInstance()",
+            "location": "L78-L80",
+            "description": "Returns DB with Mill DB and profile."
+          },
+          {
+            "symbol": "Database constructor debug",
+            "location": "L42-L43",
+            "description": "debug log shows profile+database at construction time."
+          }
+        ],
+        "topic_relation": "Add DISABLE_STAGING_DB guard in getStagingInstance(). Constructor debug logs show profile but only at DEBUG level."
+      },
+      {
+        "path": "backend/src/api/stagingRoutes.ts",
+        "relevance": 0.7,
+        "rationale": "Route definitions for all staging endpoints. Mounted unconditionally. If disabled route group should be excluded.",
+        "role": "modify_target",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "stagingRoutes export",
+            "location": "L9",
+            "description": "Elysia instance with prefix /api/staging. No DISABLE_STAGING_DB knowledge."
+          },
+          {
+            "symbol": "singleton init",
+            "location": "L6-L7",
+            "description": "Service singletons created at module load -- triggers getStagingInstance() immediately."
+          }
+        ],
+        "topic_relation": "If DISABLE_STAGING_DB functional index.ts should skip .use(stagingRoutes). Module-level init needs lazy loading."
+      },
+      {
+        "path": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+        "relevance": 0.6,
+        "rationale": "Hardcodes STAGING_CATALOG string instead of Config.DB_STAGING_DATABASE. getStagingInstance() in constructor.",
+        "role": "dependency",
+        "discovery_source": "implicit-dep-scan",
+        "key_code": [
+          {
+            "symbol": "STAGING_CATALOG constant",
+            "location": "L26",
+            "description": "Hardcoded staging_PTRJ_iFES_Plantware. Should use Config.DB_STAGING_DATABASE."
+          },
+          {
+            "symbol": "constructor init",
+            "location": "L34",
+            "description": "Instantiates staging DB connection immediately. No lazy init."
+          }
+        ],
+        "topic_relation": "Hardcoded catalog is implicit dependency -- if Config.DB_STAGING_DATABASE changes this breaks silently."
+      },
+      {
+        "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+        "relevance": 0.6,
+        "rationale": "Same hardcoded STAGING_CATALOG string. References Database.getStagingInstance().",
+        "role": "dependency",
+        "discovery_source": "implicit-dep-scan",
+        "key_code": [
+          {
+            "symbol": "STAGING_CATALOG constant",
+            "location": "L5",
+            "description": "Hardcoded staging_PTRJ_iFES_Plantware. Duplicate of explorer L26."
+          }
+        ],
+        "topic_relation": "Same implicit dependency as explorer. Duplicate hardcoded string in two services."
+      },
+      {
+        "path": "backend/src/utils/logger.ts",
+        "relevance": 0.5,
+        "rationale": "Centralized logger exists but not used for startup banner. Structured logging pattern already established.",
+        "role": "pattern_reference",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "info() export",
+            "location": "L187",
+            "description": "Structured logger callable as info(Category message). Used for HTTP but NOT startup banner."
+          }
+        ],
+        "topic_relation": "Startup banner should use info(Startup ...) pattern not raw console.log. Would make profile info visible at configured LOG_LEVEL."
+      },
+      {
+        "path": "backend/.env",
+        "relevance": 0.4,
+        "rationale": "Contains DISABLE_STAGING_DB=true (L42) which is dead. Contains all 5 profile keys. Single source of truth target.",
+        "role": "config",
+        "discovery_source": "bash-scan",
+        "key_code": [
+          {
+            "symbol": "DISABLE_STAGING_DB",
+            "location": "L42",
+            "description": "Set to true. Not read by any code."
+          },
+          {
+            "symbol": "DB_PROFILE",
+            "location": "L19",
+            "description": "SERVER_PROFILE_2. Overrides Config default."
+          },
+          {
+            "symbol": "DB_EXTEND_PROFILE",
+            "location": "L27",
+            "description": "SERVER_PROFILE_1."
+          },
+          {
+            "symbol": "DB_VENUS_PROFILE",
+            "location": "L34",
+            "description": "SERVER_PROFILE_3."
+          },
+          {
+            "symbol": "DB_MILL_PROFILE",
+            "location": "L39",
+            "description": "SERVER_PROFILE_3."
+          }
+        ],
+        "topic_relation": "Source of truth for all profile values. DISABLE_STAGING_DB entry exists here but has no code consumer."
+      }
+    ],
+    "implicit_dependencies": [
+      {
+        "type": "string_dispatch",
+        "source_file": "backend/src/config.ts L7",
+        "key_or_pattern": "dotenv.config({path: join(import.meta.dir, ../.env)})",
+        "resolved_by": "dotenv library at module load time",
+        "risk_note": "If .env missing or unreadable all Config properties fall back to hardcoded defaults. No runtime validation."
+      },
+      {
+        "type": "dynamic_lookup",
+        "source_file": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts L26",
+        "key_or_pattern": "STAGING_CATALOG hardcoded string staging_PTRJ_iFES_Plantware",
+        "resolved_by": "Local constant -- bypasses Config.DB_STAGING_DATABASE",
+        "risk_note": "Renaming DB_STAGING_DATABASE in Config or .env will NOT affect staging queries. Two-source problem."
+      },
+      {
+        "type": "dynamic_lookup",
+        "source_file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts L5",
+        "key_or_pattern": "STAGING_CATALOG hardcoded string staging_PTRJ_iFES_Plantware",
+        "resolved_by": "Local constant -- duplicate of explorer",
+        "risk_note": "Same two-source problem. Changing staging DB name requires 3 code edits instead of 1."
+      },
+      {
+        "type": "fallback_path",
+        "source_file": "backend/src/db/client.ts L30",
+        "key_or_pattern": "profile || Config.DB_PROFILE",
+        "resolved_by": "Constructor parameter or Config default",
+        "risk_note": "Fallback to DB_PROFILE if no profile passed."
+      },
+      {
+        "type": "fallback_path",
+        "source_file": "backend/src/config.ts L36",
+        "key_or_pattern": "env.DB_PROFILE || SERVER_PROFILE_1",
+        "resolved_by": ".env file at module load",
+        "risk_note": "If .env sets SERVER_PROFILE_2 but dotenv fails, silently falls back to SERVER_PROFILE_1."
+      }
+    ],
+    "dependency_graph": {
+      "dotenv_load": {
+        "file": "config.ts L6-7",
+        "produces": "all Config properties from process.env",
+        "depends_on": "../.env file existence"
+      },
+      "config_to_client": {
+        "file": "db/client.ts L65-89",
+        "uses": [
+          "DB_VENUS_PROFILE",
+          "DB_EXTEND_PROFILE",
+          "DB_MILL_PROFILE",
+          "DB_STAGING_PROFILE"
+        ],
+        "depends_on": "config.ts dotenv load"
+      },
+      "config_to_index": {
+        "file": "index.ts L347-351",
+        "uses": [
+          "RUN_MODE",
+          "AUTH_MODE",
+          "DB_PROFILE",
+          "DEFAULT_DATABASE"
+        ],
+        "depends_on": "config.ts dotenv load",
+        "missing_usage": [
+          "DB_EXTEND_PROFILE",
+          "DB_STAGING_PROFILE",
+          "DB_VENUS_PROFILE",
+          "DB_MILL_PROFILE"
+        ]
+      },
+      "staging_routes_to_services": {
+        "file": "api/stagingRoutes.ts L6-7",
+        "uses": [
+          "StagingExplorerService",
+          "StagingComparisonService"
+        ],
+        "depends_on": "db/client.ts getStagingInstance()"
+      },
+      "dead_edge": {
+        "from": ".env L42 DISABLE_STAGING_DB=true",
+        "to": "NOTHING",
+        "note": "Key exists in .env but no Config property and no consumer code"
+      }
+    },
+    "recommendations": [
+      {
+        "priority": "critical",
+        "item": "Add DISABLE_STAGING_DB to Config class",
+        "action": "Add public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === true); to config.ts. Key already in .env."
+      },
+      {
+        "priority": "critical",
+        "item": "Conditional staging route mounting",
+        "action": "In index.ts wrap both stagingRoutes .use() calls L285 and L310 with if (!Config.DISABLE_STAGING_DB) guard."
+      },
+      {
+        "priority": "high",
+        "item": "Startup profile banner using logger",
+        "action": "Replace console.log block L347-351 with info(Startup ...) calls printing all 5 profiles plus staging disabled status."
+      },
+      {
+        "priority": "high",
+        "item": "Fix hardcoded STAGING_CATALOG",
+        "action": "Replace hardcoded string in stagingExplorerService.ts L26 and stagingComparisonService.ts L5 with Config.DB_STAGING_DATABASE."
+      },
+      {
+        "priority": "medium",
+        "item": "Guard staging service instantiation",
+        "action": "In stagingRoutes.ts delay service singleton init until first route call when staging not disabled."
+      },
+      {
+        "priority": "medium",
+        "item": "Add .env validation",
+        "action": "After dotenv load in config.ts validate critical keys have values and warn on mismatch."
+      }
+    ]
+  }
+}

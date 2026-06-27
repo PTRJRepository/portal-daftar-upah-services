@@ -1,0 +1,104 @@
+{
+  "id": "TASK-006",
+  "title": "Build frontend seeder page with premium type selection, upload, dry-run preview, and confirm workflow",
+  "scope": "frontend/src/pages/PremiumSeederPage.jsx (new)",
+  "action": "Create",
+  "description": "Create a new React page for the premium Excel seeder workflow. The page guides users through: (1) select premium type from dropdown (populated from GET /premium-definitions), (2) set period month/year and division code, (3) upload Excel file or download blank template first, (4) click 'Preview' to run dry-run and see what will be imported, (5) review dry-run summary table showing per-row actions, (6) confirm to execute import with progress bar, (7) view final import results.",
+  "files": [
+    {
+      "path": "frontend/src/pages/PremiumSeederPage.jsx",
+      "action": "create",
+      "target": "new page component",
+      "change": "Create full PremiumSeederPage component with stepper workflow: Step 1 (Setup: premium type selector, period inputs, division selector, file upload + template download button), Step 2 (Dry-Run Preview: summary cards showing total rows/amount/inserts/updates/errors, scrollable table with per-row action classification), Step 3 (Import Results: progress bar during import, final success/error summary with counts)."
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "action": "add",
+      "target": "route definition",
+      "change": "Add route for /premium-seeder pointing to PremiumSeederPage component."
+    },
+    {
+      "path": "frontend/src/layouts/DashboardLayout.jsx",
+      "action": "add",
+      "target": "navigation menu item",
+      "change": "Add 'Seeder Premi' menu item in sidebar navigation linking to /premium-seeder."
+    }
+  ],
+  "implementation": [
+    "Create PremiumSeederPage.jsx with multi-step workflow state machine (step: 'setup' | 'preview' | 'importing' | 'result')",
+    "Step 1 - Setup: Fetch premium definitions from GET /premium-definitions, populate dropdown with active blok types only. Add period month (MonthSelector component), period year (number input), division code (dropdown from DivisionConfig). Add file upload area (react-dropzone or native input). Add 'Download Template' button that calls GET /premium-seeder/template.",
+    "Step 2 - Dry-Run Preview: Upload button calls POST /premium-seeder/dry-run. Show loading spinner during API call. Display summary cards: Total Rows, Total Amount, Ready to Insert (count), Would Update (count), Duplicates/Skipped (count), Errors (count). Show scrollable table (virtualized for >100 rows) with columns: EmpCode, Premium Type, Gang, Amount, Items, Action (color-coded badge), Reason.",
+    "Step 3 - Confirm Import: User reviews preview and clicks 'Konfirmasi Import'. Calls POST /premium-seeder/import. Show progress bar with percentage and current step text. On completion, show success summary: imported count, updated count, skipped count, errors list. Add 'Import Lagi' button to reset workflow.",
+    "Error handling: API errors shown as toast notifications. Network failures allow retry. File validation (must be .xlsx, max 10MB) before upload.",
+    "Add PremiumSeederPage route in App.jsx: <Route path='/premium-seeder' element={<PremiumSeederPage />} />",
+    "Add navigation menu item in DashboardLayout.jsx sidebar under 'Data Import' section"
+  ],
+  "reference": {
+    "pattern": "Existing page patterns: DetailedSalaryAnalysisPage.jsx for data tables, ProfessionalDashboard.jsx for dashboard cards, MonthSelector.jsx for period selection",
+    "files": [
+      "frontend/src/pages/DetailedSalaryAnalysisPage.jsx",
+      "frontend/src/pages/ProfessionalDashboard.jsx",
+      "frontend/src/components/common/MonthSelector.jsx",
+      "frontend/src/layouts/DashboardLayout.jsx",
+      "frontend/src/App.jsx"
+    ],
+    "examples": "DetailedSalaryAnalysisPage.jsx demonstrates data table with loading states. ProfessionalDashboard.jsx shows summary card pattern with color-coded badges. MonthSelector.jsx provides reusable period month picker."
+  },
+  "convergence": {
+    "criteria": [
+      "Premium type dropdown populated from GET /premium-definitions with blok-only types",
+      "File upload accepts .xlsx and validates size (max 10MB)",
+      "Template download button generates and downloads correct .xlsx file",
+      "Dry-run preview shows summary cards with correct counts and per-row table",
+      "Import progress bar updates during import (polling or long-polling from API)",
+      "Success/error summary displayed after import completes",
+      "Entire workflow navigable: setup -> preview -> confirm -> result -> reset"
+    ]
+  },
+  "depends_on": [
+    "TASK-005"
+  ],
+  "rationale": {
+    "chosen_approach": "Single page with stepper workflow (setup -> preview -> importing -> result). Uses existing MonthSelector component. Dry-run preview display mandatory before import confirmation. Follows existing page design patterns for consistency.",
+    "alternatives_considered": [
+      "Modal dialog instead of full page",
+      "Two separate pages: one for upload, one for results",
+      "Inline import in existing ProfessionalDashboard page"
+    ],
+    "decision_factors": [
+      "User experience: stepper guides non-technical operators through workflow",
+      "Reusability: existing MonthSelector and table components reduce code",
+      "Consistency: follows existing page layout pattern"
+    ],
+    "tradeoffs": "Full page adds navigation complexity but provides better UX for multi-step workflow than modal. Stepper enforces correct sequence (preview before commit)."
+  },
+  "test": {
+    "manual_checks": [
+      "Navigate to /premium-seeder, verify premium types load in dropdown",
+      "Download template for PREMI KINERJA, fill with test data, upload",
+      "Verify dry-run preview shows correct row classifications",
+      "Confirm import and verify progress bar updates",
+      "Verify navigation menu item appears and links correctly"
+    ],
+    "success_metrics": [
+      "Page loads and renders within 2 seconds",
+      "Dry-run API response displayed within 5 seconds for 100-row file",
+      "Import progress updates every 2 seconds during processing",
+      "0 unhandled exceptions during normal workflow"
+    ],
+    "unit": [
+      "test_premium_seeder_page_renders_setup_step",
+      "test_premium_seeder_page_file_upload_validation",
+      "test_premium_seeder_page_dry_run_summary_display",
+      "test_premium_seeder_page_import_progress_display"
+    ],
+    "integration": [
+      "test_seeder_page_full_workflow_setup_to_result"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-006",
+  "cli_execution": {
+    "strategy": "resume",
+    "resume_from": "premium-excel-seeder-feature-2026-06-02-TASK-005"
+  }
+}

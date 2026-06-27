@@ -21,6 +21,9 @@ export class Config {
     // Proxy Configuration
     public static readonly USE_PROXY: boolean = (env.USE_PROXY === "true");
     public static readonly PROXY_STRIP_PREFIX: string = env.PROXY_STRIP_PREFIX || "/backend/upah";
+    // Mount API routes under /backend/upah prefix (for reverse proxy environments)
+    // Set PROXY_MOUNT=true in .env to enable. Default: false (single mount at root)
+    public static readonly PROXY_MOUNT: boolean = (env.PROXY_MOUNT === "true") || (env.USE_PROXY === "true");
 
     // Auth Mode: If proxy is true, default to 'external'. Else 'internal'.
     public static readonly AUTH_MODE: "internal" | "external" =
@@ -48,6 +51,7 @@ export class Config {
     // Staging Database (for FFB scanner data)
     public static readonly DB_STAGING_DATABASE: string = env.DB_STAGING_DATABASE || "staging_PTRJ_iFES_Plantware";
     public static readonly DB_STAGING_PROFILE: string = env.DB_STAGING_PROFILE || "SERVER_PROFILE_2";
+    public static readonly DISABLE_STAGING_DB: boolean = (env.DISABLE_STAGING_DB === "true");
 
     // Extended Transaction Database (for history detail - Taskreg, ADTrans)
     public static readonly DB_EXTEND_TRANS_DATABASE: string = env.DB_EXTEND_TRANS_DATABASE || "extend_db_ptrj_transaksi";

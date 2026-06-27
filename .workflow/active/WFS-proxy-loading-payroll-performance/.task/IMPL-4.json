@@ -1,0 +1,21 @@
+{
+  "id": "IMPL-4",
+  "title": "Verify backend proxy route contract",
+  "description": "Add backend tests or smoke helpers for /upah static fallback, /backend/upah API group, health, locked verify, and SSE headers. Apply minimal backend route fix only if current duplicated group does not satisfy contract.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "files": [
+    "backend/src/index.ts",
+    "backend/src/config.ts",
+    "backend/src/api/payroll.ts",
+    "backend/src/api/payroll.proxy.test.ts"
+  ],
+  "convergence": "Proxy route smoke proves app assets, health/API, auth verify, and payroll stream route are reachable with expected status/headers.",
+  "meta": {
+    "type": "backend-test-implementation",
+    "agent": "tdd_developer"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

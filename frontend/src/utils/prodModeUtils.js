@@ -17,6 +17,56 @@ export const PROD_STORAGE_KEYS = {
     REMEMBER_ME: 'payroll_remember_me'
 }
 
+const readCookieValue = (name) => {
+    try {
+        if (typeof document === 'undefined' || !document.cookie) return null
+        const encodedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const match = document.cookie.match(new RegExp(`(?:^|; )${encodedName}=([^;]*)`))
+        return match ? decodeURIComponent(match[1]) : null
+    } catch (e) {
+        console.error('[ProdMode] Failed to read cookie:', e)
+        return null
+    }
+}
+
+const decodeJwtPayload = (token) => {
+    try {
+        if (!token || typeof token !== 'string') return null
+        const [, payload] = token.split('.')
+        if (!payload) return null
+        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+        const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '=')
+        return JSON.parse(decodeURIComponent(escape(window.atob(padded))))
+    } catch (e) {
+        console.error('[ProdMode] Failed to decode proxy token:', e)
+        return null
+    }
+}
+
+const normalizeArray = (value) => {
+    if (Array.isArray(value)) return value.filter(Boolean).map(String)
+    if (typeof value === 'string' && value.trim()) return value.split(',').map(item => item.trim()).filter(Boolean)
+    return []
+}
+
+const buildUserFromTokenPayload = (payload) => {
+    if (!payload) return null
+    const explicitDivision = payload.division || payload.divisi || payload.div || payload.kode_lokasi || payload.unit || payload.location || payload.loc_code || null
+    const divisions = normalizeArray(payload.divisions || explicitDivision)
+    return {
+        id: payload.userId || payload.id || payload.sub || 0,
+        username: payload.username || payload.preferred_username || payload.email || payload.name || '',
+        name: payload.name || payload.full_name || payload.email || payload.username || '',
+        full_name: payload.full_name || payload.name || payload.email || payload.username || '',
+        email: payload.email || '',
+        role: payload.role || 'user',
+        divisi: explicitDivision || divisions[0] || null,
+        division: explicitDivision || divisions[0] || null,
+        divisions,
+        isExternal: true,
+        isProdMode: true
+    }
+}
 /**
  * Check if running in production mode (port 3001 or production build)
  */
@@ -76,7 +126,15 @@ export const getExternalLoginUrl = () => {
  */
 export const getProdToken = () => {
     try {
-        return localStorage.getItem(PROD_STORAGE_KEYS.AUTH_TOKEN)
+        const storedToken = localStorage.getItem(PROD_STORAGE_KEYS.AUTH_TOKEN)
+        if (storedToken) return storedToken
+
+        const cookieToken = readCookieValue(PROD_STORAGE_KEYS.AUTH_TOKEN) || readCookieValue('payroll_auth_token')
+        if (cookieToken) {
+            localStorage.setItem(PROD_STORAGE_KEYS.AUTH_TOKEN, cookieToken)
+            return cookieToken
+        }
+        return null
     } catch (e) {
         console.error('[ProdMode] Failed to get auth token:', e)
         return null
@@ -98,7 +156,14 @@ export const hasProdToken = () => {
 export const getProdUser = () => {
     try {
         const userJson = localStorage.getItem(PROD_STORAGE_KEYS.USER)
-        return userJson ? JSON.parse(userJson) : null
+        if (userJson) return JSON.parse(userJson)
+
+        const payloadUser = buildUserFromTokenPayload(decodeJwtPayload(getProdToken()))
+        if (payloadUser) {
+            localStorage.setItem(PROD_STORAGE_KEYS.USER, JSON.stringify(payloadUser))
+            return payloadUser
+        }
+        return null
     } catch (e) {
         console.error('[ProdMode] Failed to get user data:', e)
         return null

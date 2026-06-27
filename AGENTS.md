@@ -31,3 +31,9 @@ Recent commits use Conventional Commit prefixes such as `fix:`, `feat:`, `docs:`
 ## Security & Configuration Tips
 
 Do not commit `.env`, API keys, generated logs, or local tester files with secrets. Keep ignored browser automation pages local unless they are intentionally sanitized for documentation.
+
+
+## Dokumentasi Historis
+
+Panduan agent versi sebelumnya (CLAUDE.md, QWEN.md) diarsipkan di `docs/archive/`.
+Dokumen aktif untuk optimasi sistem: `docs/PRD-daftar-upah-optimization.md`.

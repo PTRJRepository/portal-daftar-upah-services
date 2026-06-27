@@ -1,6 +1,7 @@
 import { Database } from "../db/client";
 import { Config } from "../config";
 import { Elysia, t } from "elysia";
+import { takeToken } from "../utils/rateLimiter";
 import { gangService } from "../services/gangService";
 import { headerService } from "../services/headerService";
 import { payrollService } from "../services/payrollService";
@@ -17,6 +18,8 @@ import { AUTO_BUFFER_ADCODE_BY_ADJUSTMENT_NAME } from "../services/payroll/manua
 
 
 const authService = AuthService.getInstance();
+const STREAM_SLOW_LOG_MS = 30_000;
+const STREAM_MAX_RUNTIME_MS = 5 * 60_000;
 
 /**
  * [PERFORMANCE] Strip heavy per-row array fields before sending JSON to browser.
@@ -196,6 +199,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             set.status = 401;
             return { message: "Unauthorized" };
         }
+    })
+    .get("/locked/verify", ({ currentUser }) => {
+        const divisions = currentUser?.divisions || [];
+        return {
+            valid: true,
+            username: currentUser?.username,
+            role: currentUser?.role,
+            divisions,
+            division: divisions[0] || null,
+            user: currentUser
+        };
     })
     // --- Divisions ---
     .get("/divisions", async ({ currentUser }): Promise<any> => {
@@ -550,6 +564,11 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
     // --- Save Manual Edit ---
     .post("/manual-edit", async ({ body, currentUser, set }) => {
         try {
+            const rlKey = (currentUser as any)?.username || 'anon';
+            if (!takeToken(`write:${rlKey}`, { capacity: 60, refillPerSec: 6 })) {
+                set.status = 429;
+                return { success: false, error: "Rate limit exceeded. Coba lagi sebentar." };
+            }
             const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
             const { cacheService } = await import("../services/cacheService");
             const data = body as any;
@@ -568,11 +587,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const username = currentUser?.username || 'system';
             const resultId = await manualAdjustmentService.saveAdjustment(data, username);
 
-            // Always clear cache after save to ensure fresh data on next load
-            // Use suffix matching because keys format is payroll_data:{gangCode}:{month}:{year}
-            const pattern = `:${data.period_month}:${data.period_year}`;
-            cacheService.clearByPattern(pattern);
-            console.log(`[PayrollRoutes] Cleared cache for pattern: ${pattern} after manual edit`);
+            // Invalidate cache spesifik untuk gang+division yang diedit saja
+            cacheService.invalidatePayroll({ month: data.period_month, year: data.period_year, divisionCode: data.division_code, gangCode: data.gang_code });
 
             return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
         } catch (e: any) {
@@ -598,6 +614,86 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             task_code: t.Optional(t.String()),
             base_task_code: t.Optional(t.String()),
             task_desc: t.Optional(t.String())
+        })
+    })
+    // --- Batch Manual Edit (saves multiple adjustments in one request) ---
+    .post("/manual-edit/batch", async ({ body, currentUser, set }) => {
+        try {
+            const rlKey = (currentUser as any)?.username || 'anon';
+            if (!takeToken(`write:${rlKey}`, { capacity: 60, refillPerSec: 6 })) {
+                set.status = 429;
+                return { success: false, error: "Rate limit exceeded. Coba lagi sebentar." };
+            }
+            const { manualAdjustmentService } = await import("../services/manualAdjustmentService");
+            const { cacheService } = await import("../services/cacheService");
+            const items = (body as any).items as any[];
+            if (!Array.isArray(items) || items.length === 0) {
+                set.status = 400;
+                return { success: false, error: "items array required" };
+            }
+            if (items.length > 200) {
+                set.status = 400;
+                return { success: false, error: "Maximum 200 items per batch" };
+            }
+
+            const username = currentUser?.username || 'system';
+            const results: Array<{ index: number; success: boolean; id?: number; error?: string }> = [];
+            const affectedKeys = new Map<string, { month: number; year: number; divisionCode?: string; gangCode?: string }>();
+
+            // Process in parallel chunks of 10
+            const CONCURRENCY = 10;
+            for (let i = 0; i < items.length; i += CONCURRENCY) {
+                const chunk = items.slice(i, i + CONCURRENCY);
+                const settled = await Promise.allSettled(
+                    chunk.map(item => manualAdjustmentService.saveAdjustment(item, username))
+                );
+                settled.forEach((res, idx) => {
+                    const globalIdx = i + idx;
+                    const item = chunk[idx];
+                    if (res.status === 'fulfilled') {
+                        results.push({ index: globalIdx, success: true, id: res.value });
+                        const k = `${item.period_month}:${item.period_year}:${item.division_code || ''}:${item.gang_code || ''}`;
+                        if (!affectedKeys.has(k)) {
+                            affectedKeys.set(k, { month: item.period_month, year: item.period_year, divisionCode: item.division_code, gangCode: item.gang_code });
+                        }
+                    } else {
+                        results.push({ index: globalIdx, success: false, error: (res.reason as any)?.message || String(res.reason) });
+                    }
+                });
+            }
+
+            // Invalidate cache only for affected gang+division combinations
+            for (const k of affectedKeys.values()) {
+                cacheService.invalidatePayroll(k);
+            }
+
+            const successCount = results.filter(r => r.success).length;
+            return { success: true, total: items.length, successCount, failedCount: items.length - successCount, results };
+        } catch (e: any) {
+            console.error("[PayrollRoutes] manual-edit/batch error:", e);
+            set.status = 500;
+            return { success: false, error: e.message };
+        }
+    }, {
+        body: t.Object({
+            items: t.Array(t.Object({
+                period_month: t.Number(),
+                period_year: t.Number(),
+                emp_code: t.String(),
+                nik: t.Optional(t.String()),
+                emp_name: t.Optional(t.String()),
+                gang_code: t.String(),
+                division_code: t.Optional(t.String()),
+                adjustment_type: t.String(),
+                adjustment_name: t.String(),
+                amount: t.Number(),
+                remarks: t.Optional(t.String()),
+                metadata_json: t.Optional(t.String()),
+                ad_code: t.Optional(t.String()),
+                task_code: t.Optional(t.String()),
+                base_task_code: t.Optional(t.String()),
+                task_desc: t.Optional(t.String())
+            }))
         })
     })
     // --- Manual Adjustment for authenticated UI ---
@@ -665,8 +761,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const { cacheService } = await import("../services/cacheService");
             const resultId = await manualAdjustmentService.saveAdjustment(data, currentUser?.username || "system");
 
-            const pattern = `:${data.period_month}:${data.period_year}`;
-            cacheService.clearByPattern(pattern);
+            cacheService.invalidatePayroll({ month: data.period_month, year: data.period_year, divisionCode: data.division_code, gangCode: data.gang_code });
 
             return { success: true, id: resultId, message: "Manual adjustment saved successfully." };
         } catch (e: any) {
@@ -746,9 +841,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             await manualAdjustmentService.deleteAdjustment(id);
 
             if (query.period_month && query.period_year) {
-                cacheService.clearByPattern(`:${query.period_month}:${query.period_year}`);
+                cacheService.invalidatePayroll({
+                    month: Number(query.period_month),
+                    year: Number(query.period_year),
+                    divisionCode: query.division_code,
+                    gangCode: query.gang_code
+                });
             } else {
-                cacheService.clear();
+                cacheService.clearByPattern('payroll:');
             }
 
             return { success: true, message: "Manual adjustment deleted successfully." };
@@ -961,7 +1061,14 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 change_source: "DAFTAR_UPAH_UI"
             });
 
-            cacheService.clear();
+            // Profile override tidak punya period — clear semua cache untuk emp_code ini
+            // Lebih baik dari clear() global: hanya hapus key yang mengandung emp_code
+            const empCode = (body as any).emp_code;
+            if (empCode) {
+                cacheService.clearByPattern(`:${empCode}:`);
+            } else {
+                cacheService.clear();
+            }
             return { success: true, id };
         } catch (e: any) {
             set.status = 500;
@@ -989,7 +1096,16 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             const username = currentUser?.username || "system";
             const ids = await payrollOverlayService.saveValueOverrides((body as any).items, username);
 
-            cacheService.clear();
+            // Invalidate cache spesifik per gang+division+period yang terpengaruh
+            const items = (body as any).items as Array<{ period_month: number; period_year: number; division_code: string; gang_code: string }>;
+            const seen = new Set<string>();
+            for (const item of items) {
+                const k = `${item.period_month}:${item.period_year}:${item.division_code}:${item.gang_code}`;
+                if (!seen.has(k)) {
+                    seen.add(k);
+                    cacheService.invalidatePayroll({ month: item.period_month, year: item.period_year, divisionCode: item.division_code, gangCode: item.gang_code });
+                }
+            }
             return { success: true, ids };
         } catch (e: any) {
             set.status = 500;
@@ -1037,7 +1153,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 change_reason: change_reason || `Join date updated to ${join_date}`
             });
 
-            cacheService.clear();
+            cacheService.clearByPattern(`:${emp_code}:`);
             return { success: true, id };
         } catch (e: any) {
             set.status = 500;
@@ -1286,6 +1402,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
      * @route POST /payroll/manual-adjustment/compare-adtrans/by-api-key
      * @description Compare PR_ADTRANS (db_ptrj) values with payroll_manual_adjustments (extend_db_ptrj).
      *              Returns per-employee per-category comparison showing source vs stored amount.
+     *              Use status=MISSING,MISMATCH to filter results.
      * @access Public (with X-API-Key)
      */
     .post("/manual-adjustment/compare-adtrans/by-api-key", async ({ body, headers, set }) => {
@@ -1297,7 +1414,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             }
 
             const data = body as any;
-            const { period_month, period_year, division_code, filters } = data;
+            const { period_month, period_year, division_code, filters, status } = data;
 
             if (!period_month || !period_year) {
                 set.status = 400;
@@ -1317,10 +1434,31 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 filters || ['spsi', 'masa kerja', 'jabatan', 'premi', 'koreksi', 'potongan']
             );
 
+            // Filter by status if provided (e.g., status="MISSING" or "MISSING,MISMATCH")
+            let comparisons = result.comparisons;
+            if (status) {
+                const allowedStatuses = status.split(',').map((s: string) => s.trim().toUpperCase());
+                const validStatuses = ['MATCH', 'MISMATCH', 'MISSING'];
+                const filteredStatuses = allowedStatuses.filter((s: string) => validStatuses.includes(s));
+                if (filteredStatuses.length > 0) {
+                    comparisons = comparisons.filter((item: AdtransComparisonItem) => filteredStatuses.includes(item.status));
+                }
+            }
+
+            // Build simplified response
+            const summary = {
+                sync_status: result.match_count > 0 ? 'SYNC' : 'NOT_SYNC',
+                total_compared: result.total_employees,
+                match_count: result.match_count,
+                mismatch_count: result.mismatch_count,
+                missing_count: result.missing_in_adjustments,
+            };
+
             return {
                 success: true,
                 message: "Comparison completed successfully",
-                data: result
+                summary,
+                data: comparisons
             };
         } catch (e: any) {
             console.error("[PayrollRoutes] manual-adjustment/compare-adtrans error:", e);
@@ -1332,7 +1470,8 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             period_month: t.Number(),
             period_year: t.Number(),
             division_code: t.String(),
-            filters: t.Optional(t.Array(t.String()))
+            filters: t.Optional(t.Array(t.String())),
+            status: t.Optional(t.String())  // e.g., "MISSING" or "MISSING,MISMATCH"
         })
     })
 
@@ -2724,7 +2863,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
         console.log(`[Stream] Starting progressive | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} valuePriorityMode=${valuePriorityMode || 'non_db_ptrj'} useHistory=${useHistoryDb}`);
 
         const encoder = new TextEncoder();
+        const requestStartTime = Date.now();
         let cancelled = false;
+        let slowStreamLogged = false;
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -2762,6 +2903,18 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
 
                     for await (const chunk of progressiveStream) {
                         if (cancelled) break;
+
+                        const elapsedMs = Date.now() - streamStartTime;
+                        if (!slowStreamLogged && elapsedMs >= STREAM_SLOW_LOG_MS) {
+                            slowStreamLogged = true;
+                            console.warn(`[Stream] Slow stream | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                        }
+                        if (elapsedMs >= STREAM_MAX_RUNTIME_MS) {
+                            console.error(`[Stream] Timeout boundary reached | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${elapsedMs}ms`);
+                            controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: "Payroll stream melewati batas waktu server. Silakan coba lagi." })}\n\n`));
+                            streamComplete = true;
+                            break;
+                        }
 
                         const { phase, gangs, current_gang, meta, dynamic_premi_headers, dynamic_potongan_headers, dynamic_premi_titles, dynamic_potongan_titles } = chunk;
 
@@ -2936,6 +3089,7 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             },
             cancel() {
                 cancelled = true;
+                console.warn(`[Stream] Client cancelled | div=${divisionCode} month=${month} year=${year} gangCode=${gangCode} elapsed=${Date.now() - requestStartTime}ms`);
             }
         });
 
@@ -3522,8 +3676,9 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
                 set.status = 400;
                 return { success: false, error: "period_month dan period_year wajib diisi." };
             }
+            const premiumType = (query as any)?.premium_type as string | undefined;
             const service = ManualAdjustmentService.getInstance();
-            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
+            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service, premiumType);
             if (!result.success) set.status = 400;
             return { success: result.success, ...result };
         } catch (e: any) {
@@ -3532,30 +3687,89 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { success: false, error: e.message || "Gagal mengimpor Excel." };
         }
     })
-    .post("/premium-import-excel", async ({ body, query, set }) => {
-        try {
-            const { importPremiumExcel } = await import("../services/premiumImportService");
-            const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
-            const file = (body as any)?.file;
-            if (!file || !file.data) {
-                set.status = 400;
-                return { success: false, error: "File Excel wajib diunggah." };
+    // ── Premium Seeder Routes ──
+    .group("/premium-seeder", (app: any) => app
+        .post("/dry-run", async ({ body, set }: any) => {
+            try {
+                const { dryRunPremiumExcel } = await import("../services/premiumImportService");
+                const file = body?.file;
+                if (!file || !file.data) {
+                    set.status = 400;
+                    return { success: false, error: "File Excel wajib diunggah." };
+                }
+                const buffer = Buffer.from(file.data);
+                const periodMonth = Number(body?.period_month);
+                const periodYear = Number(body?.period_year);
+                const divisionCode = String(body?.division_code || 'ALL');
+                const premiumType = body?.premium_type as string | undefined;
+                if (!periodMonth || !periodYear) {
+                    set.status = 400;
+                    return { success: false, error: "period_month dan period_year wajib diisi." };
+                }
+                const result = await dryRunPremiumExcel(buffer, periodMonth, periodYear, divisionCode, premiumType);
+                return { success: true, ...result };
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/dry-run error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal melakukan dry-run." };
             }
-            const buffer = Buffer.from(file.data);
-            const periodMonth = Number((query as any)?.period_month);
-            const periodYear = Number((query as any)?.period_year);
-            const divisionCode = String((query as any)?.division_code || 'ALL');
-            if (!periodMonth || !periodYear) {
-                set.status = 400;
-                return { success: false, error: "period_month dan period_year wajib diisi." };
+        })
+        .post("/import", async ({ body, set }: any) => {
+            try {
+                const { importPremiumExcel, getPremiumImportProgress } = await import("../services/premiumImportService");
+                const { ManualAdjustmentService } = await import("../services/manualAdjustmentService");
+                const file = body?.file;
+                if (!file || !file.data) {
+                    set.status = 400;
+                    return { success: false, error: "File Excel wajib diunggah." };
+                }
+                const buffer = Buffer.from(file.data);
+                const periodMonth = Number(body?.period_month);
+                const periodYear = Number(body?.period_year);
+                const divisionCode = String(body?.division_code || 'ALL');
+                const premiumType = body?.premium_type as string | undefined;
+                const dryRunConfirmationId = body?.dry_run_confirmation_id as string | undefined;
+                if (!periodMonth || !periodYear) {
+                    set.status = 400;
+                    return { success: false, error: "period_month dan period_year wajib diisi." };
+                }
+                const service = ManualAdjustmentService.getInstance();
+                const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service, premiumType, dryRunConfirmationId);
+                if (!result.success) set.status = 400;
+                return { success: result.success, ...result };
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/import error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal mengimpor Excel." };
             }
-            const service = ManualAdjustmentService.getInstance();
-            const result = await importPremiumExcel(buffer, periodMonth, periodYear, divisionCode, service);
-            if (!result.success) set.status = 400;
-            return { success: result.success, ...result };
-        } catch (e: any) {
-            console.error("[PayrollRoutes] premium-import-excel error:", e);
-            set.status = 500;
-            return { success: false, error: e.message || "Gagal mengimpor Excel." };
-        }
-    });
+        })
+        .get("/progress", async ({ set }: any) => {
+            try {
+                const { getPremiumImportProgress } = await import("../services/premiumImportService");
+                const progress = getPremiumImportProgress();
+                if (!progress) {
+                    set.status = 404;
+                    return { success: false, error: "Tidak ada proses import berjalan." };
+                }
+                return { success: true, ...progress };
+            } catch (e: any) {
+                set.status = 500;
+                return { success: false, error: e.message };
+            }
+        })
+        .get("/template", async ({ query, set }: any) => {
+            try {
+                const { generatePremiumTemplate } = await import("../services/premiumImportService");
+                const premiumType = query?.premium_type as string | undefined;
+                const types = premiumType ? [premiumType] : undefined;
+                const buffer = await generatePremiumTemplate(types);
+                set.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                set.headers["Content-Disposition"] = `attachment; filename="template_premi_${premiumType || 'semua'}.xlsx"`;
+                return buffer;
+            } catch (e: any) {
+                console.error("[PayrollRoutes] premium-seeder/template error:", e);
+                set.status = 500;
+                return { success: false, error: e.message || "Gagal membuat template." };
+            }
+        })
+    )

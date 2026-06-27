@@ -90,4 +90,17 @@ describe('SummaryReportPage redesigned print header', () => {
     expect(pageSource).toContain('function compactPremiRowsForPrint');
     expect(pageSource).toContain('const printPremiRows = compactPremiRowsForPrint(premiBreakdownData)');
   });
+
+  it('exposes a reconciled premium breakdown report and total premi detail modal', () => {
+    expect(source).toContain('Report Uraian Premi');
+    expect(source).toContain('SummaryPremiumBreakdownReport');
+    expect(source).toContain('SummaryPremiumDetailModal');
+    expect(source).toContain('PREMI LAINNYA / SELISIH TOTAL');
+    expect(source).toContain('Total uraian sama dengan total premi');
+    expect(source).toContain('proses seeder berbasis upsert');
+    expect(source).toContain('Indikasi Premi Double Count');
+    expect(source).toContain('Premi Terindikasi Double');
+    expect(source).toContain('getSummaryRowPremiumDoubleCount');
+    expect(source).toContain('onClick={() => setPremiumDetailRow(row)}');
+  });
 });

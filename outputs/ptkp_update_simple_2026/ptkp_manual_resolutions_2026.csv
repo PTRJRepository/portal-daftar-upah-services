@@ -1,3 +1,0 @@
-match_key_type,match_key,nik,name,resolved_ptkp_status,resolution_note,ptkp_values,sources
-NIK,1902014705720002,1902014705720002,FEROSA DALINA,K/0,"Manual resolution 2026-05-04: Excel PTKP source of truth, choose K/0.",K/0;TK/0,"PERHITUNGAN PPH 21 2026 PGE 1B.xlsx::PADANG TEMBALUN!37=K/0 | PPH 21 JANUARI 2026 ARE B2.xlsx::AIR BANGEK!101=TK/0"
-NIK,1906041212900001,1906041212900001,SUTRISNO,K/0,"Manual resolution 2026-05-04: Excel PTKP source of truth, choose K/0.",K/0;K/2,"PERHITUNGAN PPH 21 2026 PGE 1B.xlsx::PADANG TEMBALUN!87=K/0 | PERHITUNGAN PPH 21 2026 PGE 1B.xlsx::GUNUNG RUM!31=K/2"

@@ -1,0 +1,32 @@
+{
+  "id": "IMPL-7",
+  "title": "Table layout stability",
+  "description": "Stop table jump by stabilizing responsive scale, row height, sticky offsets, and ResizeObserver behavior.",
+  "depends_on": [
+    "IMPL-6"
+  ],
+  "files": [
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/utils/payrollResponsiveScale.js",
+    "frontend/src/styles/CustomPayrollTable.css"
+  ],
+  "convergence": [
+    "ResizeObserver does not observe table-generated width/height feedback.",
+    "rowHeight remains stable during scroll.",
+    "Sticky header and gang header top offsets remain stable.",
+    "Table shell height no longer recalculates in a way that makes the table jump."
+  ],
+  "meta": {
+    "type": "frontend_table_layout",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
+}

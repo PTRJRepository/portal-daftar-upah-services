@@ -43,6 +43,7 @@ const VALUE_PRIORITY_MODE_META = {
 
 // Lazy load pages - TEMPORARILY STATIC
 import DashboardHome from './pages/DashboardHome'
+import ProfessionalDashboard from './pages/ProfessionalDashboard'
 import EmployeeDetailRoute from './pages/EmployeeDetailRoute'
 import HrInfoRoute from './pages/HrInfoRoute'
 import LoginPage from './pages/LoginPage'
@@ -54,6 +55,7 @@ import DbPtrjCompareReportModal from './components/DbPtrjCompareReportModal'
 import GangAttendanceMatrix from './components/GangAttendanceMatrix'
 import GangOvertimeMatrix from './components/GangOvertimeMatrix'
 import GangEmployeeInfo from './components/GangEmployeeInfo'
+
 // Report Pages (hanya dipakai di <Route> — lazy load)
 const EmployeeDirectoryPage = lazy(() => import('./pages/EmployeeDirectoryAnalytics'))
 const SummaryReportPage = lazy(() => import('./pages/SummaryReportPage'))
@@ -69,7 +71,8 @@ const WagesComparisonPage = lazy(() => import('./pages/WagesComparisonPage'))
 const ImpactReportPage = lazy(() => import('./pages/ImpactReportPage'))
 const TaxReportPage = lazy(() => import('./pages/TaxReportPage'))
 const OtherIncomesPage = lazy(() => import('./pages/OtherIncomesPage'))
-import { downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
+const PremiumSeederPage = lazy(() => import('./pages/PremiumSeederPage'))
+import { downloadTaxReportExcel, downloadMonthlyTaxReportExcelFromDOM } from './services/taxReportService'
 import { appendSnapshotVersionToSearchParams, normalizeSnapshotVersion } from './utils/payrollSnapshotQuery'
 import { shouldIgnoreGangPrefixForDivision } from './utils/payrollRequestScope'
 import { resolveGangPrefixAfterAvailablePrefixesChange } from './utils/payrollGangPrefixState'
@@ -84,6 +87,8 @@ const MillProductionReport = lazy(() => import('./pages/MillProductionReport'))
 const TonaseAnalysisReportPage = lazy(() => import('./pages/TonaseAnalysisReportPage'))
 const UpahBersihDetailPage = lazy(() => import('./pages/UpahBersihDetailPage'))
 const DataVerificationPage = lazy(() => import('./pages/DataVerificationPage'))
+const StagingComparisonPage = lazy(() => import('./pages/StagingComparisonPage'))
+const StagingDaftarUpahPage = lazy(() => import('./pages/StagingDaftarUpahPage'))
 const HighEarnerReportPage = lazy(() => import('./pages/HighEarnerReportPage'))
 const SalaryRangeDetailPage = lazy(() => import('./pages/SalaryRangeDetailPage'))
 import { parseSalaryRangeRouteParams } from './utils/reportRouteParams'
@@ -444,7 +449,7 @@ const OperationalReportWrapper = () => {
     setSeedingStatus('Extracting data from UI...')
 
     try {
-      const response = await fetch('/payroll/aggregation/seed-ui', {
+        const response = await fetch(buildBackendUrl('/payroll/aggregation/seed-ui'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1189,7 +1194,7 @@ function AppInner() {
               <DashboardLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<DashboardHome key={location.pathname + location.search} />} />
+            <Route index element={<ProfessionalDashboard key={location.pathname + location.search} />} />
 
             <Route path="operational" element={<OperationalReportWrapper key={location.pathname + location.search} />} />
             <Route path="employee-directory" element={<SummaryReportWrapper component={EmployeeDirectoryPage} />} />
@@ -1204,6 +1209,7 @@ function AppInner() {
             <Route path="seed" element={<SummaryReportWrapper component={AggregationSeederPage} />} />
             <Route path="spreadsheet-sync" element={<SummaryReportWrapper component={SpreadsheetSyncPage} />} />
             <Route path="wages-comparison" element={<SummaryReportWrapper component={WagesComparisonPage} />} />
+            <Route path="premium-seeder" element={<SummaryReportWrapper component={PremiumSeederPage} />} />
             <Route path="pendapatan-tidak-tetap" element={<SummaryReportWrapper component={OtherIncomesPage} />} />
             <Route path="report-pajak" element={<SummaryReportWrapper component={TaxReportPage} />} />
             <Route path="productivity" element={<SummaryReportWrapper component={ProductivityReportPage} />} />
@@ -1212,6 +1218,8 @@ function AppInner() {
             <Route path="tonase-analysis" element={<SummaryReportWrapper component={TonaseAnalysisReportPage} />} />
             <Route path="detail-upah-bersih" element={<SummaryReportWrapper component={UpahBersihDetailPage} />} />
             <Route path="data-verification" element={<SummaryReportWrapper component={DataVerificationPage} />} />
+            <Route path="staging-comparison" element={<SummaryReportWrapper component={StagingComparisonPage} />} />
+            <Route path="staging-daftar-upah" element={<SummaryReportWrapper component={StagingDaftarUpahPage} />} />
             <Route path="report/high-earners" element={<HighEarnerReportPage />} />
             <Route path="report/salary-range-detail" element={<SalaryRangeReportWrapper />} />
 

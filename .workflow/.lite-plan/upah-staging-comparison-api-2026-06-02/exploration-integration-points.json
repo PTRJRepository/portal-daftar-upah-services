@@ -1,0 +1,91 @@
+{
+  "_metadata": {
+    "exploration_angle": "integration-points",
+    "exploration_index": 2,
+    "task_summary": "Cross-DB join for monthly brondol selisih — staging (SERVER_PROFILE_2) + prod db_ptrj (SERVER_PROFILE_1) for HR_EMPLOYEE/PR_LOOSEFRUITLN"
+  },
+  "relevant_files": [
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "lines": "1-120",
+      "relevance": 0.95,
+      "role": "primary-target",
+      "rationale": "Constructor already wires stagingDb (SERVER_PROFILE_2) and prodDb (SERVER_PROFILE_1). Has reusable getEmpInfo() that joins HR_EMPLOYEE + HR_GANGLN + HR_GANG for identity enrichment."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "lines": "932-980",
+      "relevance": 0.95,
+      "role": "primary-target",
+      "rationale": "monthlyLoosefruit(month, year, gang?, division?) already does monthly staging Ffbscannerdata.LOOSEFRUIT vs prod PR_LOOSEFRUITLN per employee — exactly the aggregation the new endpoint needs."
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "lines": "90-112",
+      "relevance": 0.85,
+      "role": "reference",
+      "rationale": "getEmpInfo() returns { name, gang_code, division } map keyed by EmpCode — handles missing masters by returning empty strings."
+    },
+    {
+      "path": "backend/src/db/client.ts",
+      "lines": "1-80",
+      "relevance": 0.7,
+      "role": "context",
+      "rationale": "Database class with getInstance() (SERVER_PROFILE_1) and getStagingInstance() (SERVER_PROFILE_2) — confirm signatures."
+    },
+    {
+      "path": "docs/STAGING_VS_DBPTRJ_MAPPING.md",
+      "lines": "88-117",
+      "relevance": 0.8,
+      "role": "context",
+      "rationale": "Confirms staging loosefruit and prod PR_LOOSEFRUITLN are 1:1 (bunches ≈ MT). For brondol, the existing 'brondol' terminology in the codebase refers to LOOSEFRUIT (tandan lepas)."
+    }
+  ],
+  "patterns": {
+    "cross_db_strategy": "Two separate query() calls (staging + prod) then merged in JS via Map keyed by EmpCode. No real SQL cross-DB join — pattern reused from monthlyLoosefruit, monthlyAttendance, monthlyOvertime.",
+    "employee_master_source": "HR_EMPLOYEE on db_ptrj (SERVER_PROFILE_1) joined with HR_GANGLN + HR_GANG for gang_code and LocCode (=division/estate).",
+    "staging_brondol_source": "staging_PTRJ_iFES_Plantware.dbo.Ffbscannerdata column LOOSEFRUIT (cast as INT) — this is what the codebase calls 'brondol' (tandan lepas).",
+    "prod_brondol_source": "db_ptrj.dbo.PR_LOOSEFRUITLN column MT (metric tons) — 1:1 with staging bunches.",
+    "join_key": "EmpCode / WORKERCODE (trimmed string)",
+    "aggregation_history_table": "NOT needed — staging is live (Ffbscannerdata), prod is live (PR_LOOSEFRUITLN). Pre-aggregated daftar_upah_aggregation_history is for payroll/daftar-upah output, not brondol selisih."
+  },
+  "integration_points": [
+    {
+      "file": "backend/src/api/payroll.ts",
+      "lines": "187+",
+      "significance": "Add new route .get('/staging-comparison', ...). Follow chain: import service → handler → t.Object query schema."
+    },
+    {
+      "file": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "lines": "932-980",
+      "significance": "Reuse monthlyLoosefruit() directly OR call it + add NIK field. Easiest: extend monthlyLoosefruit return shape to include NIK (LEFT JOIN HR_EMPLOYEE.NIK in getEmpInfo or in main query)."
+    }
+  ],
+  "constraints": [
+    "Database: getStagingInstance() for Ffbscannerdata (SERVER_PROFILE_2), getInstance() for PR_LOOSEFRUITLN + HR_EMPLOYEE (SERVER_PROFILE_1)",
+    "No getVenusInstance() needed — HR_EMPLOYEE is on db_ptrj (SERVER_PROFILE_1), not VenusHR14 (SERVER_PROFILE_3)",
+    "Per CLAUDE.md: 'extend_db_ptrj uses SERVER_PROFILE_1' — but this endpoint doesn't query extend_db_ptrj; it queries db_ptrj directly. The db_ptrj default profile is SERVER_PROFILE_1 so safe."
+  ],
+  "clarification_needs": [
+    {
+      "id": "nik-inclusion",
+      "question": "Include NIK in response row?",
+      "context": "Existing monthlyLoosefruit does NOT include NIK (only emp_code, emp_name, gang_code, division). getEmpInfo() doesn't fetch NIK. User said 'identitas empoyye' (employee identity) which implies NIK should be included.",
+      "options": [
+        "Include NIK — extend getEmpInfo to also return NIK, populate in monthlyLoosefruit rows",
+        "Skip NIK — match existing monthlyLoosefruit shape, NIK is derivable from emp_code"
+      ],
+      "recommended": 0
+    },
+    {
+      "id": "estate-field-source",
+      "question": "estate and loccode — what is estate exactly?",
+      "context": "User said 'divisi atau estate atau loccode'. The codebase has gang_code, LocCode (from HR_GANG = division/loccode). 'Estate' is not a direct field — could be derived from LocCode or from a separate mapping.",
+      "options": [
+        "estate = LocCode (treat LocCode as estate code) — simplest, matches existing pattern",
+        "estate = derived from a separate mapping table — adds complexity"
+      ],
+      "recommended": 0
+    }
+  ]
+}

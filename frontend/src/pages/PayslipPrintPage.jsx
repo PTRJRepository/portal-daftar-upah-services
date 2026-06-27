@@ -4,10 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { getBatchEmployeeCheckroll, savePayslipHistory } from '../services/payslipService';
 import PayslipCard from '../components/PayslipCard';
 import { generatePDF } from '../utils/pdfGenerator';
-import { Printer, ArrowLeft, FileText, Database, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Download, Printer, ArrowLeft, FileText, Database, RefreshCw } from 'lucide-react';
 import { buildPayrollSnapshotCacheKey, normalizeSnapshotVersion } from '../utils/payrollSnapshotQuery';
 import { printReport } from '../utils/printPageSetup';
-import { exportPayslipsToExcel } from '../utils/exportPayslipsToExcel';
 import '../styles/payslip-print.css';
 
 /**
@@ -22,7 +21,6 @@ export default function PayslipPrintPage() {
 
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
-    const [exportingExcel, setExportingExcel] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
@@ -232,30 +230,12 @@ export default function PayslipPrintPage() {
             await generatePDF(printRef.current, filename, {
                 jsPDF: { orientation: 'portrait' },
                 margin: [0, 0, 0, 0],
-                pagebreak: { mode: ['css', 'legacy'], avoid: ['.payslip-card'] }
+                pagebreak: { mode: ['css', 'legacy'] }
             });
         } catch (err) {
             console.error('PDF Export error:', err);
         } finally {
             setExporting(false);
-        }
-    };
-
-    const handleExportExcel = async () => {
-        if (!payslipData.length) return;
-        setExportingExcel(true);
-        try {
-            await exportPayslipsToExcel(payslipData, {
-                division,
-                month,
-                year,
-                useHistory,
-                snapshotVersion
-            });
-        } catch (err) {
-            console.error('Excel Export error:', err);
-        } finally {
-            setExportingExcel(false);
         }
     };
 
@@ -366,14 +346,6 @@ export default function PayslipPrintPage() {
                         {exporting ? <RefreshCw size={16} className="animate-spin" /> : <FileText size={16} />}
                         {exporting ? 'Memproses...' : 'Simpan PDF'}
                     </button>
-                    <button
-                        className="payslip-preview-btn"
-                        onClick={handleExportExcel}
-                        disabled={exportingExcel}
-                    >
-                        {exportingExcel ? <RefreshCw size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
-                        {exportingExcel ? 'Memproses...' : 'Simpan Excel'}
-                    </button>
                     <button className="payslip-preview-btn payslip-preview-btn-primary" onClick={handlePrint}>
                         <Printer size={16} /> Print
                     </button>
@@ -400,7 +372,7 @@ export default function PayslipPrintPage() {
                         className="payslip-a4-page"
                         style={chunkIndex === payslipChunks.length - 1 ? { pageBreakAfter: 'auto' } : {}}
                     >
-                        <span className="payslip-cut-line payslip-cut-line--middle" aria-hidden="true"></span>
+                        <span className="payslip-cut-line payslip-cut-line--half" aria-hidden="true"></span>
                         <div className="payslip-grid">
                             {chunk.map((employeeData, slotIndex) => (
                                 <PayslipCard
@@ -450,13 +422,6 @@ export default function PayslipPrintPage() {
                         disabled={exporting}
                     >
                         {exporting ? 'Memproses PDF...' : '📄 Simpan sebagai PDF'}
-                    </button>
-                    <button
-                        className="payslip-preview-btn"
-                        onClick={handleExportExcel}
-                        disabled={exportingExcel}
-                    >
-                        {exportingExcel ? 'Memproses Excel...' : 'Simpan sebagai Excel'}
                     </button>
                     <button
                         className="payslip-preview-btn payslip-preview-btn-primary"

@@ -1,0 +1,69 @@
+{
+  "summary": "Remove silent fallback in tunjangan_jabatan multiplier. Replace attendanceDays = hariKerja ?? kehadiran with strict hariKerja usage. Apply formula tunjangan_jabatan = (tunjangan/25) * hari_kerja = jabatanRateResolved * hariKerja. When hari_kerja=0 (full cuti/sakit/izin), jabatanAmount=0 (no inflation from kehadiran). Add regression tests to prevent future fallback bugs.",
+  "approach": "Single-service fix in payrollAutoBufferService.ts. Remove the attendanceDays variable and the kehadiran fallback at line 257. Use hariKerja directly at the 3 use sites (lines 268, 281, 284). Add 3 bun:test regression cases. Public API surface unchanged, no caller updates needed. Test runner: bun test.",
+  "task_ids": ["TASK-001", "TASK-002"],
+  "task_count": 2,
+  "estimated_time": "30 minutes",
+  "recommended_execution": "Agent",
+  "complexity": "Medium",
+  "design_decisions": [
+    {
+      "decision": "Remove attendanceDays variable entirely, use hariKerja at all 3 use sites",
+      "rationale": "Eliminates the entire class of fallback bugs; user explicitly confirmed strict hari_kerja with no fallback",
+      "tradeoff": "Behavior change: callers that relied on the silent fallback will see 0 (intended per user)"
+    },
+    {
+      "decision": "Keep hariKerja > 0 guard in jabatanAmountAuto computation",
+      "rationale": "Guards against null/undefined reaching multiplication; preserves forced-zero path short-circuit",
+      "tradeoff": "None — guard is necessary for null safety"
+    },
+    {
+      "decision": "Touch only payrollAutoBufferService.ts and its test file",
+      "rationale": "Public API surface preserved (input/output shapes identical); no caller changes needed",
+      "tradeoff": "None — minimal blast radius"
+    },
+    {
+      "decision": "Add 3 new test cases (hariKerja=0, hariKerja<kehadiran, null hariKerja)",
+      "rationale": "Existing 6 tests pass regardless of fallback (they use hariKerja===kehadiran); new tests fill the coverage gap",
+      "tradeoff": "Adds ~5 min test authoring time for long-term regression safety"
+    }
+  ],
+  "metadata": {
+    "bug_site": "backend/src/services/payroll/payrollAutoBufferService.ts:255-288",
+    "fix_files": [
+      "backend/src/services/payroll/payrollAutoBufferService.ts",
+      "backend/src/services/payroll/payrollAutoBufferService.test.ts"
+    ],
+    "caller_files_unchanged": [
+      "backend/src/services/dataExtractorService.ts",
+      "backend/src/services/autoBufferManualAdjustmentSeederService.ts"
+    ],
+    "rate_config": "backend/data/rate_tunjagan_jabatan.json (daily rate: rate_by_jabatan, rate_by_role_group)",
+    "test_runner": "bun test",
+    "execution_strategy": "TASK-001 (new, no deps) then TASK-002 (resume from TASK-001)"
+  },
+  "_metadata": {
+    "timestamp": "2026-06-02T00:00:00.000Z",
+    "source": "cli-lite-planning-agent",
+    "plan_type": "feature",
+    "schema_version": "2.0",
+    "planning_mode": "agent-based",
+    "exploration_angles": ["dataflow", "error-handling", "state-management"],
+    "duration_seconds": 0,
+    "quality_check": {
+      "executed": true,
+      "method": "manual-validation",
+      "result": "PASS",
+      "dimensions": {
+        "completeness": "PASS — bug fix + regression tests covered; public API preserved",
+        "granularity": "PASS — TASK-001 ~20min, TASK-002 ~10min; each 15-60min range",
+        "dependencies": "PASS — linear chain TASK-001 → TASK-002; no circular deps",
+        "convergence_criteria": "PASS — quantified (zero references to attendanceDays, exact formula match, specific test names)",
+        "implementation_steps": "PASS — TASK-001 has 6 steps, TASK-002 has 4 steps (≥2 required)",
+        "constraint_compliance": "PASS — uses SERVER_PROFILE_1 for extend_db_ptrj per CLAUDE.md; no new deps; bun:test matches existing pattern"
+      },
+      "issues_found": [],
+      "fixes_applied": []
+    }
+  }
+}

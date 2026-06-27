@@ -1,0 +1,35 @@
+{
+  "id": "TASK-002",
+  "title": "Lazy-init staging services + ganti hardcoded STAGING_CATALOG dengan Config",
+  "description": "1) Ganti hardcoded STAGING_CATALOG = 'staging_PTRJ_iFES_Plantware' di StagingExplorerService dan StagingComparisonService dengan Config.DB_STAGING_DATABASE. 2) Ubah singleton creation di stagingRoutes.ts jadi lazy-init (dibuat hanya saat route diakses) untuk mencegah koneksi DB saat staging disabled.",
+  "scope": "lazy-init-catalog-fix",
+  "priority": "medium",
+  "estimated_minutes": 15,
+  "files": [
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingExplorerService.ts",
+      "change": "Ganti STAGING_CATALOG = 'staging_PTRJ_iFES_Plantware' dengan Config.DB_STAGING_DATABASE (import Config jika belum)"
+    },
+    {
+      "path": "backend/src/services/additional_service/explore_staging/stagingComparisonService.ts",
+      "change": "Ganti STAGING_CATALOG = 'staging_PTRJ_iFES_Plantware' dengan Config.DB_STAGING_DATABASE (import Config jika belum)"
+    },
+    {
+      "path": "backend/src/api/stagingRoutes.ts",
+      "change": "Ganti top-level singleton creation (L6-7) dengan lazy getter functions yang return singleton, sehingga tidak terkoneksi ke DB saat module di-import. Guard dengan DISABLE_STAGING_DB check sebelum buat instance."
+    }
+  ],
+  "depends_on": [
+    "TASK-001"
+  ],
+  "convergence": {
+    "criteria": [
+      "StagingExplorerService pakai Config.DB_STAGING_DATABASE, bukan hardcoded string",
+      "StagingComparisonService pakai Config.DB_STAGING_DATABASE, bukan hardcoded string",
+      "stagingRoutes.ts tidak membuat singleton di module scope — lazy init di dalam route handler atau getter",
+      "Saat DISABLE_STAGING_DB=true, import stagingRoutes.ts tidak trigger koneksi ke staging DB",
+      "Saat DISABLE_STAGING_DB=false, staging API endpoints tetap berfungsi normal"
+    ],
+    "verification": "1) Grep 'staging_PTRJ_iFES_Plantware' di backend/src — harus 0 hasil (kecuali Config). 2) Start backend dengan DISABLE_STAGING_DB=true, pastikan tidak ada connection attempt ke staging DB di log. 3) Start dengan DISABLE_STAGING_DB=false, test /api/staging/explore/tables — harus return data."
+  }
+}

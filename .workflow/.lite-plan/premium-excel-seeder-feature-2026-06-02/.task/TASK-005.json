@@ -1,0 +1,91 @@
+{
+  "id": "TASK-005",
+  "title": "Extend API routes for premium seeder with dry-run, import, and template download endpoints",
+  "scope": "backend/src/api/payroll.ts",
+  "action": "Implement",
+  "description": "Add new API endpoints to support the premium seeder workflow: POST /premium-seeder/dry-run (preview without commit), POST /premium-seeder/import (commit after dry-run confirmation), and GET /premium-seeder/template (download blank Excel template). Extend existing POST /premium-import-excel route or add dedicated route group in payroll.ts.",
+  "files": [
+    {
+      "path": "backend/src/api/payroll.ts",
+      "action": "add",
+      "target": "new route group /premium-seeder",
+      "change": "Add ElysiaJS route group with three endpoints: POST /dry-run (accepts Excel file + period_month + period_year + division_code + premium_type, returns PremiumDryRunSummary), POST /import (accepts Excel file + dryRunConfirmationId + period params, returns PremiumImportResult with progress), GET /template (accepts premium_type query param, returns .xlsx file buffer)."
+    }
+  ],
+  "implementation": [
+    "Create dedicated route group: app.group('/premium-seeder', (app) => { ... })",
+    "POST /dry-run: accept file buffer, period_month, period_year, division_code, premium_type via t.Object() body validation. Delegate to dryRunPremiumExcel(). Return PremiumDryRunSummary.",
+    "POST /import: accept file buffer, period_month, period_year, division_code, premium_type. Validate dry-run was performed (require dryRunConfirmationId or flag). Delegate to importPremiumExcel(). Return PremiumImportResult with progress.",
+    "GET /template: accept premium_type query param (optional, defaults to all blok types). Delegate to generatePremiumTemplate(). Set response headers: Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, Content-Disposition: attachment; filename='template_premi_{type}.xlsx'.",
+    "Add rate limiter to write endpoints (POST /import) using existing rateLimiter middleware",
+    "Add auth requirement (existing auth middleware applies to route group)",
+    "Add Elysia t.Object() schemas for request body validation on each endpoint",
+    "Handle errors: 400 for missing file/invalid params, 422 for validation failures, 500 for service errors"
+  ],
+  "reference": {
+    "pattern": "payroll.ts L3487-L3536 existing POST /premium-import-excel with file buffer handling, dynamic import, error handling",
+    "files": [
+      "backend/src/api/payroll.ts",
+      "backend/src/services/premiumImportService.ts"
+    ],
+    "examples": "payroll.ts L3487-L3513 shows: dynamic import of service, Buffer.from(file.data), period params from query, service.getInstance(), try/catch with set.status. Follow same structure for new endpoints."
+  },
+  "convergence": {
+    "criteria": [
+      "POST /premium-seeder/dry-run returns PremiumDryRunSummary with row-by-row action classification",
+      "POST /premium-seeder/import writes to payroll_manual_adjustments and returns PremiumImportResult with progress",
+      "GET /premium-seeder/template returns valid .xlsx buffer with correct Content-Type header",
+      "All endpoints protected by auth middleware",
+      "Write endpoints protected by rate limiter",
+      "Existing POST /premium-import-excel continues working (backward compatible)"
+    ]
+  },
+  "depends_on": [
+    "TASK-003",
+    "TASK-004"
+  ],
+  "rationale": {
+    "chosen_approach": "New /premium-seeder route group with dedicated endpoints for dry-run, import, and template download. Clean separation from existing /premium-import-excel route. Follows ElysiaJS group pattern.",
+    "alternatives_considered": [
+      "Extend existing /premium-import-excel with query params for dry-run/template",
+      "Separate route file (premiumSeederRoutes.ts) instead of payroll.ts"
+    ],
+    "decision_factors": [
+      "API clarity: separate endpoints for separate concerns",
+      "Backward compatibility: existing route unchanged",
+      "Consistency: payroll.ts already hosts premium-related routes"
+    ],
+    "tradeoffs": "Slightly more routes to maintain but clearer API surface. Route group keeps endpoints organized without needing new file."
+  },
+  "test": {
+    "manual_checks": [
+      "Call POST /premium-seeder/dry-run with valid Excel, verify 200 and correct summary",
+      "Call POST /premium-seeder/import without dry-run first, verify 400 error",
+      "Call GET /premium-seeder/template?premium_type=PREMI PRUNING, verify .xlsx download",
+      "Call endpoints without auth token, verify 401"
+    ],
+    "success_metrics": [
+      "3 endpoints return correct status codes for valid requests",
+      "Error responses include descriptive error messages",
+      "Rate limiter rejects >N requests/minute on write endpoints"
+    ],
+    "unit": [
+      "test_dry_run_endpoint_valid_request",
+      "test_dry_run_endpoint_missing_file",
+      "test_import_endpoint_requires_dry_run_confirmation",
+      "test_template_endpoint_content_type_header"
+    ],
+    "integration": [
+      "test_seeder_workflow_dry_run_then_import_end_to_end",
+      "test_template_download_then_upload_roundtrip"
+    ]
+  },
+  "cli_execution_id": "premium-excel-seeder-feature-2026-06-02-TASK-005",
+  "cli_execution": {
+    "strategy": "merge_fork",
+    "merge_from": [
+      "premium-excel-seeder-feature-2026-06-02-TASK-003",
+      "premium-excel-seeder-feature-2026-06-02-TASK-004"
+    ]
+  }
+}

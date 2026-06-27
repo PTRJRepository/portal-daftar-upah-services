@@ -1,0 +1,32 @@
+{
+  "id": "IMPL-1",
+  "title": "Baseline audit and merge guard",
+  "description": "Audit dirty worktree and establish safe ownership before touching dashboard or table files.",
+  "depends_on": [],
+  "files": [
+    "frontend/src/App.jsx",
+    "frontend/src/pages/ProfessionalDashboard.jsx",
+    "frontend/src/layouts/DashboardLayout.jsx",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/styles/CustomPayrollTable.css",
+    "frontend/src/pages/MainPage.jsx"
+  ],
+  "convergence": [
+    "Current diffs in target files are reviewed.",
+    "No unrelated changes are reverted or overwritten.",
+    "Implementation lanes are assigned by file ownership."
+  ],
+  "meta": {
+    "type": "frontend_safety",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "status_history": [
+    null,
+    {
+      "from": "pending",
+      "to": "completed",
+      "changed_at": "2026-06-01T08:38:22.4330223Z"
+    }
+  ]
+}

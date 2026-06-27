@@ -1,0 +1,21 @@
+{
+  "id": "IMPL-2",
+  "title": "Normalize payroll stream and fetch URLs",
+  "description": "Update raw fetch/SSE call sites to use buildBackendUrl or equivalent canonical API base. Preserve axios relative path behavior and local dev paths.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "files": [
+    "frontend/src/hooks/usePayrollStream.js",
+    "frontend/src/components/CustomPayrollTable.jsx",
+    "frontend/src/services/payrollService.js",
+    "frontend/src/services/lockedDivisionService.js"
+  ],
+  "convergence": "Payroll stream URL and fallback raw-tree URL resolve to /backend/upah/... in proxy mode and /payroll/... in local mode.",
+  "meta": {
+    "type": "frontend-implementation",
+    "agent": "code_developer"
+  },
+  "status": "completed",
+  "completed_at": "2026-06-01T09:55:00+07:00"
+}

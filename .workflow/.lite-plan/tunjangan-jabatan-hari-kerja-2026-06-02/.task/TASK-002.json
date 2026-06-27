@@ -1,0 +1,69 @@
+{
+  "id": "TASK-002",
+  "title": "Add regression tests for hari_kerja strict behavior",
+  "scope": "backend/src/services/payroll/payrollAutoBufferService.test.ts",
+  "action": "Add",
+  "description": "Add 2+ bun:test cases covering the bug scenario: (1) hari_kerja=0 + kehadiran>0 → jabatanAmount=0; (2) hari_kerja<kehadiran → uses hari_kerja not kehadiran as multiplier; (3) null/undefined hari_kerja → treated as 0. These guard against future regression of the fallback.",
+  "files": [
+    {
+      "path": "backend/src/services/payroll/payrollAutoBufferService.test.ts",
+      "action": "modify",
+      "target": "describe block, append new it() cases",
+      "change": "Add 3 new test cases that exercise the strict hari_kerja behavior. Use existing test pattern (import payrollAutoBufferService, call calculateAutomaticValues, assert result fields)."
+    }
+  ],
+  "implementation": [
+    "Add test: 'returns jabatanAmount=0 when hariKerja=0 even if kehadiran>0' — input {jabatanText:'mandor panen', hariKerja:0, kehadiran:25, dbJabatanJumlah:0, dbMasaKerjaJumlah:0}, expect jabatanAmount=0, jabatanRate=0, jabatanUsedFallback=false",
+    "Add test: 'multiplies by hariKerja strictly (not kehadiran) when both differ' — input {jabatanText:'operator', hariKerja:15, kehadiran:25, dbJabatanJumlah:0, dbMasaKerjaJumlah:0}, expect jabatanAmount=3500*15=52500, jabatanRate=3500",
+    "Add test: 'treats null/undefined hariKerja as 0 (no NaN, no fallback to kehadiran)' — input {jabatanText:'helper', hariKerja:null, kehadiran:20, dbJabatanJumlah:0, dbMasaKerjaJumlah:0}, expect jabatanAmount=0, jabatanRate=0",
+    "Run `cd backend && bun test src/services/payroll/payrollAutoBufferService.test.ts` and verify all tests (existing 6 + new 3) pass"
+  ],
+  "reference": {
+    "pattern": "bun:test describe/it pattern with expect assertions; mirror existing test style",
+    "files": [
+      "backend/src/services/payroll/payrollAutoBufferService.test.ts"
+    ],
+    "examples": "Follow lines 4-107 of existing test file for assertion style and input shape"
+  },
+  "convergence": {
+    "criteria": [
+      "At least 3 new test cases added covering: zero hariKerja with positive kehadiran, hariKerja<kehadiran, null hariKerja",
+      "All new tests pass under `bun test`",
+      "All 6 existing tests still pass (no regression)",
+      "Test names clearly describe the strict-hariKerja behavior (regression-proof naming)"
+    ]
+  },
+  "depends_on": ["TASK-001"],
+  "rationale": {
+    "chosen_approach": "Append 3 regression tests in the existing describe block using same style as existing tests",
+    "alternatives_considered": [
+      "Add a single parameterized test (rejected: bun:test has limited parametrization, readability worse)",
+      "Add a separate test file (rejected: existing test file is the natural home for service-level tests)",
+      "Skip tests and rely on manual verification (rejected: user explicitly required test coverage in fix)"
+    ],
+    "decision_factors": [
+      "Existing tests use hariKerja===kehadiran so they pass regardless of fallback — new tests fill that coverage gap",
+      "Bun:test is the project's test runner per existing test file",
+      "Tests are colocated with the service they validate"
+    ],
+    "tradeoffs": "Adds 3 small test cases that take ~5 min to write but prevent future regression of this exact bug class."
+  },
+  "test": {
+    "manual_checks": [
+      "Run `cd backend && bun test src/services/payroll/payrollAutoBufferService.test.ts` and confirm 9 tests pass",
+      "Temporarily revert the TASK-001 fix and verify the new tests fail (manual sanity check, then restore fix)",
+      "Verify the test names appear in `bun test --list-tests` output"
+    ],
+    "success_metrics": [
+      "9 total tests pass (6 existing + 3 new)",
+      "0 tests fail or error",
+      "Test runtime < 1 second"
+    ],
+    "unit": [
+      "test_payrollAutoBufferService_zero_hariKerja_positive_kehadiran_returns_zero",
+      "test_payrollAutoBufferService_uses_hariKerja_when_less_than_kehadiran",
+      "test_payrollAutoBufferService_null_hariKerja_treated_as_zero"
+    ],
+    "integration": []
+  }
+}
