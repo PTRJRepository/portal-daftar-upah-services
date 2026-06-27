@@ -278,6 +278,7 @@ export default function ProfessionalDashboard() {
     year, setYear,
     division, setDivision,
     gang, setGang,
+    gangPrefix, setGangPrefix,
     gangs, allDivisions,
     gangLoading, isLockedMode, isAdminUser,
     currentPeriod
@@ -296,6 +297,7 @@ export default function ProfessionalDashboard() {
         const params = new URLSearchParams({ month: String(month), year: String(year) });
         if (division) params.set('division_code', division);
         if (gang && gang !== 'ALL') params.set('gang_code', gang);
+        if (gangPrefix && gangPrefix !== 'ALL') params.set('gang_prefix', gangPrefix);
         const response = await fetch(buildBackendUrl(`/payroll/dashboard/executive-summary?${params.toString()}`), {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -313,7 +315,7 @@ export default function ProfessionalDashboard() {
     }
     loadDashboardSummary();
     return () => { active = false; };
-  }, [token, month, year, division, gang]);
+  }, [token, month, year, division, gang, gangPrefix]);
 
   const userRole = guessRole(user, isAdminUser);
   const roleMeta = getRoleMeta(userRole);
@@ -325,6 +327,28 @@ export default function ProfessionalDashboard() {
   const currentPeriodLabel = currentPeriod ? formatPeriodLabel(currentPeriod.month, currentPeriod.year) : formatPeriodLabel(month, year);
   const selectedPeriodLabel = formatPeriodLabel(month, year);
   const selectedGangLabel = gang === 'ALL' ? 'SEMUA GANG' : (gang || 'Belum dipilih');
+
+  // Group/Asistensi derivation (matches Daftar Upah logic):
+  // K2* -> group '1', otherwise the leading digit run of the gang code.
+  const getAsistensi = (code) => {
+    if (!code) return null;
+    const gc = String(code).trim().toUpperCase();
+    if (gc.startsWith('K2')) return '1';
+    const m = gc.match(/\d+/);
+    return m ? m[0] : null;
+  };
+  const availablePrefixes = useMemo(() => {
+    if (!Array.isArray(gangs) || gangs.length === 0) return [];
+    const set = new Set();
+    gangs.forEach(g => { const a = getAsistensi(g.gang_code); if (a) set.add(a); });
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  }, [gangs]);
+  // Reset gangPrefix when it's no longer valid for the current gang list
+  useEffect(() => {
+    if (gangPrefix && availablePrefixes.length > 0 && !availablePrefixes.includes(gangPrefix)) {
+      setGangPrefix('');
+    }
+  }, [gangPrefix, availablePrefixes, setGangPrefix]);
   const isKeraniRole = userRole === 'kerani';
   const canSeeReportPajak = userRole === 'finance' || userRole === 'payroll_admin';
   const canAccessReports = isKeraniRole || isAdminUser || !isProdMode();
@@ -370,7 +394,14 @@ export default function ProfessionalDashboard() {
     <div className="dashboard-dark">
       <div className="dashboard-dark__container">
         {/* ─── HERO BANNER ─────────────────────────────────────────────── */}
-        <section className="dashboard-dark__hero">
+        <section
+          className="dashboard-dark__hero dashboard-dark__hero--banner"
+          style={{
+            backgroundImage: `linear-gradient(120deg, rgba(8,20,12,0.92) 0%, rgba(10,30,18,0.78) 55%, rgba(10,30,18,0.35) 100%), url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQvJiYUwSzJH5sTusic2GfVszxQYpAl-eOy3A-_wF6MJAtgw9kbCnVeVy3Q&s=10')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center right'
+          }}
+        >
           <div>
             <h1 className="dashboard-dark__hero-title">Dashboard Payroll</h1>
             <p className="dashboard-dark__hero-subtitle">Sistem Manajemen Data Upah - PT Rebinmas Jaya</p>
@@ -378,6 +409,7 @@ export default function ProfessionalDashboard() {
               <div className="dashboard-dark__badge">Role: {roleMeta.label}</div>
               <div className="dashboard-dark__badge">Estate: {division || 'Semua divisi'}</div>
               <div className="dashboard-dark__badge">Gang: {selectedGangLabel}</div>
+              {gangPrefix && gangPrefix !== 'ALL' && <div className="dashboard-dark__badge">Group: {gangPrefix}</div>}
             </div>
           </div>
           <div className="dashboard-dark__period-box">
@@ -474,6 +506,22 @@ export default function ProfessionalDashboard() {
               </div>
             </div>
 
+            {/* Group / Asistensi (like Daftar Upah) */}
+            <div className="dashboard-dark__field">
+              <label>Group / Asistensi</label>
+              <select
+                className={`dashboard-dark__input ${gangLoading ? 'dashboard-dark__input--disabled' : ''}`}
+                value={gangPrefix || ''}
+                onChange={(e) => setGangPrefix(e.target.value)}
+                disabled={gangLoading || availablePrefixes.length === 0}
+              >
+                <option value="">Semua Group</option>
+                {availablePrefixes.map((p) => (
+                  <option key={p} value={p}>Group {p}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Action button */}
             <button
               type="button"
@@ -485,6 +533,11 @@ export default function ProfessionalDashboard() {
             </button>
           </div>
         </section>
+
+        {/* ─── MODULE SECTIONS (role-filtered, primary access) ─────────── */}
+        {visibleGroups.map((group) => (
+          <ModuleSection key={group.key} group={group} onClick={handleTileClick} />
+        ))}
 
         {/* ─── KPI SECTION ─────────────────────────────────────────────── */}
         <section className="dashboard-dark__section">
@@ -575,11 +628,6 @@ export default function ProfessionalDashboard() {
             </div>
           ) : null}
         </section>
-
-        {/* ─── MODULE SECTIONS (role-filtered) ──────────────────────────── */}
-        {visibleGroups.map((group) => (
-          <ModuleSection key={group.key} group={group} onClick={handleTileClick} />
-        ))}
 
         {/* ─── ACTIVITY GRID ───────────────────────────────────────────── */}
         <section className="dashboard-dark__activity-grid">

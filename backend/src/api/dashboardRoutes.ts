@@ -9,6 +9,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             const year = query.year ? parseInt(query.year) : new Date().getFullYear();
             const divisionCode = query.division_code && query.division_code !== 'ALL' ? query.division_code : undefined;
             const gangCode = query.gang_code && query.gang_code !== 'ALL' ? query.gang_code : undefined;
+            const gangPrefix = query.gang_prefix && query.gang_prefix !== 'ALL' ? query.gang_prefix : undefined;
 
             // Resolve gang codes for the selected division (HR_GANG lives in db_ptrj, not extendDb)
             let gangFilterCodes: string[] | undefined;
@@ -18,6 +19,19 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             }
             if (gangCode) {
                 gangFilterCodes = gangCode ? [gangCode] : gangFilterCodes;
+            }
+            // Group/Asistensi filter: narrow gang codes to those matching the prefix.
+            // Rule (matches frontend getAsistensi): K2* -> group '1', else leading digit run.
+            if (gangPrefix && gangFilterCodes && gangFilterCodes.length > 0) {
+                const isNumeric = /^\d+$/.test(gangPrefix);
+                gangFilterCodes = gangFilterCodes.filter(gc => {
+                    const code = (gc || '').trim().toUpperCase();
+                    if (isNumeric) {
+                        const asistensi = code.startsWith('K2') ? '1' : (code.match(/\d+/)?.[0] ?? null);
+                        return asistensi === gangPrefix;
+                    }
+                    return code.startsWith(gangPrefix.toUpperCase());
+                });
             }
 
             const trends = await dashboardService.getPayrollTrend(month, year, gangFilterCodes);
@@ -65,7 +79,8 @@ export const dashboardRoutes = new Elysia({ prefix: "/payroll/dashboard" })
             month: t.String(),
             year: t.String(),
             division_code: t.Optional(t.String()),
-            gang_code: t.Optional(t.String())
+            gang_code: t.Optional(t.String()),
+            gang_prefix: t.Optional(t.String())
         })
     })
     .get('/latest-period', async ({ set }) => {
