@@ -2,6 +2,7 @@ import { Database } from "../db/client";
 import { dataExtractorService } from "./dataExtractorService";
 import { Config } from "../config";
 import { gangService } from "./gangService";
+import { divisionConfigService } from "./config/DivisionConfigService";
 
 type TonaseReportPeriod = {
     month: number;
@@ -1677,23 +1678,29 @@ export class DashboardService {
             startMonth += 12;
         }
 
-        let divisionFilter = '';
-        // Note: parameters are positional in extendDb usually?
-        // Based on previous usage, it accepts array.
-        // We will pass [startYear, startMonth, endYear, endMonth, divisionCode]
-
         // Query has 6 placeholders for date logic:
         // (year > ? OR (year = ? AND month >= ?)) AND (year < ? OR (year = ? AND month <= ?))
         // Params order: startYear, startYear, startMonth, endYear, endYear, endMonth
         const params: any[] = [startYear, startYear, startMonth, endYear, endYear, endMonth];
 
+        let divisionFilter = '';
         if (divisionCode && divisionCode !== 'ALL') {
-            divisionFilter = `
-                AND h.gang_code IN(
-                SELECT code FROM HR_GANG WHERE division_code = ?
-                )
-            `;
-            params.push(divisionCode);
+            // HR_GANG lives in db_ptrj (SERVER_PROFILE_2), NOT extend_db_ptrj.
+            // Resolve gang codes on the payroll DB via divisionConfigService, then
+            // pass them as an IN (...) list to the extendDb aggregation query.
+            const gangs = await divisionConfigService.getGangsForDivision(divisionCode);
+            const gangCodes = gangs
+                .map(g => (g.gang_code || '').trim())
+                .filter(Boolean)
+                .map(c => c.replace(/'/g, "''"));
+
+            if (gangCodes.length === 0) {
+                // No gangs for this division → return empty trend
+                return [];
+            }
+            const placeholders = gangCodes.map(() => '?').join(',');
+            divisionFilter = `AND h.gang_code IN (${placeholders})`;
+            params.push(...gangCodes);
         }
 
         const query = `
