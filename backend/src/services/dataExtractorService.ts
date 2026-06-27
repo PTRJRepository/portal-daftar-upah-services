@@ -762,7 +762,14 @@ export class DataExtractorService {
         dynamic_potongan_headers: string[];
         premi_title_map: Record<string, string>;
         potongan_title_map: Record<string, string>;
-        meta: { execution_time_ms: number; row_count: number }
+        meta: {
+            execution_time_ms: number;
+            row_count: number;
+            cached?: boolean;
+            snapshot_version?: number | null;
+            requested_snapshot_version?: number | null;
+            available_snapshot_versions?: number[];
+        }
     }> {
         const valuePriorityMode = normalizePayrollValuePriorityMode(valuePriorityModeInput);
         const manualAdjustmentPolicy = resolveManualAdjustmentSourcePolicy(valuePriorityMode);
@@ -821,7 +828,7 @@ export class DataExtractorService {
         if (shouldFetchHistory && shouldReadHistorySnapshotForSourceMode) {
             try {
                 const historyData = await historyDatabaseService.getHistoricalPayrollDataAsExtractorFormat(
-                    month, year, gangCode, divisionCode, specificEmpCode
+                    month, year, gangCode, divisionCode, specificEmpCode, effectiveGangPrefix, snapshotVersion
                 );
 
                 if (historyData && historyData.data_rows.length > 0) {
@@ -2212,14 +2219,6 @@ export class DataExtractorService {
                 cached: false
             }
         };
-
-        // [OPTIMIZATION] Cache results for all periods
-        // TTL: 1 hour for historical, 60 seconds for current period
-        if (useCache && dataRows.length > 0) {
-            const ttl = cacheService.getPayrollCacheTtl(month, year, currentMonth, currentYear);
-            cacheService.set(cacheKey, result, ttl);
-            debug(CATEGORY, `💾 [CACHE SAVE] ${cacheKey} — cached ${dataRows.length} rows (TTL: ${ttl}s)`);
-        }
 
         debug(CATEGORY, `TOTAL: ${totalMs}ms for ${gangCode}/${month}/${year} (${dataRows.length} rows)`);
 

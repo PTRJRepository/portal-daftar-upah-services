@@ -1058,14 +1058,22 @@ export class HistoryDatabaseService {
         gangCode: string = "ALL",
         divisionCode?: string,
         specificEmpCode: string | null = null,
-        gangPrefix?: string
+        gangPrefix?: string,
+        requestedSnapshotVersion?: number | null
     ): Promise<{
         data_rows: any[];
         dynamic_premi_headers: string[];
         dynamic_potongan_headers: string[];
         premi_title_map: Record<string, string>;
         potongan_title_map: Record<string, string>;
-        meta: { execution_time_ms: number; row_count: number; is_history_snapshot: boolean }
+        meta: {
+            execution_time_ms: number;
+            row_count: number;
+            is_history_snapshot: boolean;
+            snapshot_version: number | null;
+            requested_snapshot_version: number | null;
+            available_snapshot_versions: number[];
+        }
     } | null> {
         const startTime = Date.now();
         const db = this.getPayrollDatabase();
@@ -1125,20 +1133,48 @@ export class HistoryDatabaseService {
             masterParams.push(gangCode);
         }
 
-        masterQuery += `
-            AND ISNULL(h.snapshot_version, 0) = (
-                SELECT ISNULL(MAX(h2.snapshot_version), 0)
-                FROM dbo.payroll_history_header h2
-                WHERE h2.period_month = h.period_month
-                  AND h2.period_year = h.period_year
-                  AND h2.division_code = h.division_code
-                  AND h2.gang_code = h.gang_code
-            )
-        `;
+        const hasRequestedVersion = typeof requestedSnapshotVersion === "number" && Number.isFinite(requestedSnapshotVersion);
+        if (hasRequestedVersion) {
+            // Use the specific requested snapshot version
+            masterQuery += ` AND ISNULL(h.snapshot_version, 0) = ?`;
+            masterParams.push(requestedSnapshotVersion as number);
+        } else {
+            // Default: latest snapshot version per period/division/gang
+            masterQuery += `
+                AND ISNULL(h.snapshot_version, 0) = (
+                    SELECT ISNULL(MAX(h2.snapshot_version), 0)
+                    FROM dbo.payroll_history_header h2
+                    WHERE h2.period_month = h.period_month
+                      AND h2.period_year = h.period_year
+                      AND h2.division_code = h.division_code
+                      AND h2.gang_code = h.gang_code
+                )
+            `;
+        }
 
         const masters = await db.query<{ id: number, snapshot_version: number, dynamic_premi_data: string, dynamic_potongan_data: string }>(masterQuery, masterParams);
 
+        // Query all available snapshot versions for this period (for frontend dropdown)
+        let availableSnapshotVersions: number[] = [];
+        try {
+            const versionRows = await db.query<{ snapshot_version: number }>(
+                `SELECT DISTINCT h.snapshot_version
+                 FROM dbo.payroll_history_header h
+                 WHERE h.period_month = ? AND h.period_year = ?
+                 ORDER BY h.snapshot_version DESC`,
+                [periodMonth, periodYear]
+            );
+            availableSnapshotVersions = versionRows
+                .map(r => r.snapshot_version)
+                .filter(v => v != null && Number.isFinite(v));
+        } catch (e) {
+            logError(CATEGORY, "Error fetching available snapshot versions:", e);
+        }
+
         if (masters.length === 0) return null; // No history data seeded yet
+
+        // The resolved snapshot version actually used (from the matched masters)
+        const resolvedSnapshotVersion = masters[0]?.snapshot_version ?? null;
 
         const masterIds = masters.map(m => m.id);
 
@@ -1470,7 +1506,10 @@ export class HistoryDatabaseService {
             meta: {
                 execution_time_ms: Date.now() - startTime,
                 row_count: data_rows.length,
-                is_history_snapshot: true
+                is_history_snapshot: true,
+                snapshot_version: resolvedSnapshotVersion,
+                requested_snapshot_version: hasRequestedVersion ? (requestedSnapshotVersion as number) : null,
+                available_snapshot_versions: availableSnapshotVersions
             }
         };
     }
