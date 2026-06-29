@@ -1,55 +1,62 @@
-# P1B Juni — Root Cause Final (B0088 jabatan, live ≠ canonical)
+# P1B Juni — Root Cause FINAL CONFIRMED
 
-**Divergensi:** P1B Juni grand upah_bersih dev 597,849,140.92 vs live 597,911,640.92 = **-62,500** (dev lebih kecil).
-**Satu employee beda:** B0088 (ZUWIRDA/SURYATI, kerani kantor, gang B3M, P1B).
+**Divergensi:** P1B Juni B0088 jabatan_jumlah dev=0 vs live=62,500. Grand upah_bersih dev 597,849,140 vs live 597,911,640 (-62,500).
 
-| Field | Dev | Live | Canonical c9e72ff6 (code) |
-|---|---|---|---|
-| hari_kerja | 0 | 0 | — |
-| jumlah_hk | 25 | 25 | — |
-| cuti_sakit_haid_hari | 20 | 20 | — |
-| jabatan_jumlah | 0 | 62500 | 0 (code: `hariKerja===0 ? 0`) |
-| jabatan_rate | 0 | 2500 | — |
-| masa_kerja_rate | 0 | 2300 | — |
-| total_tunjangan | 113750 | 176250 | — |
-| upah_bersih | 3312550 | 3375050 | — |
+## Sumber truth yang benar
+- User tunjuk canonical = `temp/server-changes-1` @ `c9e72ff6` → punya guard `hariKerja===0?0` + tidak ada `attendanceDays` fallback.
+- **Tapi live deploy = `origin/server-changes-1` @ `253eb1ea`** (1 commit behind temp) → TANPA guard + ADA `attendanceDays` fallback.
+- Live B0088=62,500 → live = origin/253eb1ea, BUKAN temp/c9e72ff6.
 
-## Kontradiksi penting: LIVE ≠ CANONICAL c9e72ff6
+**Konflik:** user anggap canonical c9e72ff6 = live, tapi ternyata live = origin 253eb1ea (code beda untuk B0088). User mau dev = live → dev harus ikut **origin/253eb1ea**, bukan temp/c9e72ff6.
 
-User anggapan: live = stabil benar, canonical GitHub c9e72ff6 = benar logic. Tapi untuk B0088 Juni:
-- **Live** jabatan_jumlah = 62,500 (meski hari_kerja=0)
-- **Canonical c9e72ff6 code** `payrollAutoBufferService.ts:267`: `const jabatanAmount = hariKerja === 0 ? 0 : (...)` → B0088 (hk=0) **harus 0** di canonical.
+## Perbedaan tepat (`payrollAutoBufferService.ts` ~line 264-269)
 
-Jadi live deploy BUKAN c9e72ff6 exact. Kemungkinan:
-1. Live = versi lebih baru/patched (ada commit setelah c9e72ff6 yang hapus `hariKerja===0 ? 0` guard).
-2. Live punya `payroll_manual_adjustments` B0088 dengan jabatan override 62,500 yang `dbJabatanJumlah` baca, TAPI dev `globalJabatanMap` tidak baca manual adjustment tsb.
-3. c9e72ff6 bukan tip sebenarnya dari branch canonical.
+### DEV (HEAD) — B0088=0 ❌
+```ts
+const jabatanAmountAuto = forceZeroRate
+    ? 0
+    : (hasJabatanRate && hariKerja > 0 ? (jabatanRateResolved as number) * hariKerja : null);
+const jabatanAmount = hariKerja === 0
+    ? 0
+    : (jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah);
+```
+- Tidak ada `attendanceDays` var.
+- Guard `hariKerja === 0 ? 0` blok fallback.
+- B0088 (hari_kerja=0): jabatanAmountAuto=null (karena hariKerja>0 false) → guard return 0.
 
-## Alur dev (line 1530-1545 dataExtractorService + payrollAutoBufferService)
-1. `empJabatan` = `globalJabatanMap[B0088]` (line 1538 `dbJabatanJumlah: empJabatan`)
-2. `globalJabatanMap` diisi dari `getTunjanganAmount(chunk, ..., "JABATAN", serverProfile)` = PR_ADTRANSLN where DocDesc LIKE '%JABATAN%'.
-3. B0088 = sick leave (task_type 3, PERSONNEL SICK LEAVE), kemungkinan **tidak ada row PR_ADTRANSLN JABATAN** untuk B0088 Juni → `globalJabatanMap[B0088]` undefined → fallback 0.
-4. `autoBufferVerification.display.jabatanAmount`:
-   - `jabatanAmountAuto = hasJabatanRate && attendanceDays>0 ? rate*days : null` → hk=0, kehadiran=0 → null.
-   - `jabatanAmount = jabatanAmountAuto !== null ? auto : dbJabatanJumlah` = `dbJabatanJumlah` = 0.
-5. Hasil dev: jabatan_jumlah=0.
+### ORIGIN/live (253eb1ea) — B0088=62,500 ✅
+```ts
+const kehadiran = Math.max(0, toNumber(input.kehadiran));
+const attendanceDays = hariKerja > 0 ? hariKerja : kehadiran;
+...
+const jabatanAmountAuto = forceZeroRate
+    ? 0
+    : (hasJabatanRate && attendanceDays > 0 ? (jabatanRateResolved as number) * attendanceDays : null);
+const jabatanAmount = jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah;
+```
+- `attendanceDays` fallback: hariKerja=0 → pakai `kehadiran` (=hk=25).
+- Tidak ada guard `hariKerja===0?0`.
+- B0088: attendanceDays=25, rate=2500 → jabatanAmountAuto=62,500 → jabatanAmount=62,500. ✅
 
-## Alur live (deduksi dari output)
-Live dapat 62,500 untuk B0088 hk=0. Sumber 62,500 kemungkinan:
-- `payroll_manual_adjustments` table ada row B0088 Juni adjustment_type=JABATAN amount=62500, DIBACA sebagai `dbJabatanJumlah`, TAPI guard `hariKerja===0?0` di-disable di live.
-- ATAU live baca `globalJabatanMap` dari sumber lain (auto-buffer table `auto_buffer_*` yang sudah berisi 62500 untuk B0088).
+## B0088 data
+- hari_kerja=0 (sick leave: jumlah_hk=25, cuti_sakit=20, cuti lain=5 → 25-25=0)
+- kehadiran/hk = 25
+- jabatan = kerani kantor, rate 2500
+- Tidak ada manual adjustment Juni (count=0 di dev & live)
+- Live default: 62,500 (dari rate×attendanceDays=2500×25)
+- Live db_ptrj_only/history: 0 (snapshot menyimpan 0)
 
-## Yang perlu klarifikasi user
-1. **Live = canonical c9e72ff6 exact?** Kalau ya, canonical code `hariKerja===0?0` harus return 0, tapi live 62,500 → kontradiksi. Verifikasi: cek apakah ada commit setelah c9e72ff6 di temp repo, atau live deploy dari branch lain.
-2. **Apakah B0088 punya manual adjustment 62,500 di Juni?** Query `payroll_manual_adjustments` di live untuk B0088 Juni 2026.
-3. **Sumber 62,500 live:** PR_ADTRANSLN, manual adjustment, atau auto-buffer table?
+## Fix
+Samakan dev `payrollAutoBufferService.ts` ke origin/253eb1ea:
+1. Tambah `const kehadiran = Math.max(0, toNumber(input.kehadiran));`
+2. Tambah `const attendanceDays = hariKerja > 0 ? hariKerja : kehadiran;`
+3. Ganti `hariKerja > 0` → `attendanceDays > 0` di jabatanAmountAuto
+4. Ganti `hariKerja > 0 ? ... : hariKerja` → `attendanceDays > 0 ? ... : attendanceDays` di jabatanRate
+5. Hapus guard `hariKerja === 0 ? 0 :` → `jabatanAmount = jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah`
+6. `jabatanUsedFallback`: `jabatanAmountAuto === null` (bukan `hariKerja > 0 && ...`)
+7. Sama untuk masa_kerja_rate (pakai attendanceDays)
 
-## Fix status
-- C2 dedupe: COMMITTED (tidak solve P1B Juni — income table kosong).
-- **B0088 fix: BLOCKED** — butuh klarifikasi live vs canonical, karena dev ikut canonical code (`hariKerja===0?0`) tapi user mau match live (62,500). Kalau dev=canonical=0 dan live=62,500, maka **live yang menyimpang dari canonical**, bukan dev. Fix dev agar = live = mengikuti logic non-canonical (hapus `hariKerja===0?0` guard + baca manual adjustment). Butuh keputusan user.
+## Catatan: canonical c9e72ff6 vs origin 253eb1ea
+c9e72ff6 (temp) = 1 commit ahead origin, nambah guard `hariKerja===0?0`. Tapi live deploy dari origin (tanpa guard). User bilang "canonical GitHub c9e72ff6 = benar logic" tapi juga "live = stabil benar". Dua konflik untuk B0088. Keputusan: ikut live (62,500) karena user mau "tidak ada perbedaan dengan live". Berarti c9e72ff6 guard itu SALAH untuk live parity.
 
-## Investigasi berikutnya (butuh akses DB live / keputusan)
-1. Query `payroll_manual_adjustments` B0088 Juni 2026 di live DB.
-2. Cek `auto_buffer_*` table B0088 Juni.
-3. Bandingkan live deploy commit vs c9e72ff6 (apakah live lebih baru).
-4. Putuskan: dev ikut canonical (0) atau ikut live (62,500)? User bilang "tidak ingin perbedaan dengan live" → dev harus 62,500 → hapus guard + baca manual adjustment.
+Investigasi: apakah c9e72ff6 guard itu intentional fix atau bug? Commit msg c9e72ff6 "Consolidate in-progress changes" — guard mungkin eksperimen. Live (origin) tidak pakai → live = truth.
