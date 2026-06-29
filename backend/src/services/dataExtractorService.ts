@@ -4965,16 +4965,25 @@ export class DataExtractorService {
             if (empCodeList) conditions.push(`RTRIM(emp_code) IN (${empCodeList})`);
             if (nikList) conditions.push(`RTRIM(nik) IN (${nikList})`);
             
-            const incomeRows = await extDb.query<any>(`
-                SELECT RTRIM(emp_code) as emp_code, RTRIM(nik) as nik, RTRIM(income_type) as income_type,
+            const incomeRowsRaw = await extDb.query<any>(`
+                SELECT id, RTRIM(emp_code) as emp_code, RTRIM(nik) as nik,
+                       RTRIM(ISNULL(new_nik, '')) as new_nik,
+                       RTRIM(income_type) as income_type,
                        RTRIM(income_name) as income_name, amount
                 FROM dbo.employee_other_incomes
                 WHERE period_month = ? AND period_year = ?
                   AND (${conditions.join(' OR ')})
+                ORDER BY id
             `, [month, year]);
 
-            debug(CATEGORY, `💰 Found ${incomeRows?.length || 0} other income records in extend_db_ptrj`);
-            
+            // [C2 FIX] Deduplicate by composite key (period|empCode|canonicalType),
+            // keeping the latest record (largest id). Restored to match canonical —
+            // without this, duplicate income rows (old NIK import vs new emp_code
+            // import, or re-seeds without clean DELETE) inflate upah_bersih.
+            const incomeRows = OtherIncomesService.deduplicateIncomeRows(incomeRowsRaw);
+
+            debug(CATEGORY, `💰 Found ${incomeRowsRaw?.length || 0} other income records in extend_db_ptrj, ${incomeRows?.length || 0} after latest-record dedupe`);
+
             if (incomeRows?.length === 0) {
                 debug(CATEGORY, `💰 WARNING: No other incomes found for month=${month}, year=${year}. Table may be empty or emp_codes may be missing.`);
             }
