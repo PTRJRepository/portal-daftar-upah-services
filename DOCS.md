@@ -14,6 +14,7 @@
 - **[.audit/AUDIT_REPORT.md](.audit/AUDIT_REPORT.md)** — 33 inconsistencies across 6 subsystems (manual adjustment, jabatan, seeder, DB-profile routing, snapshot/history, auth). 9 critical / 16 high / 12 medium / 7 low.
 - **[.audit/FIX_PLAN.md](.audit/FIX_PLAN.md)** — P0-P3 prioritized fix plan with file:line + steps + acceptance criteria + DO-NOT-BREAK list.
 - **[.audit/consistency-audit.workflow.js](.audit/consistency-audit.workflow.js)** — re-runnable multi-agent audit script (`Workflow({ scriptPath: ".audit/consistency-audit.workflow.js" })`).
+- **[.audit/DIVERGENCE_REPORT.md](.audit/DIVERGENCE_REPORT.md)** — dev (`server-dev-merger-1`) vs canonical GitHub (`temp/server-changes-1` @ `c9e72ff6`) diff: 34 divergences, 7 critical/high calc-numeric. Stub-vs-real flag for `otherIncomeCanonical` + `payrollPeriodAdjustments`. Action buckets: REVERT-DEV-TO-CANONICAL (18) / ADD-CANONICAL-TO-DEV (8) / KEEP (3) / INVESTIGATE (5).
 
 > Status: verified against current code 2026-06-29 — F1 (SELECT omits is_paid_in_thp at `dataExtractorService.ts:4969`), F16 (uiBasedSeeder DELETE missing division_code), F23 (`this.db = Database.getInstance()` bare at `:735`), F25 (`DB_PROFILE` defaults SERVER_PROFILE_1 at `config.ts:36`) all confirmed present. The `.audit/` files are untracked; commit them before merge.
 
