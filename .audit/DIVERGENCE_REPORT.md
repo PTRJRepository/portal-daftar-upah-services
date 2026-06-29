@@ -153,3 +153,25 @@ Audit target: dev branch `server-dev-merger-1` (HEAD) vs canonical GitHub `c9e72
 **Highest-leverage fixes (payroll-number correctness):** C1 (payrollPeriodAdjustments), C2 (dedupe), C6 (normalizeGrossDeductionForDisplay), C7 (dataRequestKey deps). These four directly change displayed/totaled payroll figures.
 
 **INVESTIGATE before revert (may be intended dev features, not drift):** C3 (historyDatabaseService snapshot_version), C5 (dashboardRoutes gang filters), L8 (@elysiajs/static), L9 (premium-seeder routes), L18 (apiBase.js). Confirm with user before reverting — canonical=truth per mandate, but these smell like deliberate enhancements.
+
+---
+
+## 7. INVESTIGATE verdicts (resolved 2026-06-29)
+
+5 parallel agents judged each INVESTIGATE-flagged item. **All verdict: KEEP-DEV** (intentional features, backward-compatible with canonical).
+
+| Item | File | Verdict | Rationale |
+|---|---|---|---|
+| C3 snapshot versioning | historyDatabaseService.ts | **KEEP-DEV** | Additive: `requestedSnapshotVersion` optional, null→MAX subquery = canonical path byte-for-byte. New meta fields optional. Explicit user request. |
+| C5 dashboard gang filters | dashboardService.ts + dashboardRoutes.ts | **KEEP-DEV** | Additive: `gangCodes?` optional, empty→no `IN()` clause = canonical SQL. `buildGangCodeFilter` returns empty clause when undefined. Narrows IN-set, no math change. Per "KPI tampilk sesuai divisinya". |
+| L8 static serving | index.ts | **KEEP-DEV** | Dev `serveStaticAsset()` superior: reads pre-built `.br`/`.gz` from disk (zero CPU) vs canonical runtime `Bun.gzipSync()`. Dev supports Brotli (canonical gzip-only). Dev `staticPlugin` before explicit handlers = real fallback (canonical placement = dead code). Dev keeps `/backend/upah/health` + stagingRoutes canonical dropped. |
+| L9 premium-seeder routes | payroll.ts | **KEEP-DEV** | Additive `.group("/premium-seeder")` (dry-run/import/progress/template) on top of canonical's bare `/premium-import-excel`. `premiumImportService` exists in canonical (not orphan). Frontend `PremiumSeederPage.tsx` wired at App.jsx:1212. Lazy import = intentional opt. |
+| L18 apiBase/buildBackendUrl | frontend/src/utils/apiBase.js | **KEEP-DEV** | Pervasive (11 files incl 4 new pages absent in canonical). `VITE_PROXY_MODE` flag + `/backend/upah` prefix = deliberate gateway design. Canonical bare paths break behind real reverse proxy. 4 caller pages only exist via buildBackendUrl. |
+
+**Net effect on fix plan:** 5 INVESTIGATE items removed from revert queue. They are intentional dev enhancements that are backward-compatible with canonical (no-filter/default = canonical behavior). **Do NOT revert.**
+
+### Revised action totals
+- REVERT-DEV-TO-CANONICAL: 18 (unchanged — these are real calc/logic drift, e.g. C1/C2/C6/C7 stub-vs-real)
+- ADD-CANONICAL-TO-DEV: 8 (unchanged)
+- KEEP-DEV: 3 + **5 investigated = 8**
+- INVESTIGATE: 5 → **0 resolved**
