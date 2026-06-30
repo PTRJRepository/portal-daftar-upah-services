@@ -253,6 +253,8 @@ class PayrollAutoBufferService {
         this.ensureLoaded();
 
         const hariKerja = Math.max(0, toNumber(input.hariKerja));
+        const kehadiran = Math.max(0, toNumber(input.kehadiran));
+        const attendanceDays = hariKerja > 0 ? hariKerja : kehadiran;
 
         const dbJabatanJumlah = toNumber(input.dbJabatanJumlah);
         const dbMasaKerjaJumlah = toNumber(input.dbMasaKerjaJumlah);
@@ -263,10 +265,8 @@ class PayrollAutoBufferService {
         const hasJabatanRate = forceZeroRate || (Number.isFinite(jabatanRateResolved || NaN) && (jabatanRateResolved || 0) > 0);
         const jabatanAmountAuto = forceZeroRate
             ? 0
-            : (hasJabatanRate && hariKerja > 0 ? (jabatanRateResolved as number) * hariKerja : null);
-        const jabatanAmount = hariKerja === 0
-            ? 0
-            : (jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah);
+            : (hasJabatanRate && attendanceDays > 0 ? (jabatanRateResolved as number) * attendanceDays : null);
+        const jabatanAmount = jabatanAmountAuto !== null ? jabatanAmountAuto : dbJabatanJumlah;
 
         const masaKerjaAmountAuto = this.resolveMasaKerjaAmount(masaKerjaTahun);
         const hasMasaKerjaConfig = masaKerjaAmountAuto !== null;
@@ -278,10 +278,10 @@ class PayrollAutoBufferService {
 
         return {
             jabatanAmount,
-            jabatanRate: hariKerja > 0 ? jabatanAmount / hariKerja : 0,
-            jabatanUsedFallback: hariKerja > 0 && jabatanAmountAuto === null,
+            jabatanRate: attendanceDays > 0 ? jabatanAmount / attendanceDays : 0,
+            jabatanUsedFallback: jabatanAmountAuto === null,
             masaKerjaAmount,
-            masaKerjaRate: hariKerja > 0 ? masaKerjaAmount / hariKerja : 0,
+            masaKerjaRate: attendanceDays > 0 ? masaKerjaAmount / attendanceDays : 0,
             masaKerjaUsedFallback: !hasMasaKerjaConfig,
             spsiDeduction
         };
