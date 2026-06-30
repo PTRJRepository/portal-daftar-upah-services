@@ -1,76 +1,95 @@
-/**
- * payrollPeriodAdjustments.ts
- *
- * Helpers for period-specific payroll adjustments:
- *   - resolveAdjustedJabatanJumlah : resolve the tunjangan jabatan amount for an employee,
- *     applying any period-specific override when present.
- *   - shouldForcePotPph21ToTer     : decide whether the PPh21 deduction for an employee
- *     should be forced to the recalculated TER value (instead of the stored pot_pph21).
- *   - attachPayrollPeriodAdjustmentNotes : annotate an employee row with the adjustment
- *     notes/flags used by downstream reports.
- *
- * STATUS: STUB — this module was imported by taxReportService and taxReportRoutes but
- * was never committed to git. These stubs preserve existing behavior (no override, no
- * force-to-TER, no notes) so the backend boots and tax reports run without crashing.
- *
- * TODO: Replace with the real period-adjustment logic once available. Until then:
- *   - resolveAdjustedJabatanJumlah returns the fallback amount as-is.
- *   - shouldForcePotPph21ToTer returns false (use the stored pot_pph21 deduction).
- *   - attachPayrollPeriodAdjustmentNotes is a no-op.
- */
-
-export interface PayrollPeriodContext {
+type PayrollAdjustmentContext = {
     month: number;
     year: number;
-    divisionCode?: string;
+    divisionCode?: string | null;
+};
+
+type PayrollAdjustmentRow = {
+    emp_code?: unknown;
+    emp_name?: unknown;
+    nama?: unknown;
+    loc_code?: unknown;
+    division_code?: unknown;
+    pph21_ter?: unknown;
+    pot_pph21?: unknown;
+    pph21?: unknown;
+    [key: string]: any;
+};
+
+export type PayrollPeriodAdjustment = {
+    code: string;
+    comment: string;
+    jabatanJumlahOverride?: number;
+    forcePotPph21ToTer?: boolean;
+};
+
+function normalizeCode(value: unknown): string {
+    return String(value || "").trim().toUpperCase();
+}
+
+function isMay2026(context: PayrollAdjustmentContext): boolean {
+    return Number(context.month) === 5 && Number(context.year) === 2026;
+}
+
+function rowMatchesDivision(row: PayrollAdjustmentRow, context: PayrollAdjustmentContext, divisionCode: string): boolean {
+    const expected = normalizeCode(divisionCode);
+    return [context.divisionCode, row.division_code, row.loc_code]
+        .map(normalizeCode)
+        .some((code) => code === expected);
 }
 
 /**
- * Resolve the tunjangan jabatan (jabatan_jumlah) for an employee, honoring any
- * period-specific override. Stub returns the fallback amount unchanged.
+ * One-off payroll corrections that must stay period-scoped.
  *
- * @param emp          Employee row (may carry override fields in the real impl).
- * @param ctx          Period context { month, year, divisionCode }.
- * @param fallback     Default jabatan jumlah when no override applies.
- * @returns            The resolved jabatan jumlah (Number-coerced).
+ * Add new temporary rules here, with an explicit period and comment, so normal
+ * payroll behavior remains unchanged outside the stated month/year.
  */
+export function getPayrollPeriodAdjustments(
+    row: PayrollAdjustmentRow,
+    context: PayrollAdjustmentContext
+): PayrollPeriodAdjustment[] {
+    if (!isMay2026(context)) return [];
+
+    const empCode = normalizeCode(row.emp_code);
+    const adjustments: PayrollPeriodAdjustment[] = [];
+
+    if (empCode === "B0088") {
+        adjustments.push({
+            code: "2026-05-B0088-JABATAN-ZERO",
+            jabatanJumlahOverride: 0,
+            comment: "Mei 2026 only: B0088 ZUWIRDA (SURYATI) tunjangan jabatan disesuaikan menjadi 0."
+        });
+    }
+
+    if (empCode === "F0529" && rowMatchesDivision(row, context, "ARA")) {
+        adjustments.push({
+            code: "2026-05-ARA-F0529-PPH21-TER",
+            forcePotPph21ToTer: true,
+            comment: "Mei 2026 only: F0529 divisi ARA potongan PPh21 disamakan dengan PPh21 TER."
+        });
+    }
+
+    return adjustments;
+}
+
 export function resolveAdjustedJabatanJumlah(
-    emp: any,
-    ctx: PayrollPeriodContext,
-    fallback: number
+    row: PayrollAdjustmentRow,
+    context: PayrollAdjustmentContext,
+    currentValue: number
 ): number {
-    const base = Number(fallback);
-    if (!Number.isFinite(base)) return 0;
-    return base;
+    const adjustment = getPayrollPeriodAdjustments(row, context)
+        .find((item) => item.jabatanJumlahOverride !== undefined);
+    return adjustment ? Number(adjustment.jabatanJumlahOverride) || 0 : currentValue;
 }
 
-/**
- * Decide whether the PPh21 deduction should be forced to the recalculated TER
- * value for this employee/period. Stub returns false so the stored pot_pph21
- * is used (matches pre-stub behavior where the ternary fell back to pot_pph21).
- *
- * @param emp  Employee row.
- * @param ctx  Period context { month, year, divisionCode }.
- * @returns    true to force pot_pph21 := pph21_ter; false to keep stored pot_pph21.
- */
-export function shouldForcePotPph21ToTer(
-    emp: any,
-    ctx: PayrollPeriodContext
-): boolean {
-    return false;
+export function shouldForcePotPph21ToTer(row: PayrollAdjustmentRow, context: PayrollAdjustmentContext): boolean {
+    return getPayrollPeriodAdjustments(row, context).some((item) => item.forcePotPph21ToTer === true);
 }
 
-/**
- * Attach period-adjustment notes/flags to an employee row for downstream reports.
- * Stub is a no-op; the real implementation is expected to set fields such as
- * `adjustment_notes` / `jabatan_adjusted` / `pph21_forced_to_ter` on `emp`.
- *
- * @param emp  Employee row (mutated in place).
- * @param ctx  Period context { month, year, divisionCode }.
- */
-export function attachPayrollPeriodAdjustmentNotes(
-    emp: any,
-    ctx: PayrollPeriodContext
-): void {
-    // no-op stub
+export function attachPayrollPeriodAdjustmentNotes(row: PayrollAdjustmentRow, context: PayrollAdjustmentContext): void {
+    const adjustments = getPayrollPeriodAdjustments(row, context);
+    if (adjustments.length === 0) return;
+
+    row.period_adjustments = adjustments.map(({ code, comment }) => ({ code, comment }));
 }
+

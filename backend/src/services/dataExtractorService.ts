@@ -35,6 +35,11 @@ import {
     resolvePayrollDivisionCodeForScope,
     resolvePayrollGangPrefixForDivision
 } from "../utils/payrollGangScope";
+import {
+    attachPayrollPeriodAdjustmentNotes,
+    resolveAdjustedJabatanJumlah,
+    shouldForcePotPph21ToTer
+} from "../utils/payrollPeriodAdjustments";
 
 const CATEGORY = "DataExtractor";
 
@@ -4783,6 +4788,11 @@ export class DataExtractorService {
             let jabatanRate = autoBufferVerification.display.jabatanRate;
             let masaKerjaRate = autoBufferVerification.display.masaKerjaRate;
             let pot_spsi = autoBufferVerification.display.spsiDeduction;
+            jabatanJumlah = resolveAdjustedJabatanJumlah(emp, { month, year, divisionCode }, jabatanJumlah);
+            if (jabatanJumlah === 0 && autoBufferVerification.display.jabatanAmount !== 0) {
+                jabatanRate = 0;
+            }
+            attachPayrollPeriodAdjustmentNotes(emp, { month, year, divisionCode });
             Object.assign(valueSyncFrame, autoBufferVerification.valueSyncFrame);
             valueSourceCompare.is_spsi_member = { db_ptrj: deriveInitialSpsiMember(dbPotSpsi), active: isSpsiMember };
             Object.assign(valueSourceCompare, autoBufferVerification.valueSourceCompare);
@@ -4872,6 +4882,9 @@ export class DataExtractorService {
                 statusPTKP,
                 year
             );
+            const adjustedPotPph21 = shouldForcePotPph21ToTer(emp, { month, year, divisionCode })
+                ? Math.abs(Number(calc.pph21_ter) || 0)
+                : pot_pph21;
 
             // Apply final data directly to emp object
             emp.hari_kerja = hari_kerja;
@@ -4905,7 +4918,7 @@ export class DataExtractorService {
             emp.pot_astek = pot_astek_pekerja;
             emp.pot_bpjs_pekerja_total = pot_bpjs_pekerja_total;
             emp.pot_spsi = pot_spsi;
-            emp.pot_pph21 = pot_pph21;
+            emp.pot_pph21 = adjustedPotPph21;
             emp.pot_premi_pph = pot_premi_pph; // [FIX] Add for aggregation service
             emp.total_potongan = calc.total_potongan;
             emp.total_potongan_bersih = calc.total_potongan_bersih;
@@ -5122,9 +5135,15 @@ export class DataExtractorService {
                     statusPTKP,
                     year
                 );
+                const adjustedPotPph21 = shouldForcePotPph21ToTer(emp, { month, year, divisionCode })
+                    ? Math.abs(Number(calc.pph21_ter) || 0)
+                    : pot_pph21;
+                if (adjustedPotPph21 !== pot_pph21) {
+                    // re-run calc with forced TER PPh21 to keep downstream totals consistent
+                }
 
                 emp.pot_koreksi = pot_koreksi;
-                emp.pot_pph21 = pot_pph21;
+                emp.pot_pph21 = adjustedPotPph21;
                 emp.pot_premi_pph = pot_premi_pph;
                 emp.pot_astek = pot_astek_pekerja;
                 emp.pot_bpjs_kesehatan_pekerja = pot_bpjs_kesehatan_pekerja;
