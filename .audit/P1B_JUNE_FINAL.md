@@ -1,39 +1,45 @@
-# P1B Juni — Fix Status Final
+# P1B Juni — Investigasi Final (data DB sama, live anomali)
 
-## Fix logic: DONE (dev = canonical c9e72ff6)
-`payrollAutoBufferService.ts` + `payrollAutoBufferService.test.ts` checked out dari canonical `c9e72ff6`. Test 6 pass.
+## Temuan faktual
+User: data DB sama, selisih ~6 juta. Investigasi:
 
-Perubahan: hapus guard `hariKerja===0?0` + tambah `attendanceDays = hariKerja>0?hariKerja:kehadiran` fallback. B0088 (sick leave hari_kerja=0) sekarang pakai `kehadiran`(=hk) → rate×hk.
+### Query langsung ke gateway (10.0.0.110:8001, DB_PROFILE_2 db_ptrj)
+B0088 Juni 2026:
+- PR_TASKREGLN (LIVE) `COUNT(DISTINCT TrxDate) WHERE OT=0` = **28**
+- PR_TASKREGLN_ARC = **0**
+- UNION distinct = **28**
 
-## Sisa divergensi: DATA DB, bukan logic
+### Output aplikasi
+- **Dev** (server-dev-merger-1, post-fix): hk=28 ✅ match DB
+- **Live** (ptrjestate:3001): hk=25 ❌ ≠ DB (28)
 
-Post-fix, B0088 P1B Juni dev vs live:
-| Field | Dev post-fix | Live | 
-|---|---|---|
-| jabatan_rate | 2500 ✅ | 2500 |
-| jabatan_jumlah | 70000 | 62500 |
-| masa_kerja_rate | 2053.57 | 2300 |
-| jumlah_hk | **28** | **25** |
-| cuti_tahunan_hari | **6** | **4** |
-| hari_kerja | 0 | 0 |
+### Logic compare (dev vs canonical c9e72ff6)
+- `getAttendance` query: IDENTIK (UNION ALL LIVE+ARC, `COUNT(DISTINCT TrxDate)`, `WHERE OT=0`, no leave filter)
+- `buildLeaveSqlExpressions`: IDENTIK (unused in getAttendance WHERE)
+- `getCuti`: IDENTIK
+- `payrollAutoBufferService`: dev fixed to canonical (attendanceDays, no guard)
+- aggregation merge `Object.assign(attendanceMap, attB)`: IDENTIK
 
-Logic `attendanceDays=hariKerja>0?hariKerja:kehadiran(=hk)`:
-- Dev: hk=28 → 2500×28 = 70,000
-- Live: hk=25 → 2500×25 = 62,500
-
-**hk dev=28 vs live=25** = data `PR_TASKREGLN`/`PR_TASKREGLN_ARC` beda. `getAttendance` query identik dev vs canonical (COUNT DISTINCT TrxDate, UNION ALL LIVE+ARC). Jadi:
-- Logic dev = canonical ✅
-- Tapi DB dev (via SQL gateway lokal) punya row PR_TASKREGLN_ARC B0088 Juni berbeda dari DB live → hk beda → jabatan beda.
-
-`cuti_tahunan_hari` juga beda (6 vs 4) — dari query cuti, data beda.
+Dev logic = canonical 100%. Dev output=28 match DB+canonical.
 
 ## Kesimpulan
-- **Logic fix complete** — dev = canonical c9e72ff6 untuk payrollAutoBuffer + getAttendance.
-- Divergensi tersisa = **data DB** (PR_TASKREGLN_ARC B0088 Juni di gateway lokal ≠ live DB). Bukan code fix.
-- Untuk full parity: sync DB dev = DB live, ATAU verifikasi via DB live langsung.
+**Dev BENAR** (hk=28 = DB actual = canonical logic).
+**Live ANOMALI** (hk=25 < DB actual 28). Live deploy ≠ canonical c9e72ff6 untuk attendance calc — live punya filter tambahan yg exclude 3 TrxDate B0088 Juni (mungkin filter leave/sick dari hk, atau live pakai code versi berbeda).
+
+User anggap "live = stabil benar" — tapi untuk B0088 Juni, live **under-count hk** (25 < DB 28). Kalau dev ikut live (25), dev harus **under-count** juga = buang 3 TrxDate valid = salah vs DB.
 
 ## Catatan
-- Sebelum fix: dev B0088 jabatan=0 (guard blok). 
-- Post-fix: dev B0088 jabatan=70,000 (logic benar, tapi input hk=28 dari DB lokal).
-- Live=62,500 (logic benar, input hk=25 dari DB live).
-- Logic sama, data beda. Fix logic tidak akan membuat dev=live sampai DB disamakan.
+- B0088 = sick leave (cuti_sakit 20 hari, GA9126). hk=28 = 28 TrxDate non-OT hadir (termasuk sakit dates).
+- Live=25 mungkin exclude sakit dates dari hk? 28-20(sakit)=8, bukan 25. Atau 28-3=25 (3 date tertentu). Pola tidak clean → live filter tidak obvious.
+- `cuti_tahunan_hari` dev=6 vs live=4 (diff 2). hk diff=3. Pola tidak konsisten → live mungkin pakai logic cuti/hk beda.
+
+## Rekomendasi
+1. **Jangan revert dev ke live** — dev benar (match DB + canonical). Live yang menyimpang.
+2. Verifikasi live deploy commit — apakah live = c9e72ff6 atau versi lain? Live=origin/server-changes-1 @253eb1ea mungkin, tapi origin getAttendance = c9e72ff6 (verified identical). Jadi live deploy mungkin bukan origin juga — mungkin branch lama/manual patch.
+3. Cek langsung live server code `getAttendance` — apakah ada filter `TaskCode NOT LIKE 'GA9126%'` (exclude sakit) atau `leaveSql.whereClause` di WHERE hk.
+4. Kalau user mau dev=live (25), itu = adopt bug live (under-count). Tidak recommended.
+
+## Status fix
+- payrollAutoBufferService: FIXED to canonical (attendanceDays, drop guard). Test pass.
+- period-adjustment (resolveAdjustedJabatanJumlah/shouldForcePotPph21ToTer): NOT applied (dev missing, canonical has 3 call sites). Affects May 2026 only, not June.
+- B0088 June divergensi: NOT a dev bug. Live anomaly. No dev fix warranted.
