@@ -9,11 +9,6 @@ export type AutoBufferAdjustmentName = keyof typeof AUTO_BUFFER_ADCODE_BY_ADJUST
 export type AutoBufferSyncStatus = "SYNC" | "MISS";
 export type AutoBufferMatchStatus = "MATCH" | "MISMATCH";
 
-type AutoBufferSeedRemarkOptions = {
-    syncStatus?: AutoBufferSyncStatus;
-    matchStatus?: AutoBufferMatchStatus;
-};
-
 const LEGACY_AUTO_BUFFER_ADJUSTMENT_NAME_ALIASES: Record<string, AutoBufferAdjustmentName> = {
     "AUTO TUNJANGAN JABATAN": "TUNJANGAN JABATAN",
     "AUTO MASA KERJA": "MASA KERJA",
@@ -56,8 +51,7 @@ function resolveSyncAndMatchStatus(
 export function buildAutoBufferSeedRemark(
     adjustmentName: unknown,
     amount: unknown,
-    sourceAmount?: unknown,
-    options?: AutoBufferSeedRemarkOptions
+    sourceAmount?: unknown
 ): string {
     const normalizedName = normalizeAutoBufferAdjustmentName(adjustmentName);
     const adcode = resolveAutoBufferAdcode(normalizedName);
@@ -65,10 +59,6 @@ export function buildAutoBufferSeedRemark(
     const numericSourceAmount = Number.isFinite(Number(sourceAmount))
         ? Number(sourceAmount)
         : numericAmount;
-    const resolvedStatus = resolveSyncAndMatchStatus(numericAmount, numericSourceAmount);
-    const status = {
-        sync: options?.syncStatus || resolvedStatus.sync,
-        match: options?.matchStatus || resolvedStatus.match
-    };
+    const status = resolveSyncAndMatchStatus(numericAmount, numericSourceAmount);
     return `${normalizedName} | ${adcode} | ${numericAmount} | sync:${status.sync} | match:${status.match}`;
 }
