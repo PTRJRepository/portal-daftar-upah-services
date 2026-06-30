@@ -97,11 +97,71 @@ KPI per-division/group: `executive-summary` endpoint resolves gang codes via `di
 - **Cache keys**: `:${month}:${year}` and `:${month}:${year}:${division}`. Use `cacheService.invalidatePayroll` / `clearByPattern` after any write that changes payroll/aggregation data.
 - **Auth**: token-based for users; `x-api-key` header bypass for service integrations (`Config.API_KEY_BYPASS`). API-key bypass currently grants ADMIN-equivalent — audit flags this for scoping (F39).
 
-## Audit findings (ongoing)
-`.audit/AUDIT_REPORT.md` (33 findings) + `.audit/FIX_PLAN.md` (P0-P3 prioritized). Top root causes to fix before merge:
-- **ROOT-A** DB profile default backwards (F23/F25) — `Config.DB_PROFILE` should default `SERVER_PROFILE_2`.
-- **ROOT-B** THP/taxable flags dropped in extractor SELECT (F1/F2) — tax undercalculated.
-- **ROOT-C** Seeder missing cache invalidation (F21).
-- **ROOT-D** API-key bypass over-permissive (F39-43).
+## Canonical truth source (CRITICAL)
 
-Re-run the audit: `Workflow({ scriptPath: ".audit/consistency-audit.workflow.js" })` (resumes cached agents if unchanged).
+**Two GitHub repos must be considered together:**
+
+- **Canonical logic**: `temp/server-changes-1` @ `c9e72ff6` (remote `PTRJRepository/temp_portal_daftar_upah`). This is the **ground truth** for payroll calculation logic. Dev logic must match this exactly.
+- **Live deploy**: `origin/server-changes-1` @ `253eb1ea` (1 commit behind canonical). Live `ptrjestate.rebinmas.com:3001/upah` deploys from here. The dev branch (`server-dev-merger-1`) diverged by adding features (dashboard per-division, snapshot versioning, sawit banner) but also drifted from canonical logic in 4 areas (see fixes below).
+
+**Always compare dev against canonical `c9e72ff6` first, then verify parity with live.** When live and canonical conflict (rare), canonical wins — live may be running older code.
+
+```bash
+git remote add temp https://github.com/PTRJRepository/temp_portal_daftar_upah.git
+git fetch temp
+# Compare dev vs canonical
+git diff HEAD..c9e72ff6 -- backend/src/services/
+```
+
+## Parity status (verified 2026-06-30)
+
+**28/28 division×month combos (May+June 2026) MATCH** — verified via `/payroll/report/division-raw-tree` (live calc from DB, NOT aggregation snapshot). 0 employee diffs. Logic dev = canonical `c9e72ff6` = live.
+
+### 4 logic fixes applied (restored canonical parity)
+
+| Fix | File | What was wrong | Impact |
+|---|---|---|---|
+| **C2 income dedupe** | `dataExtractorService.ts:4968` | Dev dropped `OtherIncomesService.deduplicateIncomeRows()` call. `employee_other_incomes` rows doubled → upah_bersih inflated. Restored dedupe + SELECT `id,new_nik`. | All months, all divisions. ~6M for P1B. |
+| **payrollAutoBuffer attendanceDays** | `payrollAutoBufferService.ts:264-269` | Dev had guard `hariKerja===0?0` + no `attendanceDays` fallback. Canonical: `attendanceDays = hariKerja>0?hariKerja:kehadiran`, no guard. Checked out canonical file + test. | Sick-leave employees (hari_kerja=0). B0088 P1B: 62,500 vs 0. |
+| **autoBuffer seeder PPH guard** | `autoBufferManualAdjustmentSeederService.ts` + `autoBufferAdcodeMap.ts` | Dev had `AUTO_BUFFER_PPH_ADJUSTMENT_NAME_CONDITION` protecting PPH from seeder (syncStatus MISS, matchStatus MISMATCH). Canonical: no guard. Checked out canonical. | PPH auto-buffer seeding. |
+| **period-adjustment (C1)** | `payrollPeriodAdjustments.ts` (stub→real) + `dataExtractorService.ts` (3 call sites) | Dev stub no-op. Canonical: `getPayrollPeriodAdjustments` — **May 2026 only** (`isMay2026`). B0088 jabatan=0, F0529+ARA PPh21=TER. Applied to progressive path only (canonical-consistent). Test 3 pass. | May 2026 only. B0088 P1B: -62,500. F0529 ARA: PPh21→TER. |
+
+### Period-adjustment scope (DO NOT BREAK)
+`payrollPeriodAdjustments.ts` is **May 2026 only** — `isMay2026(context)` returns `true` only for month=5, year=2026. For ALL other months it returns `[]`. The adjustment call sites exist only on the **progressive path** (NOT the default raw-tree path), matching canonical behavior. Do NOT extend to other months or paths without explicit user request.
+
+### Verifying parity (dev vs live)
+```bash
+# Login to live
+TOKEN=$(curl -s -X POST http://ptrjestate.rebinmas.com:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin","password":"admin123"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Compare raw-tree (live calc, NOT aggregation)
+curl -s -H "x-api-key: $API_KEY" "http://localhost:8002/payroll/report/division-raw-tree?division_code=PG1A&month=6&year=2026&gang_code=ALL"
+curl -s -H "Authorization: Bearer $TOKEN" "http://ptrjestate.rebinmas.com:3001/upah/payroll/report/division-raw-tree?division_code=PG1A&month=6&year=2026&gang_code=ALL"
+# Compare grand total: grep -oE '"upah_bersih":[0-9.]+' | awk sum
+# Compare per-emp: extract emp_code + upah_bersih pairs, diff
+```
+
+**Query gateway directly** (bypass app layer):
+```bash
+curl -s -X POST http://10.0.0.110:8001/v1/query \
+  -H "x-api-key: $DB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT ...","params":{},"server":"SERVER_PROFILE_2","database":"db_ptrj","timeout":60}'
+# Body format: {sql, params, server, database, timeout}
+# params: {p0:"val", p1:"val"} with @p0, @p1 in SQL
+```
+
+## Division normalization
+- ARB1↔AB1, ARB2↔AB2 are **aliases** (same division). `gangService.normalizeDivisionCode()` resolves them at query time. Output is identical for both codes.
+- `DivisionConfigService.getAllDivisionCodes()` returns ALL keys including aliases → division dropdown shows duplicates (ARB1 + AB1). This is canonical behavior, not a bug. If needed, filter to canonical codes only.
+
+## Audit findings
+`.audit/` directory contains all audit reports:
+- **AUDIT_REPORT.md** (33 consistency findings) + **FIX_PLAN.md** (P0-P3)
+- **DIVERGENCE_REPORT.md** (34 dev vs canonical divergences, action buckets)
+- **AREA_AUDIT_REPORT.md** (53 area findings: live parity, test gaps, config/env, dead code, data integrity)
+- **DEEP_VERIFY_REPORT.md** (28/28 parity verified)
+- **P1B_JUNE_ROOTCAUSE.md** (B0088 jabatan investigation)
+- Re-runnable workflows: `consistency-audit.workflow.js`, `canonical-diff.workflow.js`, `deep-verify.workflow.js`
