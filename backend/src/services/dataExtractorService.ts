@@ -30,7 +30,7 @@ import { toManualAdjustmentFieldName } from "./payroll/manualAdjustments/manualA
 import { payrollAutoBufferService, resolveSyncFrameColor } from "./payroll/payrollAutoBufferService";
 import { divisionConfigService } from "./config/DivisionConfigService";
 import { buildLeaveSqlExpressions } from "./payroll/extractors/leaveRules";
-import { processInBatches } from "../utils/batchProcessor";
+import { processInBatches, runWithConcurrencyLimit } from "../utils/batchProcessor";
 import {
     resolvePayrollDivisionCodeForScope,
     resolvePayrollGangPrefixForDivision
@@ -1168,7 +1168,11 @@ export class DataExtractorService {
                 label: "DataExtractor.extractPayrollData.sequentialChunks",
                 processFn: async (batch, batchIndex) => processChunk(batch[0], batchIndex)
             })
-            : await Promise.all(empCodeChunks.map((chunk, idx) => processChunk(chunk, idx)));
+            : await runWithConcurrencyLimit(
+                empCodeChunks.map((chunk, idx) => () => processChunk(chunk, idx)),
+                6,
+                "DataExtractor.extractPayrollData.parallelChunks"
+            );
 
         // Merge all chunk results into accumulators
         for (const result of chunkResults) {
@@ -2016,7 +2020,11 @@ export class DataExtractorService {
             );
 
             // Extract results from PayrollCalculator
+            // [FIX] Extract upah_kotor separately from jumlah_upah_kotor for correct tax/export calculations
+            // upah_kotor = gaji_pokok_aktual + total_tunjangan + total_premi (without koreksi)
+            // jumlah_upah_kotor = upah_kotor - pot_koreksi + pendapatan_lainnya (with koreksi)
             const {
+                upah_kotor,
                 jumlah_upah_kotor,
                 potongan_upah_kotor,
                 upah_kotor_pajak,
@@ -2117,6 +2125,9 @@ export class DataExtractorService {
                 premi_brondol_total: empBrondolTotal,
                 upah_pokok,
                 total_premi,
+                // [FIX] Add upah_kotor separately - base gross without koreksi for correct tax/export
+                // Formula: upah_kotor = gaji_pokok_aktual + total_tunjangan + total_premi
+                upah_kotor,
                 jumlah_upah_kotor,
                 upah_kotor_pajak,
                 pot_astek_majikan,
@@ -4380,11 +4391,11 @@ export class DataExtractorService {
 
         // [PHASE 1] Attendance + Cuti
         debug(CATEGORY, `📋 Phase 1: Loading attendance/cuti...`);
-        const phase1Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+        const phase1Promises = empCodeChunks.map((chunk, idx) => () => Promise.all([
             safeQuery(`attendance[${idx}]`, () => this.getAttendance(chunk, startDate, endDate, serverProfile), {}),
             safeQuery(`cuti[${idx}]`, () => this.getCuti(chunk, startDate, endDate, serverProfile), {}),
         ]));
-        const phase1Results = await Promise.all(phase1Promises);
+        const phase1Results = await runWithConcurrencyLimit(phase1Promises, 6, "DataExtractor.phase1.attendance");
         for (const [attB, cutiB] of phase1Results) {
             Object.assign(globalAttendanceMap, attB);
             Object.assign(globalCutiMap, cutiB);
@@ -4444,13 +4455,13 @@ export class DataExtractorService {
         const t2 = Date.now();
         debug(CATEGORY, `⏱️ Phase 2: Loading overtime/allowances...`);
 
-        const phase2Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+        const phase2Promises = empCodeChunks.map((chunk, idx) => () => Promise.all([
             safeQuery(`lembur[${idx}]`, () => this.getLemburDetailsWithTaskBreakdown(chunk, month, year, serverProfile), {}),
             safeQuery(`jabatan[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "JABATAN", serverProfile), {}),
             safeQuery(`masaKerja[${idx}]`, () => this.getTunjanganAmount(chunk, startDate, endDate, "MASA%KERJA", serverProfile), {}),
             safeQuery(`upahPokok[${idx}]`, () => this.getUpahPokok(chunk, year, currentYear, serverProfile), {}),
         ]));
-        const phase2Results = await Promise.all(phase2Promises);
+        const phase2Results = await runWithConcurrencyLimit(phase2Promises, 6, "DataExtractor.phase2.overtime");
         for (const [lemburB, jabatanB, masaKerjaB, upahB] of phase2Results) {
             Object.assign(globalLemburMap, lemburB);
             Object.assign(globalJabatanMap, jabatanB);
@@ -4507,13 +4518,13 @@ export class DataExtractorService {
         const t3 = Date.now();
         debug(CATEGORY, `💰 Phase 3: Loading premiums/deductions...`);
 
-        const phase3Promises = empCodeChunks.map((chunk, idx) => Promise.all([
+        const phase3Promises = empCodeChunks.map((chunk, idx) => () => Promise.all([
             safeQuery(`premi[${idx}]`, () => this.getPremi(chunk, startDate, endDate, isHistorical, serverProfile), JSON.parse(JSON.stringify(emptyPremiResult))),
             safeQuery(`potongan[${idx}]`, () => this.getPotongan(chunk, startDate, endDate, serverProfile), JSON.parse(JSON.stringify(emptyPotonganResult))),
             safeQuery(`brondol[${idx}]`, () => this.getBrondol(chunk, startDate, endDate, serverProfile), {}),
             safeQuery(`taskCodes[${idx}]`, () => this.getTaskCodes(chunk, startDate, endDate, serverProfile), {}),
         ]));
-        const phase3Results = await Promise.all(phase3Promises);
+        const phase3Results = await runWithConcurrencyLimit(phase3Promises, 6, "DataExtractor.phase3.premiums");
         for (const [premiB, potB, brondolB, taskCodesB] of phase3Results) {
             Object.assign(globalPremiResult.amounts, premiB.amounts);
             Object.assign(globalPremiResult.titleMap, premiB.titleMap);
@@ -4858,33 +4869,38 @@ export class DataExtractorService {
             const pot_bpjs_pekerja_total = pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja;
 
             // pendapatan_lainnya is resolved in Phase 4b; use 0 for this base pass.
-            const calc = PayrollCalculator.calculate(
-                {
-                    gaji_pokok_aktual,
-                    beras_jumlah: berasJumlah,
-                    jabatan_jumlah: jabatanJumlah,
-                    masa_kerja_jumlah: masaKerjaJumlah,
-                    lembur_jumlah: empLembur.jumlah || 0,
-                    total_tunjangan,
-                    total_premi,
-                    pot_koreksi,
-                    pendapatan_lainnya: 0,
-                    pot_astek_pekerja,
-                    pot_bpjs_kesehatan_pekerja,
-                    pot_bpjs_pensiun_pekerja,
-                    pot_spsi,
-                    pot_pph21,
-                    other_potongan,
-                    pot_premi_pph,
-                    astek_majikan: caruman.astek_majikan_jkk_jkm || 0,
-                    bpjs_majikan: caruman.bpjs_kes_majikan || 0
-                },
+            const calculatorInput = {
+                gaji_pokok_aktual,
+                beras_jumlah: berasJumlah,
+                jabatan_jumlah: jabatanJumlah,
+                masa_kerja_jumlah: masaKerjaJumlah,
+                lembur_jumlah: empLembur.jumlah || 0,
+                total_tunjangan,
+                total_premi,
+                pot_koreksi,
+                pendapatan_lainnya: 0,
+                pot_astek_pekerja,
+                pot_bpjs_kesehatan_pekerja,
+                pot_bpjs_pensiun_pekerja,
+                pot_spsi,
+                pot_pph21,
+                other_potongan,
+                pot_premi_pph,
+                astek_majikan: caruman.astek_majikan_jkk_jkm || 0,
+                bpjs_majikan: caruman.bpjs_kes_majikan || 0
+            };
+            let calc = PayrollCalculator.calculate(
+                calculatorInput,
                 statusPTKP,
                 year
             );
             const adjustedPotPph21 = shouldForcePotPph21ToTer(emp, { month, year, divisionCode })
                 ? Math.abs(Number(calc.pph21_ter) || 0)
                 : pot_pph21;
+            if (adjustedPotPph21 !== pot_pph21) {
+                calculatorInput.pot_pph21 = adjustedPotPph21;
+                calc = PayrollCalculator.calculate(calculatorInput, statusPTKP, year);
+            }
 
             // Apply final data directly to emp object
             emp.hari_kerja = hari_kerja;
@@ -4907,6 +4923,7 @@ export class DataExtractorService {
             
             // Total tunjangan for display
             emp.total_tunjangan_display = total_tunjangan;
+            emp.upah_kotor = calc.upah_kotor;
             emp.upah_kotor_pajak = calc.upah_kotor_pajak;
             emp.jumlah_upah_kotor = calc.jumlah_upah_kotor;
             emp.penghasilan_bruto = calc.penghasilan_bruto;
@@ -4928,7 +4945,7 @@ export class DataExtractorService {
             emp.astek = pot_astek_pekerja; // ASTEK total
             emp.bpjs_kes = pot_bpjs_pekerja_total; // BPJS Kesehatan + Pensiun pekerja
             emp.spsi = pot_spsi;
-            emp.pph21 = pot_pph21;
+            emp.pph21 = adjustedPotPph21;
             // [FIX] pph21_ter is the calculated TER tax - do NOT overwrite with pot_pph21
             // pot_pph21 could be 0 if no PPh21 transaction exists in PR_ADTRANS, but TER calculation is still valid
             
@@ -5111,27 +5128,28 @@ export class DataExtractorService {
                 const pot_bpjs_pensiun_pekerja = caruman.bpjs_pensiun_pekerja || 0;
                 const statusPTKP = emp.status_ptkp || dbPtkpMap.get(emp.emp_code?.toUpperCase()) || mapBerasRateToPTKP(emp.beras_rate || 0);
 
-                const calc = PayrollCalculator.calculate(
-                    {
-                        gaji_pokok_aktual: Number(emp.gaji_pokok_aktual || emp.gaji_pokok || emp.total_amount_rp || 0),
-                        beras_jumlah: Number(emp.beras_jumlah || 0),
-                        jabatan_jumlah: Number(emp.jabatan_jumlah || 0),
-                        masa_kerja_jumlah: Number(emp.masa_kerja_jumlah || 0),
-                        lembur_jumlah: Number(emp.lembur_jumlah || 0),
-                        total_tunjangan: Number(emp.total_tunjangan || 0),
-                        total_premi: Number(emp.total_premi || 0),
-                        pot_koreksi,
-                        pendapatan_lainnya: totalPendapatanLainnya,
-                        pot_astek_pekerja,
-                        pot_bpjs_kesehatan_pekerja,
-                        pot_bpjs_pensiun_pekerja,
-                        pot_spsi: Number(emp.pot_spsi || 0),
-                        pot_pph21,
-                        other_potongan,
-                        pot_premi_pph,
-                        astek_majikan: caruman.astek_majikan_jkk_jkm || 0,
-                        bpjs_majikan: caruman.bpjs_kes_majikan || 0
-                    },
+                const calculatorInput = {
+                    gaji_pokok_aktual: Number(emp.gaji_pokok_aktual || emp.gaji_pokok || emp.total_amount_rp || 0),
+                    beras_jumlah: Number(emp.beras_jumlah || 0),
+                    jabatan_jumlah: Number(emp.jabatan_jumlah || 0),
+                    masa_kerja_jumlah: Number(emp.masa_kerja_jumlah || 0),
+                    lembur_jumlah: Number(emp.lembur_jumlah || 0),
+                    total_tunjangan: Number(emp.total_tunjangan || 0),
+                    total_premi: Number(emp.total_premi || 0),
+                    pot_koreksi,
+                    pendapatan_lainnya: totalPendapatanLainnya,
+                    pot_astek_pekerja,
+                    pot_bpjs_kesehatan_pekerja,
+                    pot_bpjs_pensiun_pekerja,
+                    pot_spsi: Number(emp.pot_spsi || 0),
+                    pot_pph21,
+                    other_potongan,
+                    pot_premi_pph,
+                    astek_majikan: caruman.astek_majikan_jkk_jkm || 0,
+                    bpjs_majikan: caruman.bpjs_kes_majikan || 0
+                };
+                let calc = PayrollCalculator.calculate(
+                    calculatorInput,
                     statusPTKP,
                     year
                 );
@@ -5139,11 +5157,13 @@ export class DataExtractorService {
                     ? Math.abs(Number(calc.pph21_ter) || 0)
                     : pot_pph21;
                 if (adjustedPotPph21 !== pot_pph21) {
-                    // re-run calc with forced TER PPh21 to keep downstream totals consistent
+                    calculatorInput.pot_pph21 = adjustedPotPph21;
+                    calc = PayrollCalculator.calculate(calculatorInput, statusPTKP, year);
                 }
 
                 emp.pot_koreksi = pot_koreksi;
                 emp.pot_pph21 = adjustedPotPph21;
+                emp.pph21 = adjustedPotPph21;
                 emp.pot_premi_pph = pot_premi_pph;
                 emp.pot_astek = pot_astek_pekerja;
                 emp.pot_bpjs_kesehatan_pekerja = pot_bpjs_kesehatan_pekerja;
@@ -5151,6 +5171,8 @@ export class DataExtractorService {
                 emp.pot_bpjs_pekerja_total = pot_bpjs_kesehatan_pekerja + pot_bpjs_pensiun_pekerja;
 
                 emp.jumlah_upah_kotor = calc.jumlah_upah_kotor;
+                // [FIX] Add upah_kotor separately - base gross without koreksi for correct tax/export
+                emp.upah_kotor = calc.upah_kotor;
                 emp.upah_kotor_pajak = calc.upah_kotor_pajak;
                 emp.penghasilan_bruto = calc.penghasilan_bruto;
                 emp.tarif_pajak_ter = calc.tarif_pajak_ter;
