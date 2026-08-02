@@ -254,7 +254,11 @@ class PayrollAutoBufferService {
 
         const hariKerja = Math.max(0, toNumber(input.hariKerja));
         const kehadiran = Math.max(0, toNumber(input.kehadiran));
-        const attendanceDays = hariKerja > 0 ? hariKerja : kehadiran;
+        // Business rule: tunjangan (jabatan) multiplies HADIR (attendance) HK only.
+        // Leave/sick days are NOT counted. When hariKerja=0 (full leave month), jabatan=0.
+        // Do NOT fall back to kehadiran (total incl. leave) — that was inflating jabatan
+        // for full-leave employees (B0088 case: local 75k vs live 0 per parity check).
+        const attendanceDays = hariKerja;
 
         const dbJabatanJumlah = toNumber(input.dbJabatanJumlah);
         const dbMasaKerjaJumlah = toNumber(input.dbMasaKerjaJumlah);

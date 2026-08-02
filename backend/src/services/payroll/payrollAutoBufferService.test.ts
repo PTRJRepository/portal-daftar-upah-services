@@ -70,7 +70,27 @@ describe("payrollAutoBufferService", () => {
         expect(result.jabatanUsedFallback).toBe(false);
     });
 
-    it("uses 10000 SPSI deduction for SPSI members in IJL division", () => {
+    it("zeroes jabatan when hariKerja=0 even if kehadiran>0 (sick/leave rule: jabatan = hadir HK only)", () => {
+        // B0088 ZUWIRDA — all 30 days leave in June, hari_kerja=0, but total attendance hk=30.
+        // Business rule: tunjangan jabatan multiplies hadir (attendance) HK only; leave is not counted.
+        const result = payrollAutoBufferService.calculateAutomaticValues({
+            jabatanText: "kerani kantor",
+            roleText: "",
+            hariKerja: 0,
+            kehadiran: 30,
+            masaKerjaTahun: 19,
+            isSpsiMember: false,
+            dbJabatanJumlah: 0,
+            dbMasaKerjaJumlah: 57500,
+            divisionCode: "P1B"
+        });
+
+        expect(result.jabatanAmount).toBe(0);
+        expect(result.jabatanRate).toBe(0);
+        expect(result.jabatanUsedFallback).toBe(true);
+    });
+
+    it("forces 10000 SPSI deduction for SPSI members in IJL division", () => {
         const result = payrollAutoBufferService.calculateAutomaticValues({
             jabatanText: "karyawan",
             roleText: "karyawan",
