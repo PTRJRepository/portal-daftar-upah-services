@@ -197,6 +197,17 @@ export const payrollRoutes = new Elysia({ prefix: "/payroll" })
             return { message: "Unauthorized" };
         }
     })
+    .get("/locked/verify", ({ currentUser }) => {
+        const divisions = currentUser?.divisions || [];
+        return {
+            valid: true,
+            username: currentUser?.username,
+            role: currentUser?.role,
+            divisions,
+            division: divisions[0] || null,
+            user: currentUser
+        };
+    })
     // --- Divisions ---
     .get("/divisions", async ({ currentUser }): Promise<any> => {
         if (currentUser) {
